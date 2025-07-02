@@ -1,0 +1,170 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: automation-hub-db
+    environment:
+      POSTGRES_USER: automation_hub
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password}
+      POSTGRES_DB: automation_hub
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - automation-hub
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U automation_hub"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # n8n Instance (if running locally)
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n-instance
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER:-admin}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD:-password}
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - WEBHOOK_URL=http://n8n:5678/
+      - N8N_PUBLIC_API_ENABLED=true
+    volumes:
+      - n8n_data:/home/node/.n8n
+    ports:
+      - "5678:5678"
+    networks:
+      - automation-hub
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # n8n MCP Server
+  n8n-mcp:
+    build:
+      context: ./n8n-mcp
+      dockerfile: Dockerfile
+    container_name: n8n-mcp-server
+    environment:
+      - N8N_BASE_URL=${N8N_BASE_URL:-http://n8n:5678}
+      - N8N_API_KEY=${N8N_API_KEY}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - automation-hub
+    depends_on:
+      - n8n
+    restart: unless-stopped
+
+  # Database MCP Server
+  database-mcp:
+    build:
+      context: ./database-mcp
+      dockerfile: Dockerfile
+    container_name: database-mcp-server
+    environment:
+      - DATABASE_URL=postgresql://automation_hub:${DB_PASSWORD:-secure_password}@postgres:5432/automation_hub
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - automation-hub
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Auth MCP Server
+  auth-mcp:
+    build:
+      context: ./auth-mcp
+      dockerfile: Dockerfile
+    container_name: auth-mcp-server
+    environment:
+      - DATABASE_URL=postgresql://automation_hub:${DB_PASSWORD:-secure_password}@postgres:5432/automation_hub
+      - JWT_SECRET=${JWT_SECRET:-your-jwt-secret}
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-7d}
+      - BCRYPT_ROUNDS=${BCRYPT_ROUNDS:-10}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - automation-hub
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Make.com MCP Server
+  make-mcp:
+    build:
+      context: ./make-mcp
+      dockerfile: Dockerfile
+    container_name: make-mcp-server
+    environment:
+      - MAKE_API_KEY=${MAKE_API_KEY}
+      - MAKE_BASE_URL=${MAKE_BASE_URL:-https://api.make.com}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - automation-hub
+    restart: unless-stopped
+    profiles:
+      - make
+
+  # Zapier MCP Server
+  zapier-mcp:
+    build:
+      context: ./zapier-mcp
+      dockerfile: Dockerfile
+    container_name: zapier-mcp-server
+    environment:
+      - ZAPIER_API_KEY=${ZAPIER_API_KEY}
+      - ZAPIER_BASE_URL=${ZAPIER_BASE_URL:-https://api.zapier.com}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - automation-hub
+    restart: unless-stopped
+    profiles:
+      - zapier
+
+  # VAPI MCP Server
+  vapi-mcp:
+    build:
+      context: ./vapi-mcp
+      dockerfile: Dockerfile
+    container_name: vapi-mcp-server
+    environment:
+      - VAPI_API_KEY=${VAPI_API_KEY}
+      - VAPI_BASE_URL=${VAPI_BASE_URL:-https://api.vapi.ai}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    networks:
+      - automation-hub
+    restart: unless-stopped
+    profiles:
+      - vapi
+
+  # Nginx Reverse Proxy (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: automation-hub-nginx
+    volumes:
+      - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - automation-hub
+    depends_on:
+      - n8n
+    profiles:
+      - production
+
+networks:
+  automation-hub:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  n8n_data:

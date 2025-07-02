@@ -1,0 +1,23 @@
+{
+  "name": "@automation-hub/zapier-mcp",
+  "version": "1.0.0",
+  "description": "Zapier Model Context Protocol Server",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.6",
+    "axios": "^1.8.0",
+    "zod": "^3.24.1",
+    "dotenv": "^16.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.6",
+    "typescript": "^5.7.3",
+    "tsx": "^4.23.0"
+  }
+}

@@ -1,0 +1,18 @@
+#!/bin/bash
+
+echo "Docker permission setup script"
+echo "=============================="
+echo ""
+echo "To fix Docker permissions, run these commands:"
+echo ""
+echo "1. Add your user to the docker group:"
+echo "   sudo usermod -aG docker $USER"
+echo ""
+echo "2. Log out and log back in, or run:"
+echo "   newgrp docker"
+echo ""
+echo "3. Verify Docker works without sudo:"
+echo "   docker ps"
+echo ""
+echo "Alternative: Run Docker commands with sudo"
+echo "   sudo docker compose up -d"

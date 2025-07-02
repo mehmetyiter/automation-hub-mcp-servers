@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light Mode Colors */
+    --background: 0 0% 100%; /* White */
+    --foreground: 220 13% 13%; /* Dark text for contrast */
+    --card: 0 0% 100%; /* White cards */
+    --card-foreground: 220 13% 13%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 13% 13%;
+    --primary: 201 100% 45%; /* Azure blue #0096D1 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 220 13% 13%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 201 100% 45%; /* Azure accent */
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 201 100% 45%;
+    --radius: 0.5rem;
+    
+    /* Custom theme colors */
+    --azure-blue: 201 100% 45%; /* #0096D1 */
+    --dark-bg: 220 33% 9%; /* #101820 */
+    --dark-card: 210 29% 16%; /* #1E2A38 */
+    --dark-highlight: 200 74% 51%; /* #23A8E0 */
+    --light-text: 210 17% 95%; /* #F0F2F4 */
+  }
+
+  .dark {
+    /* Dark Mode Colors */
+    --background: 220 33% 9%; /* #101820 */
+    --foreground: 210 17% 95%; /* #F0F2F4 */
+    --card: 210 29% 16%; /* #1E2A38 */
+    --card-foreground: 210 17% 95%;
+    --popover: 210 29% 16%;
+    --popover-foreground: 210 17% 95%;
+    --primary: 200 74% 51%; /* #23A8E0 */
+    --primary-foreground: 220 33% 9%;
+    --secondary: 210 29% 20%;
+    --secondary-foreground: 210 17% 95%;
+    --muted: 210 29% 20%;
+    --muted-foreground: 210 17% 70%;
+    --accent: 200 74% 51%; /* #23A8E0 */
+    --accent-foreground: 220 33% 9%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 17% 95%;
+    --border: 210 29% 24%;
+    --input: 210 29% 24%;
+    --ring: 200 74% 51%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Custom scrollbar */
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(203 213 225) rgb(241 245 249);
+  }
+  
+  .dark .scrollbar-thin {
+    scrollbar-color: rgb(51 65 85) rgb(30 41 59);
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    @apply bg-slate-100 rounded-full dark:bg-slate-800;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 rounded-full hover:bg-slate-400 dark:bg-slate-600 dark:hover:bg-slate-500;
+  }
+}
