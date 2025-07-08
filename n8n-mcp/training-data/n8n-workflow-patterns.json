@@ -1,0 +1,1387 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2025-01-06",
+  "universal_workflow_principles": {
+    "deep_prompt_understanding": {
+      "description": "AI must deeply analyze and understand the prompt's true intent",
+      "analysis_layers": [
+        {
+          "layer": "explicit_requirements",
+          "questions": [
+            "What features are directly requested?",
+            "What specific integrations are mentioned?",
+            "What constraints are stated?",
+            "What triggers are defined?"
+          ]
+        },
+        {
+          "layer": "implicit_requirements",
+          "questions": [
+            "What features would make this workflow complete?",
+            "What industry best practices apply?",
+            "What error scenarios should be handled?",
+            "What reporting would be valuable?"
+          ]
+        },
+        {
+          "layer": "ultimate_goal",
+          "questions": [
+            "What business problem is being solved?",
+            "What is the end-to-end process?",
+            "Who benefits from this workflow?",
+            "How is success measured?"
+          ]
+        }
+      ]
+    },
+    "intelligent_workflow_planning": {
+      "description": "AI should create a comprehensive plan before implementation",
+      "planning_steps": [
+        {
+          "step": 1,
+          "name": "Core Flow Design",
+          "actions": [
+            "Map all trigger points to their logical endpoints",
+            "Identify all decision branches",
+            "Design data flow between nodes",
+            "Plan parallel vs sequential processing"
+          ]
+        },
+        {
+          "step": 2,
+          "name": "Feature Enhancement",
+          "actions": [
+            "Suggest monitoring and alerting nodes",
+            "Add data validation checkpoints",
+            "Include audit trail mechanisms",
+            "Propose performance optimizations"
+          ]
+        },
+        {
+          "step": 3,
+          "name": "Robustness Addition",
+          "actions": [
+            "Add error handling for each external call",
+            "Include retry mechanisms",
+            "Design fallback paths",
+            "Add timeout protections"
+          ]
+        },
+        {
+          "step": 4,
+          "name": "Completion Design",
+          "actions": [
+            "Ensure every branch has meaningful endpoints",
+            "Add success confirmations",
+            "Include failure notifications",
+            "Design cleanup operations"
+          ]
+        }
+      ]
+    },
+    "workflow_analysis_framework": {
+      "description": "Structured approach to understanding and implementing workflows",
+      "steps": [
+        {
+          "step": 1,
+          "name": "Identify Workflow Purpose",
+          "questions": [
+            "What is the main goal?",
+            "What triggers this workflow?",
+            "What should happen when it's complete?",
+            "Who are the stakeholders?"
+          ],
+          "example": "HR onboarding: Goal=onboard employee, Trigger=offer accepted, Complete=employee productive, Stakeholders=HR,IT,Finance,Employee"
+        },
+        {
+          "step": 2,
+          "name": "Extract Key Phases",
+          "questions": [
+            "What are the main stages?",
+            "What happens in parallel?",
+            "What happens sequentially?",
+            "What are the decision points?"
+          ],
+          "example": "Phases: 1)Contract signing, 2)Multi-department setup(parallel), 3)First day prep, 4)Completion & follow-up"
+        },
+        {
+          "step": 3,
+          "name": "Identify Completion Requirements",
+          "questions": [
+            "How do we know it's done?",
+            "What needs to be updated/notified?",
+            "What follow-up is needed?",
+            "What should be archived/logged?"
+          ],
+          "example": "Done when: all systems ready, stakeholders notified, records updated, follow-ups scheduled"
+        }
+      ]
+    },
+    "universal_completion_patterns": {
+      "description": "Every workflow MUST end with purposeful actions",
+      "pattern_types": [
+        {
+          "type": "Status Update Pattern",
+          "when": "Workflow changes state of something",
+          "actions": [
+            "Update primary system/database",
+            "Update related systems",
+            "Log the change",
+            "Notify stakeholders"
+          ]
+        },
+        {
+          "type": "Delivery Pattern",
+          "when": "Workflow delivers something",
+          "actions": [
+            "Confirm delivery",
+            "Send confirmation to recipient",
+            "Update tracking systems",
+            "Archive delivery proof"
+          ]
+        },
+        {
+          "type": "Process Completion Pattern",
+          "when": "Workflow completes a multi-step process",
+          "actions": [
+            "Validate all steps completed",
+            "Generate completion report",
+            "Update process status",
+            "Trigger next process if needed",
+            "Archive process data"
+          ]
+        },
+        {
+          "type": "Decision Outcome Pattern",
+          "when": "Workflow makes decisions",
+          "actions": [
+            "Record decision made",
+            "Notify affected parties",
+            "Trigger consequent actions",
+            "Update decision log"
+          ]
+        }
+      ]
+    },
+    "workflow_structure_rules": {
+      "rule_1": {
+        "name": "Every workflow must have clear beginning and end",
+        "implementation": [
+          "Trigger/Start node(s) clearly defined",
+          "All branches must converge or complete",
+          "Final actions must fulfill the workflow purpose"
+        ]
+      },
+      "rule_2": {
+        "name": "Parallel branches must reunite or complete independently",
+        "implementation": [
+          "Use Merge nodes to combine parallel work",
+          "Or ensure each branch has its own completion",
+          "Never leave branches hanging"
+        ]
+      },
+      "rule_3": {
+        "name": "Every merge point needs follow-up actions",
+        "implementation": [
+          "Merge -> Aggregate/Validate -> Final Actions",
+          "Not: Merge -> END",
+          "The merge is a checkpoint, not a finish line"
+        ]
+      },
+      "rule_4": {
+        "name": "Error paths must be handled",
+        "implementation": [
+          "Every external call needs error handling",
+          "Errors should notify/log/retry",
+          "Error handlers must connect to recovery or notification"
+        ]
+      }
+    },
+    "prompt_parsing_strategy": {
+      "description": "How AI should read and understand ANY prompt",
+      "steps": [
+        {
+          "step": 1,
+          "action": "Identify all section headers",
+          "example": "MAIN OBJECTIVES, FINAL COMPLETION, ERROR HANDLING, etc."
+        },
+        {
+          "step": 2,
+          "action": "Map sections to workflow phases",
+          "example": "OFFER ACCEPTANCE = Phase 1, IT PROVISIONING = Phase 2 (parallel)"
+        },
+        {
+          "step": 3,
+          "action": "Find completion requirements",
+          "keywords": ["complete", "finish", "end", "final", "done", "close", "archive"],
+          "example": "FINAL COMPLETION section = must implement these as final nodes"
+        },
+        {
+          "step": 4,
+          "action": "Identify success criteria",
+          "keywords": ["ensure", "confirm", "validate", "must", "should", "verify"],
+          "example": "'Ensure all systems ready' = add validation step"
+        }
+      ]
+    },
+    "dynamic_completion_generation": {
+      "description": "If prompt doesn't specify completion, AI must infer it",
+      "inference_rules": [
+        {
+          "if": "Workflow creates something",
+          "then": "Completion must confirm creation + notify + log"
+        },
+        {
+          "if": "Workflow processes requests",
+          "then": "Completion must update request status + notify requester + archive"
+        },
+        {
+          "if": "Workflow involves multiple departments",
+          "then": "Completion must confirm all departments done + aggregate results + notify all"
+        },
+        {
+          "if": "Workflow handles customer interaction",
+          "then": "Completion must update CRM + send confirmation + request feedback"
+        },
+        {
+          "if": "Workflow modifies data",
+          "then": "Completion must verify changes + backup + log + notify"
+        }
+      ]
+    },
+    "branch_connection_strategies": {
+      "description": "How to connect nodes in ANY workflow",
+      "principles": [
+        {
+          "principle": "Linear Connection",
+          "when": "Steps must happen in order",
+          "pattern": "A -> B -> C -> D",
+          "example": "Validate Data -> Process -> Save -> Notify"
+        },
+        {
+          "principle": "Parallel Execution",
+          "when": "Multiple things can happen at once",
+          "pattern": "Trigger -> [Branch1, Branch2, Branch3] -> Merge",
+          "example": "New Employee -> [IT Setup, HR Docs, Facilities] -> All Ready"
+        },
+        {
+          "principle": "Conditional Branching",
+          "when": "Different paths based on conditions",
+          "pattern": "Check -> IF -> [True Path, False Path] -> Continue",
+          "example": "Check Amount -> IF > 1000 -> [Manager Approval, Auto Approve]"
+        },
+        {
+          "principle": "Loop Pattern",
+          "when": "Process multiple items",
+          "pattern": "Split -> Process Item -> Check More -> [Loop Back or Exit]",
+          "example": "Get Orders -> Process Each -> More? -> [Yes: Loop, No: Summary]"
+        },
+        {
+          "principle": "Error Handling",
+          "when": "External services or risky operations",
+          "pattern": "Try Operation -> [Success Path, Error Path] -> Continue",
+          "example": "API Call -> [Success: Process, Error: Notify & Retry]"
+        }
+      ]
+    },
+    "connection_validation_checklist": {
+      "description": "AI must verify these for EVERY workflow",
+      "checks": [
+        {
+          "check": "All nodes connected",
+          "how": "Every node appears in connections as source or target",
+          "fix": "Find orphans and connect based on position/purpose"
+        },
+        {
+          "check": "All branches end properly",
+          "how": "Trace each branch to completion or merge",
+          "fix": "Add merge nodes or completion actions"
+        },
+        {
+          "check": "Merge nodes have outputs",
+          "how": "Every merge connects to follow-up actions",
+          "fix": "Add aggregation/validation/completion after merge"
+        },
+        {
+          "check": "Error handlers connected",
+          "how": "Error nodes lead to recovery or notification",
+          "fix": "Connect to notification/logging/retry logic"
+        },
+        {
+          "check": "Loops can exit",
+          "how": "Loop has condition to break",
+          "fix": "Add exit condition and path"
+        }
+      ]
+    },
+    "workflow_ending_templates": {
+      "description": "Generic endings based on workflow analysis",
+      "templates": [
+        {
+          "name": "Simple Completion",
+          "nodes": ["Update Status", "Send Notification", "Log Completion"]
+        },
+        {
+          "name": "Multi-Branch Completion",
+          "nodes": ["Merge All Branches", "Validate Complete", "Update Systems", "Notify All", "Archive"]
+        },
+        {
+          "name": "Process Loop Completion",
+          "nodes": ["Exit Loop", "Generate Summary", "Send Report", "Cleanup"]
+        },
+        {
+          "name": "Approval Workflow Completion",
+          "nodes": ["Record Decision", "Update Request", "Notify Requester", "Trigger Actions"]
+        },
+        {
+          "name": "Data Processing Completion",
+          "nodes": ["Save Results", "Generate Report", "Send Summary", "Archive Raw Data"]
+        }
+      ]
+    }
+    },
+    "universal_workflow_generation_principles": {
+      "description": "AI must apply these principles to ANY workflow, regardless of domain",
+      "core_principles": [
+        {
+          "principle": "Every trigger needs a complete journey",
+          "implementation": [
+            "Identify what starts the workflow",
+            "Trace the logical path to completion",
+            "Ensure all paths lead to meaningful endings",
+            "No dead ends or orphaned branches"
+          ]
+        },
+        {
+          "principle": "Every external interaction needs protection",
+          "implementation": [
+            "Add error handling after external calls",
+            "Include retry logic where appropriate",
+            "Design fallback paths",
+            "Log failures for debugging"
+          ]
+        },
+        {
+          "principle": "Every decision creates branches that must converge or complete",
+          "implementation": [
+            "IF nodes create true/false paths",
+            "Both paths need outcomes",
+            "Branches should merge when logical",
+            "Or complete independently with purpose"
+          ]
+        },
+        {
+          "principle": "Every workflow needs observability",
+          "implementation": [
+            "Log key milestones",
+            "Track success and failure rates",
+            "Enable debugging capabilities",
+            "Create audit trails"
+          ]
+        },
+        {
+          "principle": "Every completion needs confirmation",
+          "implementation": [
+            "Update relevant systems",
+            "Notify relevant parties",
+            "Archive processed data",
+            "Prepare for next cycle"
+          ]
+        }
+      ]
+    },
+    "intelligent_completion_framework": {
+      "description": "How AI should complete ANY workflow intelligently",
+      "completion_questions": [
+        "What was the original goal?",
+        "Has that goal been achieved?",
+        "Who needs to know about the result?",
+        "What data should be preserved?",
+        "What should happen next?",
+        "How do we measure success?"
+      ],
+      "universal_completion_patterns": [
+        {
+          "pattern": "Status Update",
+          "when": "Workflow changes state of something",
+          "actions": ["Update source system", "Log change", "Notify stakeholders"]
+        },
+        {
+          "pattern": "Process Completion",
+          "when": "Workflow processes data/requests",
+          "actions": ["Confirm processing", "Store results", "Trigger next steps"]
+        },
+        {
+          "pattern": "Transaction Closure",
+          "when": "Workflow completes a transaction",
+          "actions": ["Verify completion", "Update records", "Send confirmations"]
+        },
+        {
+          "pattern": "Cycle Preparation",
+          "when": "Workflow is recurring",
+          "actions": ["Reset for next run", "Schedule next execution", "Clean up resources"]
+        }
+      ]
+    },
+    "workflow_thinking_process": {
+      "description": "How AI should think about ANY workflow creation",
+      "thinking_steps": [
+        {
+          "step": 1,
+          "question": "What triggers this workflow?",
+          "action": "Create appropriate trigger node(s)"
+        },
+        {
+          "step": 2,
+          "question": "What needs to happen?",
+          "action": "Map out the main process flow"
+        },
+        {
+          "step": 3,
+          "question": "What can go wrong?",
+          "action": "Add error handling and validation"
+        },
+        {
+          "step": 4,
+          "question": "What are the decision points?",
+          "action": "Add IF nodes and branch logic"
+        },
+        {
+          "step": 5,
+          "question": "How do we know it's done?",
+          "action": "Add completion confirmation and cleanup"
+        },
+        {
+          "step": 6,
+          "question": "Who needs to know?",
+          "action": "Add notifications and logging"
+        }
+      ]
+    },
+    "universal_node_patterns": {
+      "description": "Common node patterns that apply to any workflow",
+      "patterns": [
+        {
+          "name": "Input Validation Pattern",
+          "structure": "Trigger → Validate → [Valid: Process, Invalid: Error Handler]",
+          "purpose": "Ensure data quality before processing"
+        },
+        {
+          "name": "Error Recovery Pattern",
+          "structure": "Action → [Success: Continue, Error: Retry → Still Error: Notify & Log]",
+          "purpose": "Handle failures gracefully"
+        },
+        {
+          "name": "Parallel Processing Pattern",
+          "structure": "Split → [Branch1, Branch2, ...] → Merge → Continue",
+          "purpose": "Execute independent tasks simultaneously"
+        },
+        {
+          "name": "Approval Pattern",
+          "structure": "Request → Wait for Decision → [Approved: Process, Rejected: Notify]",
+          "purpose": "Human-in-the-loop decisions"
+        },
+        {
+          "name": "Batch Processing Pattern",
+          "structure": "Get Items → Split → Process Each → Aggregate → Report",
+          "purpose": "Handle multiple items efficiently"
+        }
+      ]
+    },
+    "workflow_structure_rules": {
+      "description": "Rules that apply to EVERY workflow structure",
+      "rules": [
+        {
+          "rule": "No dead ends",
+          "check": "Every node must lead somewhere or be a deliberate endpoint",
+          "fix": "Connect to error handler, notification, or completion node"
+        },
+        {
+          "rule": "Meaningful endpoints",
+          "check": "Endpoints must do something (notify, log, update)",
+          "fix": "Add action nodes before ending"
+        },
+        {
+          "rule": "Error paths exist",
+          "check": "External calls have error handling",
+          "fix": "Add IF node after external calls to handle failures"
+        },
+        {
+          "rule": "Branches resolve",
+          "check": "All branches either merge or complete independently",
+          "fix": "Add merge nodes or completion actions"
+        },
+        {
+          "rule": "Data flows logically",
+          "check": "Each node has the data it needs from previous nodes",
+          "fix": "Ensure proper node ordering and connections"
+        }
+      ]
+    }
+  },
+  "patterns": {
+    "slack": {
+      "common_mistakes": [
+        {
+          "issue": "Using 'items' instead of '$input.all()' in Code nodes",
+          "wrong": "const newMembers = items[0].json.members.filter(...)",
+          "correct": "const inputData = $input.all();\nconst newMembers = inputData[0].json.members.filter(...)",
+          "explanation": "n8n Code nodes use $input.all() to access input data, not 'items'"
+        },
+        {
+          "issue": "Using Schedule Trigger for event-based workflows",
+          "wrong": "Using scheduleTrigger to check for new Slack members",
+          "correct": "Use Slack Trigger node with 'team_join' event for new workspace members",
+          "explanation": "Event-based workflows should use native trigger nodes, not polling"
+        },
+        {
+          "issue": "Using HTTP Request for Slack API instead of Slack nodes",
+          "wrong": "Using httpRequest node to call slack.com/api/users.list",
+          "correct": "Use Slack node with 'User' resource and 'Get Many' operation",
+          "explanation": "Native Slack nodes handle authentication and API details automatically"
+        },
+        {
+          "issue": "Missing events parameter in Slack Trigger",
+          "wrong": "slackTrigger node with empty parameters: {}",
+          "correct": "slackTrigger node with events parameter: { \"events\": [\"team_join\"] }",
+          "explanation": "Slack Trigger requires at least one event to be specified"
+        },
+        {
+          "issue": "webhookId in non-trigger nodes",
+          "wrong": "Adding webhookId to regular Slack nodes",
+          "correct": "Only trigger nodes should have webhookId",
+          "explanation": "Regular action nodes don't need webhookId, only trigger nodes do"
+        },
+        {
+          "issue": "Wrong event for new members",
+          "wrong": "Using 'member_joined_channel' for workspace-wide welcome",
+          "correct": "Use 'team_join' for new workspace members",
+          "explanation": "'team_join' triggers when someone joins the workspace, 'member_joined_channel' is for specific channels"
+        }
+      ],
+      "best_practices": [
+        {
+          "name": "Member Join Event Workflow (Webhook-based)",
+          "trigger": {
+            "type": "n8n-nodes-base.webhook",
+            "parameters": {
+              "httpMethod": "POST",
+              "path": "slack-events"
+            },
+            "note": "Use webhook trigger instead of slackTrigger for version compatibility"
+          },
+          "nodes": [
+            {
+              "purpose": "Get user details",
+              "type": "n8n-nodes-base.slack",
+              "parameters": {
+                "resource": "user",
+                "operation": "info",
+                "user": "={{$json.user}}"
+              }
+            },
+            {
+              "purpose": "Send welcome message",
+              "type": "n8n-nodes-base.slack",
+              "parameters": {
+                "resource": "message",
+                "operation": "post",
+                "channel": "={{$json.channel}}",
+                "text": "Welcome message template"
+              }
+            }
+          ]
+        },
+        {
+          "name": "Slack Authentication",
+          "note": "Always use OAuth2 for Slack integrations",
+          "credentialType": "slackOAuth2Api",
+          "scopes": ["channels:read", "chat:write", "users:read", "channels:history"]
+        }
+      ],
+      "node_specifics": {
+        "webhook_for_slack": {
+          "version": "1.1",
+          "note": "Use webhook trigger instead of slackTrigger for compatibility",
+          "setup": [
+            "1. Add webhook trigger node",
+            "2. Configure Slack app Event Subscriptions",
+            "3. Add webhook URL to Slack app",
+            "4. Subscribe to events: team_join, member_joined_channel, etc.",
+            "5. Parse events with Code node"
+          ]
+        },
+        "slackTrigger_deprecated": {
+          "version": "1.1",
+          "warning": "This node may not be available in all n8n versions",
+          "events": [
+            "app_mention",
+            "channel_archive",
+            "channel_created",
+            "channel_deleted",
+            "channel_rename",
+            "channel_unarchive",
+            "emoji_changed",
+            "file_change",
+            "file_created",
+            "file_deleted",
+            "file_public",
+            "file_shared",
+            "file_unshared",
+            "im_close",
+            "im_created",
+            "im_history_changed",
+            "im_open",
+            "member_joined_channel",
+            "member_left_channel",
+            "message",
+            "pin_added",
+            "pin_removed",
+            "reaction_added",
+            "reaction_removed",
+            "star_added",
+            "star_removed",
+            "subteam_created",
+            "subteam_members_changed",
+            "subteam_updated",
+            "team_join",
+            "team_rename",
+            "user_change"
+          ]
+        },
+        "slack": {
+          "version": "2.2",
+          "resources": [
+            {
+              "name": "message",
+              "operations": ["post", "update", "delete", "get", "getPermalink"]
+            },
+            {
+              "name": "channel",
+              "operations": ["archive", "close", "create", "get", "getMany", "history", "invite", "join", "kick", "leave", "member", "open", "rename", "replies", "setPurpose", "setTopic", "unarchive"]
+            },
+            {
+              "name": "user",
+              "operations": ["get", "getMany", "info", "getPresence", "updateProfile"]
+            },
+            {
+              "name": "file",
+              "operations": ["get", "getMany", "upload"]
+            },
+            {
+              "name": "reaction",
+              "operations": ["add", "get", "remove"]
+            },
+            {
+              "name": "star",
+              "operations": ["add", "delete", "getMany"]
+            },
+            {
+              "name": "userGroup",
+              "operations": ["create", "disable", "enable", "getMany", "update"]
+            }
+          ]
+        }
+      }
+    },
+    "general": {
+      "node_connection_rules": [
+        {
+          "rule": "EVERY node must be connected to at least one other node",
+          "exception": "Only the final nodes in a workflow can have no outgoing connections",
+          "example": "Each node should appear in the connections object either as a source or destination"
+        },
+        {
+          "rule": "Branch endings must connect to merge nodes or final nodes",
+          "wrong": "Leaving branch nodes disconnected",
+          "correct": "Connect branch endings to a Merge node or to a final processing node",
+          "explanation": "Disconnected nodes will never execute in the workflow"
+        },
+        {
+          "rule": "Parallel branches from IF nodes must have both paths connected",
+          "wrong": "Only connecting the 'true' path of an IF node",
+          "correct": "Connect both 'true' and 'false' outputs to appropriate next nodes",
+          "example": {
+            "IF_Node": {
+              "main": [
+                [{"node": "True_Path_Node", "type": "main", "index": 0}],
+                [{"node": "False_Path_Node", "type": "main", "index": 0}]
+              ]
+            }
+          }
+        },
+        {
+          "rule": "Error handling nodes must be connected to their monitored nodes",
+          "wrong": "Creating error handling nodes without connections",
+          "correct": "Connect error outputs or create try-catch patterns",
+          "note": "Use the error output (index 1) for error handling connections"
+        },
+        {
+          "rule": "Webhook nodes should not have incoming connections",
+          "explanation": "Webhook nodes are entry points and are triggered externally",
+          "exception": "Unless used as a Wait node in the middle of a workflow"
+        }
+      ],
+      "code_node_guidelines": [
+        {
+          "rule": "Always use $input.all() to access input data",
+          "example": "const items = $input.all();\nconst firstItem = items[0];"
+        },
+        {
+          "rule": "Return data in correct format",
+          "example": "return items.map(item => ({ json: item }));"
+        },
+        {
+          "rule": "Use $ variables for accessing node context",
+          "examples": [
+            "$json - current item data",
+            "$node - current node data",
+            "$workflow - workflow metadata",
+            "$input.all() - all input items",
+            "$input.first() - first input item",
+            "$input.last() - last input item",
+            "$input.item - current item in loop"
+          ]
+        },
+        {
+          "rule": "Every node must be connected to at least one other node",
+          "example": "Disconnected nodes cause workflow failures"
+        },
+        {
+          "rule": "Create LINEAR flows within branches: node1 -> node2 -> node3, not all nodes -> error",
+          "example": "Each node should connect to the next in sequence"
+        },
+        {
+          "rule": "Error handling nodes should be at the END of branches, not connected from every node",
+          "example": "Only the last node in a branch should connect to error handling"
+        },
+        {
+          "rule": "Final Merge nodes should receive connections from all branch endpoints",
+          "example": "Connect 'Send Email', 'Create Record' etc. to 'Final Merge'"
+        }
+      ],
+      "workflow_structure": {
+        "node_positioning": {
+          "x_increment": 200,
+          "y_base": 300,
+          "description": "Nodes should be positioned left-to-right with 200px spacing"
+        },
+        "connection_format": {
+          "description": "Connections use node names as keys, not IDs",
+          "example": {
+            "Node Name": {
+              "main": [[{"node": "Next Node", "type": "main", "index": 0}]]
+            }
+          }
+        }
+      },
+      "node_parameter_templates": {
+        "n8n-nodes-base.set": {
+          "typeVersion": "3.4",
+          "required_parameters": {
+            "mode": {
+              "type": "string",
+              "default": "manual",
+              "options": ["manual", "raw"]
+            },
+            "duplicateItem": {
+              "type": "boolean",
+              "default": false
+            },
+            "values": {
+              "type": "object",
+              "structure": {
+                "string": [{"name": "fieldName", "value": "fieldValue"}],
+                "number": [{"name": "fieldName", "value": 0}],
+                "boolean": [{"name": "fieldName", "value": true}]
+              }
+            },
+            "options": {}
+          },
+          "example": {
+            "parameters": {
+              "mode": "manual",
+              "duplicateItem": false,
+              "values": {
+                "string": [
+                  {
+                    "name": "status",
+                    "value": "completed"
+                  }
+                ],
+                "boolean": [
+                  {
+                    "name": "success",
+                    "value": true
+                  }
+                ]
+              },
+              "options": {}
+            }
+          }
+        },
+        "n8n-nodes-base.code": {
+          "typeVersion": "2",
+          "required_parameters": {
+            "language": {
+              "type": "string",
+              "default": "javaScript",
+              "required": true
+            },
+            "jsCode": {
+              "type": "string",
+              "default": "// Access input data\nconst items = $input.all();\n\n// Process data here\n\n// Return output\nreturn items;"
+            }
+          },
+          "example": {
+            "parameters": {
+              "language": "javaScript",
+              "jsCode": "const items = $input.all();\n\n// Your code here\n\nreturn items.map(item => ({ json: item.json }));"
+            }
+          }
+        },
+        "n8n-nodes-base.switch": {
+          "typeVersion": "3",
+          "required_parameters": {
+            "dataType": {
+              "type": "string",
+              "default": "string",
+              "options": ["string", "number", "dateTime", "boolean"]
+            },
+            "value1": {
+              "type": "string",
+              "description": "The value to compare"
+            },
+            "rules": {
+              "type": "array",
+              "description": "Rules for routing"
+            },
+            "options": {}
+          },
+          "correct_field_name": "rules",
+          "wrong_field_names": ["property", "conditions"],
+          "example": {
+            "parameters": {
+              "dataType": "string",
+              "value1": "={{$json[\"priority\"]}}",
+              "rules": [
+                {
+                  "value2": "high",
+                  "output": 0
+                },
+                {
+                  "value2": "medium", 
+                  "output": 1
+                },
+                {
+                  "value2": "low",
+                  "output": 2
+                }
+              ],
+              "fallbackOutput": 3,
+              "options": {}
+            }
+          }
+        },
+        "n8n-nodes-base.if": {
+          "typeVersion": "2",
+          "required_parameters": {
+            "conditions": {
+              "type": "object",
+              "structure": {
+                "string": [],
+                "number": [],
+                "boolean": [],
+                "dateTime": []
+              }
+            },
+            "options": {}
+          },
+          "example": {
+            "parameters": {
+              "conditions": {
+                "boolean": [
+                  {
+                    "value1": "={{$json[\"isValid\"]}}",
+                    "value2": true
+                  }
+                ],
+                "number": [
+                  {
+                    "value1": "={{$json[\"amount\"]}}",
+                    "operation": "larger",
+                    "value2": 100
+                  }
+                ]
+              },
+              "options": {}
+            }
+          }
+        },
+        "n8n-nodes-base.webhook": {
+          "typeVersion": "1.1",
+          "required_parameters": {
+            "httpMethod": {
+              "type": "string",
+              "default": "POST",
+              "options": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+            },
+            "path": {
+              "type": "string",
+              "required": true
+            },
+            "options": {}
+          },
+          "auto_generated_fields": {
+            "webhookId": "Generated automatically by n8n"
+          },
+          "example": {
+            "parameters": {
+              "httpMethod": "POST",
+              "path": "webhook-endpoint",
+              "options": {}
+            }
+          }
+        },
+        "n8n-nodes-base.httpRequest": {
+          "typeVersion": "4.2",
+          "required_parameters": {
+            "method": {
+              "type": "string",
+              "default": "GET"
+            },
+            "url": {
+              "type": "string",
+              "required": true
+            },
+            "options": {}
+          },
+          "example": {
+            "parameters": {
+              "method": "POST",
+              "url": "https://api.example.com/endpoint",
+              "options": {
+                "timeout": 30000
+              }
+            }
+          }
+        },
+        "n8n-nodes-base.postgres": {
+          "typeVersion": "2.4",
+          "required_parameters": {
+            "operation": {
+              "type": "string",
+              "options": ["executeQuery", "insert", "update", "delete", "select"]
+            },
+            "schema": {
+              "type": "object",
+              "__rl": true,
+              "mode": "list",
+              "value": "public"
+            },
+            "table": {
+              "type": "object",
+              "__rl": true,
+              "mode": "list",
+              "value": ""
+            },
+            "options": {}
+          }
+        },
+        "n8n-nodes-base.emailSend": {
+          "typeVersion": "2.1",
+          "required_parameters": {
+            "fromEmail": {
+              "type": "string"
+            },
+            "toEmail": {
+              "type": "string"
+            },
+            "subject": {
+              "type": "string"
+            },
+            "emailType": {
+              "type": "string",
+              "default": "text"
+            },
+            "message": {
+              "type": "string"
+            },
+            "options": {}
+          }
+        },
+        "n8n-nodes-base.merge": {
+          "typeVersion": "3",
+          "required_parameters": {
+            "mode": {
+              "type": "string",
+              "default": "append",
+              "options": ["append", "combine", "chooseBranch", "multiplex", "waitForAll"]
+            }
+          },
+          "example": {
+            "parameters": {
+              "mode": "multiplex"
+            }
+          }
+        },
+        "n8n-nodes-base.splitInBatches": {
+          "typeVersion": "3",
+          "required_parameters": {
+            "batchSize": {
+              "type": "number",
+              "default": 10
+            },
+            "options": {}
+          },
+          "note": "For loops, connect output back to input"
+        },
+        "n8n-nodes-base.slack": {
+          "typeVersion": "2.2",
+          "required_parameters": {
+            "resource": {
+              "type": "string",
+              "options": ["message", "channel", "user", "file", "reaction", "star", "userGroup"]
+            },
+            "operation": {
+              "type": "string",
+              "description": "Depends on resource selected"
+            },
+            "additionalFields": {}
+          }
+        },
+        "n8n-nodes-base.schedule": {
+          "typeVersion": "1.1",
+          "required_parameters": {
+            "rule": {
+              "type": "object",
+              "interval": [
+                {
+                  "field": "seconds",
+                  "secondsInterval": 30
+                }
+              ]
+            }
+          }
+        },
+        "n8n-nodes-base.wait": {
+          "typeVersion": "1.1",
+          "required_parameters": {
+            "resume": {
+              "type": "string",
+              "default": "timeInterval",
+              "options": ["timeInterval", "specificTime", "webhook"]
+            },
+            "amount": {
+              "type": "number",
+              "default": 1
+            },
+            "unit": {
+              "type": "string",
+              "default": "minutes"
+            }
+          }
+        },
+        "n8n-nodes-base.queue": {
+          "typeVersion": "1",
+          "note": "Queue nodes need subsequent processing - they should not be dead ends",
+          "workflow_pattern": "Queue -> Process Queue Items -> Update Status",
+          "required_parameters": {
+            "operation": {
+              "type": "string",
+              "options": ["send", "receive"]
+            },
+            "queueName": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "workflow_completion_patterns": {
+        "queue_processing": {
+          "pattern": "Queue Node -> SplitInBatches -> Process Item -> [Loop back to SplitInBatches] -> Update Status -> Send Notification",
+          "explanation": "Queues should trigger processing loops, not be endpoints",
+          "example_nodes": [
+            {
+              "name": "Priority Queue",
+              "next": "Process Queue Items"
+            },
+            {
+              "name": "Process Queue Items",
+              "type": "n8n-nodes-base.splitInBatches",
+              "parameters": {
+                "batchSize": 1
+              },
+              "next": "Process Single Item"
+            },
+            {
+              "name": "Process Single Item",
+              "next": "Check More Items"
+            },
+            {
+              "name": "Check More Items",
+              "type": "n8n-nodes-base.if",
+              "outputs": {
+                "true": "Process Queue Items",
+                "false": "Queue Complete"
+              }
+            }
+          ]
+        },
+        "merge_point_completion": {
+          "pattern": "Multiple Branches -> Merge Point -> Final Processing -> Completion Actions",
+          "explanation": "Merge points should lead to final workflow steps",
+          "example_nodes": [
+            {
+              "name": "Main Merge Point",
+              "next": "Aggregate Results"
+            },
+            {
+              "name": "Aggregate Results",
+              "next": "Update Master Record"
+            },
+            {
+              "name": "Update Master Record",
+              "next": "Send Completion Notification"
+            },
+            {
+              "name": "Send Completion Notification",
+              "next": "Archive Workflow Data"
+            }
+          ]
+        },
+        "workflow_completion_actions": {
+          "purpose": "Common actions that complete a workflow",
+          "patterns": [
+            {
+              "type": "notification",
+              "nodes": ["Send Email", "Send Slack Message", "Send SMS"]
+            },
+            {
+              "type": "data_persistence",
+              "nodes": ["Update Database", "Archive Data", "Log Results"]
+            },
+            {
+              "type": "external_integration",
+              "nodes": ["Update CRM", "Sync to External System", "Trigger Next Workflow"]
+            },
+            {
+              "type": "cleanup",
+              "nodes": ["Clear Temporary Data", "Release Resources", "Update Status"]
+            }
+          ]
+        },
+        "error_handling_completion": {
+          "pattern": "Error Detection -> Log Error -> Notify Admin -> Cleanup -> End",
+          "explanation": "Error handlers should complete with appropriate actions",
+          "nodes": [
+            "Log Error Details",
+            "Send Error Notification",
+            "Update Error Status",
+            "Trigger Error Recovery"
+          ]
+        }
+      },
+      "purpose_driven_endings": {
+        "customer_support": {
+          "purpose": "Resolve customer issue and ensure satisfaction",
+          "completion_nodes": [
+            "Update Ticket Status to Resolved",
+            "Send Resolution Email to Customer",
+            "Log Resolution in CRM",
+            "Send Satisfaction Survey",
+            "Archive Ticket Data"
+          ]
+        },
+        "order_fulfillment": {
+          "purpose": "Process order from placement to delivery",
+          "completion_nodes": [
+            "Update Order Status to Shipped",
+            "Send Shipping Notification",
+            "Update Inventory",
+            "Generate Invoice",
+            "Trigger Delivery Tracking"
+          ]
+        },
+        "content_publishing": {
+          "purpose": "Publish content across multiple platforms",
+          "completion_nodes": [
+            "Publish to All Platforms",
+            "Generate Analytics Links",
+            "Schedule Follow-up Posts",
+            "Archive Original Content",
+            "Send Publication Report"
+          ]
+        },
+        "data_processing": {
+          "purpose": "Transform and analyze data",
+          "completion_nodes": [
+            "Save Processed Data",
+            "Generate Summary Report",
+            "Send Results Notification",
+            "Cleanup Temporary Files",
+            "Update Processing Log"
+          ]
+        },
+        "approval_workflow": {
+          "purpose": "Route requests through approval chain",
+          "completion_nodes": [
+            "Update Request Status",
+            "Notify All Stakeholders",
+            "Archive Approval History",
+            "Trigger Approved Actions",
+            "Generate Audit Trail"
+          ]
+        },
+        "hr_onboarding": {
+          "purpose": "Complete employee onboarding from offer to productive team member",
+          "completion_nodes": [
+            "Confirm All Departments Ready",
+            "Update HR Systems with Completion Status",
+            "Archive Onboarding Records",
+            "Generate Completion Certificate",
+            "Send Onboarding Feedback Survey",
+            "Close Onboarding Ticket",
+            "Trigger 30-Day Check-in Workflow"
+          ],
+          "note": "HR onboarding MUST include all completion steps to ensure full process closure"
+        }
+      },
+      "merge_node_patterns": {
+        "rule": "Merge nodes that combine multiple branches MUST have completion actions",
+        "wrong": "Multiple branches -> Final Merge -> [END]",
+        "correct": "Multiple branches -> Final Merge -> Completion Actions -> [END]",
+        "examples": {
+          "hr_onboarding": {
+            "Final Completion Merge": {
+              "next_nodes": [
+                "Validate All Steps Complete",
+                "Update HRIS Status",
+                "Generate Completion Report",
+                "Send Success Notification",
+                "Archive Process Data",
+                "Schedule Follow-up"
+              ]
+            }
+          },
+          "order_processing": {
+            "Order Fulfillment Merge": {
+              "next_nodes": [
+                "Update Order Status",
+                "Send Shipping Confirmation",
+                "Update Inventory",
+                "Generate Invoice",
+                "Log Completion"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "learning_log": [
+    {
+      "date": "2025-01-06",
+      "workflow": "Automated Welcome Message Bot",
+      "issues_found": [
+        "Used 'items' instead of '$input.all()' in Code node",
+        "Used Schedule Trigger instead of Slack event trigger",
+        "Used HTTP Request for Slack API calls instead of native Slack nodes"
+      ],
+      "lessons_learned": [
+        "Always use native integration nodes when available",
+        "Event-driven workflows should use appropriate trigger nodes",
+        "Code nodes in n8n have specific variable access patterns"
+      ]
+    },
+    {
+      "date": "2025-01-06",
+      "workflow": "Automated Welcome Message Bot2",
+      "issues_found": [
+        "Slack Trigger node had empty parameters (missing events array)",
+        "webhookId was incorrectly added to non-trigger nodes",
+        "Used member_joined_channel instead of team_join for workspace-wide welcome"
+      ],
+      "lessons_learned": [
+        "Slack Trigger MUST have events parameter with at least one event",
+        "Only trigger nodes should have webhookId",
+        "Use team_join for new workspace members, not member_joined_channel",
+        "Template was correctly used but events parameter was missing"
+      ]
+    },
+    {
+      "date": "2025-01-07",
+      "workflow": "Support Ticketing System",
+      "issues_found": [
+        "Multiple disconnected nodes in various branches",
+        "smart_routing___assignment branch has disconnected start",
+        "Flag for Review node has no outgoing connections",
+        "Resolution & Follow-up merge node is completely disconnected",
+        "Error handling nodes are not properly connected to their branches"
+      ],
+      "lessons_learned": [
+        "CRITICAL: Every node MUST be connected to ensure execution",
+        "Staged generation must validate connections after combining branches",
+        "Each branch should have clear start and end connections",
+        "Merge nodes must receive connections from the branches they're merging",
+        "Use connection validation before returning final workflow"
+      ]
+    },
+    {
+      "date": "2025-01-07",
+      "workflow": "E-commerce Order Management System",
+      "issues_found": [
+        "41 disconnected nodes across multiple branches",
+        "AI generates nodes without connections in branch results",
+        "validateAndFixConnections runs too late in the process",
+        "Branch validation needs to happen during generation, not after"
+      ],
+      "lessons_learned": [
+        "validateBranchConnections must create linear flows when no connections exist",
+        "AI prompts must emphasize connection requirements with examples",
+        "Position-based connection logic helps maintain workflow flow",
+        "Each branch needs immediate validation after AI generation",
+        "Disconnected nodes should be connected based on position and type"
+      ]
+    },
+    {
+      "date": "2025-01-08",
+      "workflow": "Customer Support Ticket Management System",
+      "issues_found": [
+        "Set nodes missing 'mode' parameter causing 'propertyValues[itemName] is not iterable' error",
+        "Code nodes missing 'language' parameter",
+        "Switch nodes using 'property' instead of 'rules' parameter",
+        "Workflow structure lacked proper completion steps after merge points",
+        "Queue nodes were dead ends with no processing logic"
+      ],
+      "lessons_learned": [
+        "Set nodes MUST have 'mode' parameter (manual/raw) to function properly",
+        "Code nodes require 'language' parameter set to 'javaScript'",
+        "Switch nodes use 'rules' array, not 'property' or 'conditions'",
+        "Queue nodes should trigger processing loops, not be endpoints",
+        "Merge points should lead to final workflow completion actions",
+        "AI must understand workflow purpose to create appropriate endings"
+      ]
+    },
+    {
+      "date": "2025-01-08",
+      "workflow": "HR Employee Onboarding Automation System",
+      "issues_found": [
+        "Final Completion Merge node has no downstream operations",
+        "14 branches connect to merge but no completion actions after",
+        "AI ignored FINAL COMPLETION section from prompt entirely",
+        "Pre-First Day Branch generated with undefined start/end nodes",
+        "Many branch endpoints (90-Day Survey, Error Handlers, etc.) have no connections",
+        "No workflow completion pattern implemented"
+      ],
+      "lessons_learned": [
+        "Merge nodes MUST have completion actions, not be dead ends",
+        "AI must parse and implement ALL sections from prompt, especially completion requirements",
+        "Branch generation must validate start/end nodes are defined",
+        "Every node must be connected - isolated nodes break workflows",
+        "Workflow purpose determines completion pattern - HR needs status updates, certificates, follow-ups",
+        "Training data needs explicit merge node patterns and completion examples"
+      ]
+    }
+  ]
+}

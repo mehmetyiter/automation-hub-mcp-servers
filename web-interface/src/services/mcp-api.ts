@@ -49,7 +49,10 @@ export const n8nAPI = {
     mcpClients.n8n.post('/tools/n8n_get_credentials', {}),
   
   testConnection: () =>
-    mcpClients.n8n.post('/tools/n8n_test_connection', {})
+    mcpClients.n8n.post('/tools/n8n_test_connection', {}),
+  
+  generateWorkflow: (prompt: string, name: string, apiKey?: string) =>
+    mcpClients.n8n.post('/tools/n8n_generate_workflow', { prompt, name, apiKey })
 }
 
 // Database MCP API (placeholder)

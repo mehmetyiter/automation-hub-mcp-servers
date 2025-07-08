@@ -1,0 +1,227 @@
+{
+  "templates": {
+    "slack_welcome_bot": {
+      "name": "Slack Welcome Message Bot",
+      "description": "Automatically sends welcome messages to new Slack members",
+      "workflow": {
+        "nodes": [
+          {
+            "parameters": {
+              "httpMethod": "POST",
+              "path": "slack-events"
+            },
+            "id": "webhook_trigger",
+            "name": "Slack Event Webhook",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1.1,
+            "position": [250, 300],
+            "webhookId": "slack-events"
+          },
+          {
+            "parameters": {
+              "jsCode": "// Parse Slack event data\nconst body = $input.all()[0].json;\n\n// Handle Slack URL verification challenge\nif (body.challenge) {\n  return [{\n    json: {\n      challenge: body.challenge\n    }\n  }];\n}\n\n// Check if it's a team_join event\nif (body.event && body.event.type === 'team_join') {\n  return [{\n    json: {\n      user: body.event.user.id,\n      team_id: body.team_id,\n      event_time: body.event_time,\n      user_data: body.event.user\n    }\n  }];\n}\n\n// For other events, pass through\nreturn [{\n  json: body\n}];"
+            },
+            "id": "parse_slack_event",
+            "name": "Parse Slack Event",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [450, 300]
+          },
+          {
+            "parameters": {
+              "resource": "user",
+              "operation": "info",
+              "user": "={{$json.user || $json.user_data.id}}"
+            },
+            "id": "get_user_info",
+            "name": "Get User Info",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.2,
+            "position": [450, 300],
+            "credentials": {
+              "slackOAuth2Api": {
+                "id": "{{CREDENTIAL_ID}}",
+                "name": "Slack OAuth2"
+              }
+            }
+          },
+          {
+            "parameters": {
+              "jsCode": "// Process user data and prepare welcome message\nconst userData = $input.all()[0].json;\n\n// Extract user information\nconst userName = userData.profile.real_name || userData.profile.display_name || 'New Member';\nconst userEmail = userData.profile.email || '';\nconst userId = userData.id;\n\n// Get channel information from trigger\nconst channelId = $node[\"Slack Trigger\"].json.channel;\n\n// Prepare welcome message data\nreturn [{\n  json: {\n    userId: userId,\n    userName: userName,\n    userEmail: userEmail,\n    channelId: channelId,\n    welcomeMessage: `Welcome to the team, ${userName}! 🎉\\n\\n` +\n      `We're excited to have you here. Here's what you need to know:\\n\\n` +\n      `📚 **Resources:**\\n` +\n      `• Team Handbook: [Your handbook link]\\n` +\n      `• Important Channels: #general, #random, #help\\n` +\n      `• Documentation: [Your docs link]\\n\\n` +\n      `📋 **First Week Checklist:**\\n` +\n      `• Complete your profile\\n` +\n      `• Introduce yourself in #introductions\\n` +\n      `• Schedule 1:1 with your manager\\n` +\n      `• Review team goals and projects\\n\\n` +\n      `👥 **Your Buddy:** We'll assign you a buddy shortly!\\n\\n` +\n      `Feel free to ask questions anytime. We're here to help! 💪`\n  }\n}];"
+            },
+            "id": "prepare_welcome_data",
+            "name": "Prepare Welcome Data",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [650, 300]
+          },
+          {
+            "parameters": {
+              "resource": "message",
+              "operation": "post",
+              "select": "user",
+              "user": "={{$json.userId}}",
+              "text": "={{$json.welcomeMessage}}",
+              "otherOptions": {}
+            },
+            "id": "send_dm_welcome",
+            "name": "Send DM Welcome",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.2,
+            "position": [850, 250],
+            "credentials": {
+              "slackOAuth2Api": {
+                "id": "{{CREDENTIAL_ID}}",
+                "name": "Slack OAuth2"
+              }
+            }
+          },
+          {
+            "parameters": {
+              "resource": "message",
+              "operation": "post",
+              "channel": "={{$json.channelId}}",
+              "text": "Welcome <@{{$json.userId}}> to the channel! 👋",
+              "otherOptions": {}
+            },
+            "id": "announce_in_channel",
+            "name": "Announce in Channel",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.2,
+            "position": [850, 350],
+            "credentials": {
+              "slackOAuth2Api": {
+                "id": "{{CREDENTIAL_ID}}",
+                "name": "Slack OAuth2"
+              }
+            }
+          },
+          {
+            "parameters": {
+              "resource": "channel",
+              "operation": "member",
+              "channelId": "#onboarding",
+              "returnAll": true
+            },
+            "id": "get_potential_buddies",
+            "name": "Get Potential Buddies",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.2,
+            "position": [850, 450],
+            "credentials": {
+              "slackOAuth2Api": {
+                "id": "{{CREDENTIAL_ID}}",
+                "name": "Slack OAuth2"
+              }
+            }
+          },
+          {
+            "parameters": {
+              "jsCode": "// Select a random buddy from the team\nconst members = $input.all()[0].json.members;\nconst newUserId = $node[\"Prepare Welcome Data\"].json.userId;\n\n// Filter out the new user and bots\nconst potentialBuddies = members.filter(memberId => \n  memberId !== newUserId && !memberId.startsWith('B')\n);\n\nif (potentialBuddies.length === 0) {\n  return [{ json: { buddyAssigned: false } }];\n}\n\n// Select a random buddy\nconst randomIndex = Math.floor(Math.random() * potentialBuddies.length);\nconst buddyId = potentialBuddies[randomIndex];\n\nreturn [{\n  json: {\n    buddyId: buddyId,\n    newUserId: newUserId,\n    buddyAssigned: true\n  }\n}];"
+            },
+            "id": "assign_buddy",
+            "name": "Assign Buddy",
+            "type": "n8n-nodes-base.code",
+            "typeVersion": 2,
+            "position": [1050, 450]
+          },
+          {
+            "parameters": {
+              "conditions": {
+                "boolean": [
+                  {
+                    "value1": "={{$json.buddyAssigned}}",
+                    "value2": true
+                  }
+                ]
+              }
+            },
+            "id": "if_buddy_assigned",
+            "name": "If Buddy Assigned",
+            "type": "n8n-nodes-base.if",
+            "typeVersion": 1,
+            "position": [1250, 450]
+          },
+          {
+            "parameters": {
+              "resource": "message",
+              "operation": "post",
+              "select": "user",
+              "user": "={{$json.buddyId}}",
+              "text": "Hi! You've been assigned as a buddy to <@{{$json.newUserId}}>. Please reach out and help them get settled in! 🤝",
+              "otherOptions": {}
+            },
+            "id": "notify_buddy",
+            "name": "Notify Buddy",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.2,
+            "position": [1450, 400],
+            "credentials": {
+              "slackOAuth2Api": {
+                "id": "{{CREDENTIAL_ID}}",
+                "name": "Slack OAuth2"
+              }
+            }
+          },
+          {
+            "parameters": {
+              "resource": "message",
+              "operation": "post",
+              "select": "user", 
+              "user": "={{$json.newUserId}}",
+              "text": "Great news! <@{{$json.buddyId}}> will be your buddy. They'll reach out to you soon to help you get started! 🎯",
+              "otherOptions": {}
+            },
+            "id": "notify_new_member",
+            "name": "Notify New Member",
+            "type": "n8n-nodes-base.slack",
+            "typeVersion": 2.2,
+            "position": [1450, 500],
+            "credentials": {
+              "slackOAuth2Api": {
+                "id": "{{CREDENTIAL_ID}}",
+                "name": "Slack OAuth2"
+              }
+            }
+          }
+        ],
+        "connections": {
+          "Slack Event Webhook": {
+            "main": [[{"node": "Parse Slack Event", "type": "main", "index": 0}]]
+          },
+          "Parse Slack Event": {
+            "main": [[{"node": "Get User Info", "type": "main", "index": 0}]]
+          },
+          "Get User Info": {
+            "main": [[{"node": "Prepare Welcome Data", "type": "main", "index": 0}]]
+          },
+          "Prepare Welcome Data": {
+            "main": [[
+              {"node": "Send DM Welcome", "type": "main", "index": 0},
+              {"node": "Announce in Channel", "type": "main", "index": 0},
+              {"node": "Get Potential Buddies", "type": "main", "index": 0}
+            ]]
+          },
+          "Get Potential Buddies": {
+            "main": [[{"node": "Assign Buddy", "type": "main", "index": 0}]]
+          },
+          "Assign Buddy": {
+            "main": [[{"node": "If Buddy Assigned", "type": "main", "index": 0}]]
+          },
+          "If Buddy Assigned": {
+            "main": [
+              [
+                {"node": "Notify Buddy", "type": "main", "index": 0},
+                {"node": "Notify New Member", "type": "main", "index": 0}
+              ],
+              []
+            ]
+          }
+        },
+        "settings": {
+          "executionOrder": "v1"
+        }
+      }
+    }
+  }
+}

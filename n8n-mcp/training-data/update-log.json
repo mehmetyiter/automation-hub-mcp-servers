@@ -1,0 +1,48 @@
+{
+  "updates": [
+    {
+      "date": "2025-01-06",
+      "version": "1.0.0",
+      "changes": [
+        "Created training data system for AI workflow generation",
+        "Added n8n-workflow-patterns.json with common mistakes and best practices",
+        "Created workflow-templates.json with corrected Slack welcome bot template",
+        "Updated AIWorkflowGenerator to load and use training data",
+        "Implemented template matching for Slack welcome workflows",
+        "Enhanced AI prompts with learned patterns and guidelines"
+      ],
+      "improvements": [
+        "AI now knows to use $input.all() instead of 'items' in Code nodes",
+        "AI understands to use event triggers instead of polling",
+        "AI prefers native integration nodes over HTTP requests",
+        "Template system provides 95% confidence for known patterns"
+      ]
+    },
+    {
+      "date": "2025-01-06",
+      "version": "1.1.0",
+      "changes": [
+        "Replaced slackTrigger with webhook trigger for version compatibility",
+        "Updated template to use webhook + code node for Slack events",
+        "Added Slack event parsing logic in Code node",
+        "Fixed node version compatibility issues"
+      ],
+      "improvements": [
+        "Workflows now work across all n8n versions",
+        "Webhook-based approach is more reliable",
+        "Added Slack URL verification challenge handling",
+        "Better event parsing and error handling"
+      ],
+      "breaking_changes": [
+        "slackTrigger node replaced with webhook trigger",
+        "Requires manual Slack app configuration for webhooks"
+      ]
+    }
+  ],
+  "future_improvements": [
+    "Add more workflow templates for common use cases",
+    "Implement feedback loop to learn from user corrections",
+    "Add credential mapping system for seamless integration",
+    "Create validation system to check generated workflows before creation"
+  ]
+}

@@ -101,16 +101,47 @@ export { api }
 const createMCPAutomation = async (platform: string, data: any) => {
   switch (platform) {
     case 'n8n':
-      // n8n requires nodes and connections
-      const workflowData = {
-        name: data.name,
-        description: data.description, // Pass description for pattern matching
-        nodes: data.nodes,
-        connections: data.connections || {},
-        settings: data.settings || {},
-        active: data.active || false
+      // For n8n, first generate the workflow using AI if we have a description
+      if (data.description && !data.nodes) {
+        // Call AI generation endpoint first
+        const generatePayload = {
+          prompt: data.description,
+          name: data.name,
+          apiKey: data.apiKey // Optional API key if provided
+        }
+        
+        const generationResponse = await mcpClients.n8n.post('/tools/n8n_generate_workflow', generatePayload)
+        
+        // Check if generation was successful
+        if (!generationResponse.data.success) {
+          throw new Error(generationResponse.data.error || 'Failed to generate workflow')
+        }
+        
+        // Extract the generated workflow data - it's in data property, not result
+        const generatedWorkflow = generationResponse.data.data?.workflow || generationResponse.data.result
+        
+        // Now create the workflow with the generated data
+        const workflowData = {
+          name: generatedWorkflow.name || data.name,
+          nodes: generatedWorkflow.nodes,
+          connections: generatedWorkflow.connections,
+          settings: generatedWorkflow.settings || {},
+          active: data.active || false
+        }
+        
+        return mcpClients.n8n.post('/tools/n8n_create_workflow', workflowData)
+      } else {
+        // If nodes are already provided, create directly
+        const workflowData = {
+          name: data.name,
+          description: data.description,
+          nodes: data.nodes,
+          connections: data.connections || {},
+          settings: data.settings || {},
+          active: data.active || false
+        }
+        return mcpClients.n8n.post('/tools/n8n_create_workflow', workflowData)
       }
-      return mcpClients.n8n.post('/tools/n8n_create_workflow', workflowData)
     case 'make':
       return mcpClients.make.post('/tools/make_create_scenario', data)
     case 'zapier':
@@ -142,15 +173,16 @@ export const createAutomation = async (data: {
   description: string
   name: string
   platform?: string
+  apiKey?: string
 }) => {
   // If platform is specified, use MCP-specific endpoint
   if (data.platform) {
     const response = await createMCPAutomation(data.platform, data)
     // Normalize response structure
-    if (response.data.success && response.data.result) {
+    if (response.data.success) {
       return {
         success: true,
-        data: response.data.result
+        result: response.data.data || response.data.result || response.data
       }
     }
     return response.data
@@ -165,7 +197,9 @@ export const listAutomations = async (platform?: string) => {
   if (platform) {
     // Get automations from specific platform
     const response = await listMCPAutomations(platform)
-    return response.data?.result || []
+    // Handle different response formats
+    const data = response.data?.data || response.data?.result || []
+    return Array.isArray(data) ? data : []
   }
   
   // Get all automations from all platforms
@@ -176,12 +210,16 @@ export const listAutomations = async (platform?: string) => {
   
   const automations: any[] = []
   results.forEach((result, index) => {
-    if (result.status === 'fulfilled' && result.value.data?.result) {
-      const platformAutomations = result.value.data.result.map((auto: any) => ({
-        ...auto,
-        platform: platforms[index]
-      }))
-      automations.push(...platformAutomations)
+    if (result.status === 'fulfilled') {
+      // Handle different response formats
+      const data = result.value.data?.data || result.value.data?.result || []
+      if (Array.isArray(data)) {
+        const platformAutomations = data.map((auto: any) => ({
+          ...auto,
+          platform: platforms[index]
+        }))
+        automations.push(...platformAutomations)
+      }
     }
   })
   
@@ -265,41 +303,52 @@ export const getAnalytics = async (platform?: string, timeRange?: string) => {
   return response.data
 }
 
-// Credential API endpoints - using database MCP
+// Credential API endpoints - using auth MCP
 export const credentialAPI = {
   list: async () => {
-    const response = await mcpClients.database.get('/credentials')
+    // List credentials via API proxy to Auth MCP
+    const response = await api.get('/auth/credentials')
     return response.data
   },
 
   get: async (id: string) => {
-    const response = await mcpClients.database.get(`/credentials/${id}`)
+    const response = await api.get(`/auth/credentials/${id}`)
     return response.data
   },
 
   create: async (data: {
-    name: string
     templateId: string
+    name: string
     values: Record<string, any>
   }) => {
-    const response = await mcpClients.database.post('/credentials', data)
+    // Transform form data to match server expectations
+    const payload = {
+      platform: data.templateId,
+      name: data.name,
+      data: data.values
+    }
+    const response = await api.post('/auth/credentials', payload)
     return response.data
   },
 
   update: async (id: string, data: {
     values: Record<string, any>
   }) => {
-    const response = await mcpClients.database.put(`/credentials/${id}`, data)
+    // Transform form data to match server expectations
+    const payload = {
+      data: data.values
+    }
+    const response = await api.put(`/auth/credentials/${id}`, payload)
     return response.data
   },
 
   delete: async (id: string) => {
-    const response = await mcpClients.database.delete(`/credentials/${id}`)
+    const response = await api.delete(`/auth/credentials/${id}`)
     return response.data
   },
 
   verify: async (id: string) => {
-    const response = await mcpClients.database.post(`/credentials/${id}/test`)
+    const response = await api.post(`/auth/credentials/${id}/test`)
     return response.data
   },
 
@@ -307,17 +356,32 @@ export const credentialAPI = {
     templateId: string
     data: Record<string, any>
   }) => {
-    const response = await mcpClients.database.post('/credentials/validate', data)
+    // Transform form data to match server expectations
+    const payload = {
+      credentials: data.data
+    }
+    const response = await api.post('/auth/credentials/test', payload)
     return response.data
   },
 
-  test: async (id: string) => {
-    const response = await mcpClients.database.post(`/credentials/${id}/test`)
+  test: async (credentialId: string) => {
+    // First get the credential data
+    const credResponse = await api.get(`/auth/credentials/${credentialId}`)
+    if (!credResponse.data || !credResponse.data.success || !credResponse.data.data) {
+      throw new Error('Failed to get credential data')
+    }
+    
+    // Then test it using the test endpoint
+    const payload = {
+      credentials: credResponse.data.data.data // This is the decrypted credential values
+    }
+    const response = await api.post('/auth/credentials/test', payload)
     return response.data
   },
 
   getTemplates: async () => {
-    const response = await mcpClients.database.get('/credentials/templates')
+    // Fetch credential templates via API proxy to Auth MCP
+    const response = await api.get('/auth/credentials/templates')
     return response.data
   }
 }
@@ -333,7 +397,8 @@ export const workspaceAPI = {
 // Auth API endpoints - using auth server directly
 export const authAPI = {
   login: async (email: string, password: string, workspaceId?: string) => {
-    const response = await authClient.post('/auth/login', { email, password })
+    // Login via API proxy to Auth MCP
+    const response = await api.post('/auth/login', { email, password })
     
     // Store auth data if successful
     if (response.data?.success && response.data?.data?.accessToken) {
@@ -349,7 +414,7 @@ export const authAPI = {
   
   logout: async () => {
     try {
-      const response = await authClient.post('/auth/logout')
+      const response = await api.post('/auth/logout')
       // Clear local storage after successful logout
       localStorage.removeItem('auth_token')
       localStorage.removeItem('user')
@@ -365,12 +430,12 @@ export const authAPI = {
   },
   
   getMe: async () => {
-    const response = await authClient.get('/auth/me')
+    const response = await api.get('/auth/me')
     return response.data
   },
   
   register: async (data: { email: string; password: string; name: string; role?: string }) => {
-    const response = await authClient.post('/auth/register', data)
+    const response = await api.post('/auth/register', data)
     
     // Store auth data if successful
     if (response.data?.success && response.data?.data?.accessToken) {
@@ -382,7 +447,7 @@ export const authAPI = {
   },
   
   verify: async () => {
-    const response = await authClient.get('/auth/verify')
+    const response = await api.get('/auth/verify')
     return response.data
   }
 }
@@ -414,5 +479,8 @@ export const n8nAPI = {
     mcpClients.n8n.post('/tools/n8n_get_credentials', {}),
   
   testConnection: () =>
-    mcpClients.n8n.post('/tools/n8n_test_connection', {})
+    mcpClients.n8n.post('/tools/n8n_test_connection', {}),
+  
+  generateWorkflow: (prompt: string, name: string, apiKey?: string) =>
+    mcpClients.n8n.post('/tools/n8n_generate_workflow', { prompt, name, apiKey })
 }

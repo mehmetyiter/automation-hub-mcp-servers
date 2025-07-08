@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Plus, Key } from 'lucide-react';
+import { Plus, Key, Search } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { credentialAPI } from '../services/api';
 import { CredentialList } from '../components/credentials/CredentialList';
@@ -23,6 +23,7 @@ export default function Credentials() {
   const [showForm, setShowForm] = useState(false);
   const [editingCredential, setEditingCredential] = useState<Credential | null>(null);
   const [refreshing, setRefreshing] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     loadCredentials();
@@ -95,6 +96,16 @@ export default function Credentials() {
     }
   };
 
+  // Filter credentials based on search query
+  const filteredCredentials = credentials.filter(credential => {
+    const query = searchQuery.toLowerCase();
+    return (
+      credential.name.toLowerCase().includes(query) ||
+      credential.templateId.toLowerCase().includes(query) ||
+      (credential.platform && credential.platform.toLowerCase().includes(query))
+    );
+  });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -130,6 +141,29 @@ export default function Credentials() {
             Manage credentials for connecting to external services. These credentials are securely encrypted and can be used across your workflows.
           </p>
 
+          {/* Search Bar */}
+          {credentials.length > 0 && (
+            <div className="mb-4">
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search credentials..."
+                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                />
+              </div>
+              {searchQuery && (
+                <p className="mt-2 text-sm text-gray-500">
+                  Found {filteredCredentials.length} credential{filteredCredentials.length !== 1 ? 's' : ''} matching "{searchQuery}"
+                </p>
+              )}
+            </div>
+          )}
+
           {credentials.length === 0 ? (
             <div className="text-center py-12">
               <Key className="mx-auto h-12 w-12 text-gray-400" />
@@ -148,13 +182,31 @@ export default function Credentials() {
               </div>
             </div>
           ) : (
-            <CredentialList
-              credentials={credentials}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-              onVerify={handleVerify}
-              refreshing={refreshing}
-            />
+            <>
+              {filteredCredentials.length === 0 && searchQuery ? (
+                <div className="text-center py-12">
+                  <Search className="mx-auto h-12 w-12 text-gray-400" />
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">No credentials found</h3>
+                  <p className="mt-1 text-sm text-gray-500">
+                    No credentials match your search "{searchQuery}"
+                  </p>
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="mt-4 text-sm text-blue-600 hover:text-blue-500"
+                  >
+                    Clear search
+                  </button>
+                </div>
+              ) : (
+                <CredentialList
+                  credentials={filteredCredentials}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                  onVerify={handleVerify}
+                  refreshing={refreshing}
+                />
+              )}
+            </>
           )}
         </div>
       </div>

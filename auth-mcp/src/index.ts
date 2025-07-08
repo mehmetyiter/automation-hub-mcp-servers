@@ -1,5 +1,6 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { ListToolsRequestSchema, CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { authService } from './auth-service.js';
 import { db } from './database.js';
 import { TOOLS } from './tools.js';
@@ -21,12 +22,12 @@ const server = new Server(
 );
 
 // List available tools
-server.setRequestHandler('tools/list' as any, async () => ({
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: TOOLS,
 }));
 
 // Handle tool calls
-server.setRequestHandler('tools/call' as any, async (request: any) => {
+server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
   const { name, arguments: args } = request.params;
 
   try {
@@ -151,3 +152,9 @@ server.setRequestHandler('tools/call' as any, async (request: any) => {
 const transport = new StdioServerTransport();
 await server.connect(transport);
 console.error('Auth MCP Server running on stdio');
+
+// Also start the HTTP API server
+// Start the HTTP API server (Express)
+import('./http-server.js')
+  .then(() => console.error('Auth HTTP Server initialized'))
+  .catch(err => console.error('Failed to start Auth HTTP Server:', err));

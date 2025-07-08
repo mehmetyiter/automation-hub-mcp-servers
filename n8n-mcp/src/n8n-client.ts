@@ -93,6 +93,10 @@ export class N8nClient {
   }
 
   async createWorkflow(workflow: N8nWorkflow): Promise<N8nWorkflow> {
+    if (!workflow) {
+      throw new Error('Workflow object is required');
+    }
+    
     // Remove active field as it's read-only in n8n API
     const { active, ...workflowPayload } = workflow;
     const response = await this.client.post('/workflows', workflowPayload);

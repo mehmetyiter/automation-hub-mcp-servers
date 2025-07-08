@@ -143,9 +143,9 @@ export default function Login() {
               Demo Credentials:
             </p>
             <div className="space-y-1 text-sm text-blue-700 dark:text-blue-300">
-              <p>Admin: admin@automation-hub.com / Admin123!</p>
-              <p>Editor: editor@demo.com / Demo123!</p>
-              <p>Viewer: viewer@demo.com / Demo123!</p>
+              <p>Admin: admin@automation-hub.com / admin123</p>
+              <p>Editor: editor@demo.com / demo123</p>
+              <p>Viewer: viewer@demo.com / demo123</p>
             </div>
           </div>
         </form>

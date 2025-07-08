@@ -15,7 +15,7 @@ interface CredentialTemplate {
 }
 
 interface CredentialField {
-  name: string;
+  key: string;
   label: string;
   type: 'text' | 'password' | 'select' | 'url' | 'email' | 'number';
   required: boolean;
@@ -35,7 +35,8 @@ interface CredentialField {
 interface Credential {
   id: string;
   name: string;
-  templateId: string;
+  templateId?: string;
+  platform?: string;
   values?: Record<string, any>;
   createdAt: string;
   updatedAt: string;
@@ -74,8 +75,10 @@ export default function CredentialFormEnhanced({
       loadTemplates();
       if (credential) {
         setName(credential.name);
-        setSelectedTemplateId(credential.templateId);
-        setValues(credential.values || {});
+        // Use platform as templateId since that's what the server returns
+        setSelectedTemplateId(credential.templateId || credential.platform);
+        // Fetch full credential data including values
+        loadCredentialData(credential.id);
       }
     }
   }, [isOpen, credential]);
@@ -90,7 +93,7 @@ export default function CredentialFormEnhanced({
         const defaultValues: Record<string, any> = {};
         template.fields.forEach(field => {
           if (field.default !== undefined) {
-            defaultValues[field.name] = field.default;
+            defaultValues[field.key] = field.default;
           }
         });
         setValues(defaultValues);
@@ -104,6 +107,20 @@ export default function CredentialFormEnhanced({
       setTemplates(response.data);
     } catch (error) {
       toast.error('Failed to load credential templates');
+    }
+  };
+
+  const loadCredentialData = async (credentialId: string) => {
+    try {
+      const response = await credentialAPI.get(credentialId);
+      // Axios automatically unwraps response.data, so we get the server's response directly
+      if (response && response.data) {
+        // The server returns the decrypted credential data in data.data
+        setValues(response.data.data || {});
+      }
+    } catch (error) {
+      toast.error('Failed to load credential data');
+      console.error('Error loading credential data:', error);
     }
   };
 
@@ -159,9 +176,9 @@ export default function CredentialFormEnhanced({
     // Validate all fields
     const newErrors: Record<string, string> = {};
     selectedTemplate.fields.forEach(field => {
-      const error = validateField(field, values[field.name]);
+      const error = validateField(field, values[field.key]);
       if (error) {
-        newErrors[field.name] = error;
+        newErrors[field.key] = error;
       }
     });
 
@@ -398,7 +415,7 @@ export default function CredentialFormEnhanced({
                 </h3>
                 
                 {selectedTemplate.fields.map(field => (
-                  <div key={field.name}>
+                  <div key={field.key}>
                     <label className="block text-sm font-medium mb-2">
                       {field.label}
                       {field.required && <span className="text-red-400 ml-1">*</span>}
@@ -412,10 +429,10 @@ export default function CredentialFormEnhanced({
                     
                     {field.type === 'select' ? (
                       <select
-                        value={values[field.name] || ''}
+                        value={values[field.key] || ''}
                         onChange={(e) => {
-                          setValues({ ...values, [field.name]: e.target.value });
-                          setErrors({ ...errors, [field.name]: '' });
+                          setValues({ ...values, [field.key]: e.target.value });
+                          setErrors({ ...errors, [field.key]: '' });
                         }}
                         className="w-full px-4 py-2 bg-gray-700 rounded-lg"
                         required={field.required}
@@ -430,15 +447,15 @@ export default function CredentialFormEnhanced({
                     ) : field.type === 'password' ? (
                       <div className="relative">
                         <input
-                          type={showPassword[field.name] ? 'text' : 'password'}
-                          value={values[field.name] || ''}
+                          type={showPassword[field.key] ? 'text' : 'password'}
+                          value={values[field.key] || ''}
                           onChange={(e) => {
-                            setValues({ ...values, [field.name]: e.target.value });
-                            setErrors({ ...errors, [field.name]: '' });
+                            setValues({ ...values, [field.key]: e.target.value });
+                            setErrors({ ...errors, [field.key]: '' });
                           }}
                           placeholder={field.placeholder}
                           className={`w-full px-4 py-2 bg-gray-700 rounded-lg pr-20 ${
-                            errors[field.name] ? 'border border-red-500' : ''
+                            errors[field.key] ? 'border border-red-500' : ''
                           }`}
                           required={field.required}
                         />
@@ -447,20 +464,20 @@ export default function CredentialFormEnhanced({
                             type="button"
                             onClick={() => setShowPassword({
                               ...showPassword,
-                              [field.name]: !showPassword[field.name]
+                              [field.key]: !showPassword[field.key]
                             })}
                             className="p-2 hover:bg-gray-600 rounded transition-colors"
                           >
-                            {showPassword[field.name] ? (
+                            {showPassword[field.key] ? (
                               <EyeOff className="w-4 h-4" />
                             ) : (
                               <Eye className="w-4 h-4" />
                             )}
                           </button>
-                          {values[field.name] && (
+                          {values[field.key] && (
                             <button
                               type="button"
-                              onClick={() => copyToClipboard(values[field.name])}
+                              onClick={() => copyToClipboard(values[field.key])}
                               className="p-2 hover:bg-gray-600 rounded transition-colors"
                             >
                               <Copy className="w-4 h-4" />
@@ -471,22 +488,22 @@ export default function CredentialFormEnhanced({
                     ) : (
                       <input
                         type={field.type}
-                        value={values[field.name] || ''}
+                        value={values[field.key] || ''}
                         onChange={(e) => {
                           const value = field.type === 'number' ? Number(e.target.value) : e.target.value;
-                          setValues({ ...values, [field.name]: value });
-                          setErrors({ ...errors, [field.name]: '' });
+                          setValues({ ...values, [field.key]: value });
+                          setErrors({ ...errors, [field.key]: '' });
                         }}
                         placeholder={field.placeholder}
                         className={`w-full px-4 py-2 bg-gray-700 rounded-lg ${
-                          errors[field.name] ? 'border border-red-500' : ''
+                          errors[field.key] ? 'border border-red-500' : ''
                         }`}
                         required={field.required}
                       />
                     )}
                     
-                    {errors[field.name] && (
-                      <p className="text-red-400 text-sm mt-1">{errors[field.name]}</p>
+                    {errors[field.key] && (
+                      <p className="text-red-400 text-sm mt-1">{errors[field.key]}</p>
                     )}
                   </div>
                 ))}

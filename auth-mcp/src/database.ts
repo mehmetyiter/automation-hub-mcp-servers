@@ -25,6 +25,16 @@ export interface Session {
   created_at: string;
 }
 
+export interface Credential {
+  id: number;
+  user_id: number;
+  platform: string;
+  name: string;
+  data: string; // Encrypted JSON
+  created_at: string;
+  updated_at: string;
+}
+
 class Database {
   private db: any;
 
@@ -64,16 +74,33 @@ class Database {
       )
     `);
 
+    // Credentials table
+    await this.db.exec(`
+      CREATE TABLE IF NOT EXISTS credentials (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        platform TEXT NOT NULL,
+        name TEXT NOT NULL,
+        data TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id),
+        UNIQUE(user_id, platform, name)
+      )
+    `);
+
     // Create indexes
     await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token)`);
     await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`);
+    await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_credentials_user ON credentials(user_id)`);
+    await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_credentials_platform ON credentials(platform)`);
   }
 
   private async seedDemoUsers() {
     const demoUsers = [
-      { email: 'admin@automation-hub.com', password: 'Admin123!', name: 'Admin User', role: 'admin' },
-      { email: 'editor@demo.com', password: 'Demo123!', name: 'Editor User', role: 'editor' },
-      { email: 'viewer@demo.com', password: 'Demo123!', name: 'Viewer User', role: 'viewer' }
+      { email: 'admin@automation-hub.com', password: 'admin123', name: 'Admin User', role: 'admin' },
+      { email: 'editor@demo.com', password: 'demo123', name: 'Editor User', role: 'editor' },
+      { email: 'viewer@demo.com', password: 'demo123', name: 'Viewer User', role: 'viewer' }
     ];
 
     for (const user of demoUsers) {
@@ -129,6 +156,51 @@ class Database {
 
   async deleteExpiredSessions() {
     await this.db.run('DELETE FROM sessions WHERE expires_at <= datetime("now")');
+  }
+
+  // Credential methods
+  async createCredential(data: { user_id: number; platform: string; name: string; data: string }) {
+    const result = await this.db.run(
+      `INSERT INTO credentials (user_id, platform, name, data) 
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(user_id, platform, name) 
+       DO UPDATE SET data = ?, updated_at = CURRENT_TIMESTAMP`,
+      [data.user_id, data.platform, data.name, data.data, data.data]
+    );
+    return result.lastID;
+  }
+
+  async getCredentials(userId: number): Promise<Credential[]> {
+    return await this.db.all(
+      'SELECT * FROM credentials WHERE user_id = ? ORDER BY platform, name',
+      [userId]
+    );
+  }
+
+  async getCredential(userId: number, platform: string, name: string): Promise<Credential | null> {
+    return await this.db.get(
+      'SELECT * FROM credentials WHERE user_id = ? AND platform = ? AND name = ?',
+      [userId, platform, name]
+    );
+  }
+
+  async updateCredential(userId: number, credentialId: number, data: string) {
+    await this.db.run(
+      `UPDATE credentials SET data = ?, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = ? AND user_id = ?`,
+      [data, credentialId, userId]
+    );
+  }
+
+  async deleteCredential(userId: number, credentialId: number) {
+    await this.db.run(
+      'DELETE FROM credentials WHERE id = ? AND user_id = ?',
+      [credentialId, userId]
+    );
+  }
+
+  async getCredentialById(id: number): Promise<Credential | null> {
+    return await this.db.get('SELECT * FROM credentials WHERE id = ?', [id]);
   }
 }
 

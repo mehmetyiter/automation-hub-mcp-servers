@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Wand2, Loader2, Sparkles, Mic, Type } from 'lucide-react'
+import { Wand2, Loader2, Sparkles, Mic, Type, Key, Eye, EyeOff, Shield } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { createAutomation } from '../services/api'
+import { createAutomation, credentialAPI } from '../services/api'
 import { PromptHelper } from '../components/PromptHelper'
 import PlatformSelector from '../components/PlatformSelector'
 
@@ -21,6 +21,11 @@ export default function CreateAutomation() {
   const [platform, setPlatform] = useState<string>('n8n')
   const [isCreating, setIsCreating] = useState(false)
   const [inputMode, setInputMode] = useState<'text' | 'voice'>('text')
+  const [apiKey, setApiKey] = useState('')
+  const [showApiKey, setShowApiKey] = useState(false)
+  const [useStoredCredentials, setUseStoredCredentials] = useState(true)
+  const [storedCredentials, setStoredCredentials] = useState<any[]>([])
+  const [selectedCredentials, setSelectedCredentials] = useState<string[]>([])
 
   // Handle incoming prompt from PromptLibrary
   useEffect(() => {
@@ -31,6 +36,23 @@ export default function CreateAutomation() {
       }
     }
   }, [location.state])
+
+  // Load stored credentials
+  useEffect(() => {
+    loadCredentials()
+  }, [])
+
+  const loadCredentials = async () => {
+    try {
+      const response = await credentialAPI.list()
+      if (response.data) {
+        setStoredCredentials(response.data)
+        console.log('Loaded credentials:', response.data)
+      }
+    } catch (error) {
+      console.error('Failed to load credentials:', error)
+    }
+  }
 
   const handleCreate = async () => {
     if (!description.trim()) {
@@ -45,11 +67,25 @@ export default function CreateAutomation() {
 
     setIsCreating(true)
     try {
-      const result = await createAutomation({
+      const payload: any = {
         description,
         name,
         platform: platform,
-      })
+      }
+      
+      // Include API key if provided
+      if (apiKey.trim()) {
+        payload.apiKey = apiKey
+      }
+      
+      // Include selected credentials
+      if (useStoredCredentials && selectedCredentials.length > 0) {
+        payload.credentialIds = selectedCredentials
+        console.log('Including credentials in request:', selectedCredentials)
+      }
+      
+      console.log('Creating automation with payload:', payload)
+      const result = await createAutomation(payload)
 
       // Check if result has the expected structure
       if (result && (result.success || result.result)) {
@@ -58,8 +94,9 @@ export default function CreateAutomation() {
       } else {
         toast.error(result?.error || 'Failed to create automation')
       }
-    } catch (error) {
-      toast.error('Something went wrong. Please try again.')
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || error.message || 'Something went wrong. Please try again.'
+      toast.error(errorMessage)
     } finally {
       setIsCreating(false)
     }
@@ -165,6 +202,117 @@ export default function CreateAutomation() {
                 Click the microphone to start recording
               </p>
             </div>
+          )}
+        </div>
+
+        {/* API Key (Optional) - Only for n8n platform */}
+        {platform === 'n8n' && (
+          <div className="mb-6">
+            <label htmlFor="apiKey" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              AI API Key (Optional)
+              <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                OpenAI or Anthropic key for AI-powered generation
+              </span>
+            </label>
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <Key className="h-5 w-5 text-gray-400" />
+              </div>
+              <input
+                type={showApiKey ? 'text' : 'password'}
+                id="apiKey"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="sk-..."
+                className="w-full pl-10 pr-10 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-foreground placeholder-gray-500 dark:placeholder-gray-400 rounded-lg focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary focus:border-transparent"
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiKey(!showApiKey)}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center"
+              >
+                {showApiKey ? (
+                  <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" />
+                ) : (
+                  <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300" />
+                )}
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              If not provided, the system will use pattern matching instead of AI generation
+            </p>
+          </div>
+        )}
+
+        {/* Stored Credentials Section */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-2">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              <Shield className="w-4 h-4 inline mr-1" />
+              Use Stored Credentials
+            </label>
+            <button
+              type="button"
+              onClick={() => setUseStoredCredentials(!useStoredCredentials)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
+                useStoredCredentials ? 'bg-primary-600' : 'bg-gray-200'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  useStoredCredentials ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+          
+          {useStoredCredentials && storedCredentials.length > 0 && (
+            <div className="mt-3 space-y-2">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Select credentials to include in the automation:
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {storedCredentials.map((credential) => (
+                  <label
+                    key={credential.id}
+                    className="flex items-center p-2 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
+                  >
+                    <input
+                      type="checkbox"
+                      value={credential.id}
+                      checked={selectedCredentials.includes(credential.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedCredentials([...selectedCredentials, credential.id])
+                        } else {
+                          setSelectedCredentials(selectedCredentials.filter(id => id !== credential.id))
+                        }
+                      }}
+                      className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                    />
+                    <span className="ml-2 text-sm text-gray-700 dark:text-gray-300">
+                      {credential.name}
+                    </span>
+                    <span className="ml-auto text-xs text-gray-500 dark:text-gray-400">
+                      {credential.templateId}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          
+          {useStoredCredentials && storedCredentials.length === 0 && (
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              No stored credentials found.{' '}
+              <button
+                type="button"
+                onClick={() => navigate('/credentials')}
+                className="text-primary-600 hover:text-primary-500"
+              >
+                Add credentials
+              </button>
+            </p>
           )}
         </div>
 
