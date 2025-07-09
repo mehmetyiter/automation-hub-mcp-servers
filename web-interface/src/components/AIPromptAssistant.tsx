@@ -3,6 +3,9 @@ import { Send, Bot, User, ChevronDown, Sparkles, Copy, ArrowRight } from 'lucide
 import toast from 'react-hot-toast';
 import { api } from '../services/api';
 import { getTemplateForDomain, generatePromptFromTemplate } from '../utils/domain-templates';
+import { DynamicPromptGenerator } from '../ai-analysis/dynamic-prompt-generator';
+import { LearningEngine } from '../ai-analysis/learning-engine';
+import { FeedbackData } from '../ai-analysis/types';
 
 interface Message {
   id: string;
@@ -29,6 +32,8 @@ const providerOptions: AIProvider[] = [
 ];
 
 export default function AIPromptAssistant({ onPromptGenerated }: AIPromptAssistantProps) {
+  const dynamicPromptGenerator = useRef(new DynamicPromptGenerator());
+  const learningEngine = useRef(new LearningEngine());
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
@@ -65,7 +70,56 @@ export default function AIPromptAssistant({ onPromptGenerated }: AIPromptAssista
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  const generateWorkflowPrompt = (userRequest: string, aiResponse: string): string => {
+  const generateWorkflowPrompt = async (userRequest: string, aiResponse: string): Promise<string> => {
+    try {
+      // Use the new AI-driven dynamic prompt generation
+      const dynamicPrompt = await dynamicPromptGenerator.current.generateDynamicPrompt(userRequest);
+      
+      // Combine with AI response for enhanced context
+      let finalPrompt = `## AI Assistant Analysis:
+${aiResponse}
+
+`;
+      finalPrompt += `## AI-Generated Workflow Design:
+${dynamicPrompt.systemPrompt}
+
+`;
+      finalPrompt += `## User Requirements:
+${dynamicPrompt.userPrompt}
+
+`;
+      
+      // Add contextual guidelines
+      if (dynamicPrompt.contextualGuidelines.length > 0) {
+        finalPrompt += `## Optimization Guidelines:
+`;
+        dynamicPrompt.contextualGuidelines.forEach(guideline => {
+          finalPrompt += `- ${guideline}
+`;
+        });
+        finalPrompt += '\n';
+      }
+      
+      // Add quality checklist
+      if (dynamicPrompt.qualityChecklist.length > 0) {
+        finalPrompt += `## Quality Checklist:
+`;
+        dynamicPrompt.qualityChecklist.forEach(item => {
+          finalPrompt += `- [ ] ${item}
+`;
+        });
+        finalPrompt += '\n';
+      }
+      
+      return finalPrompt;
+    } catch (error) {
+      console.error('Error generating dynamic prompt:', error);
+      // Fallback to original template-based approach
+      return generateTemplateBasedPrompt(userRequest, aiResponse);
+    }
+  };
+  
+  const generateTemplateBasedPrompt = (userRequest: string, aiResponse: string): string => {
     // Enhanced structured prompt generation based on the conversation
     const lowerRequest = userRequest.toLowerCase();
     
@@ -278,7 +332,7 @@ Always aim for production-ready, enterprise-grade workflows.`
       }
 
       const aiResponse = response.data.content || response.data.message;
-      const generatedPrompt = generateWorkflowPrompt(input, aiResponse);
+      const generatedPrompt = await generateWorkflowPrompt(input, aiResponse);
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -312,6 +366,19 @@ Always aim for production-ready, enterprise-grade workflows.`
   const usePrompt = (prompt: string) => {
     onPromptGenerated(prompt);
     toast.success('Prompt added to the form!');
+    
+    // Track successful usage for learning
+    const feedback: FeedbackData = {
+      workflowId: Date.now().toString(),
+      workflowType: 'n8n',
+      outcome: 'success',
+      executionTime: 0,
+      nodeCount: 0,
+      errorDetails: [],
+      timestamp: new Date().toISOString()
+    };
+    
+    learningEngine.current.learn(feedback).catch(console.error);
   };
 
   return (

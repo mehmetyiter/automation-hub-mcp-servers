@@ -7,6 +7,7 @@ import { PromptHelper } from '../components/PromptHelper'
 import PlatformSelector from '../components/PlatformSelector'
 import AIProviderSelector from '../components/AIProviderSelector'
 import AIPromptAssistant from '../components/AIPromptAssistant'
+import { feedbackCollector } from '../ai-analysis/feedback-collector'
 
 const platformLogos = {
   n8n: '🟧',
@@ -99,16 +100,40 @@ export default function CreateAutomation() {
       }
       
       console.log('Creating automation with payload:', payload)
+      
+      // Start tracking the workflow creation
+      const workflowId = `${platform}_${Date.now()}`;
+      feedbackCollector.startTracking(workflowId, platform, 0);
+      
       const result = await createAutomation(payload)
 
       // Check if result has the expected structure
       if (result && (result.success || result.result)) {
+        // Record success
+        const nodeCount = result.result?.nodeCount || result.nodeCount || 0;
+        feedbackCollector.recordSuccess(workflowId, {
+          nodeCount,
+          workflowName: name,
+          platform,
+          promptLength: description.length
+        });
+        
         toast.success('Automation created successfully!')
         navigate('/automations')
       } else {
+        // Record failure
+        feedbackCollector.recordFailure(workflowId, {
+          message: result?.error || 'Failed to create automation',
+          payload
+        });
+        
         toast.error(result?.error || 'Failed to create automation')
       }
     } catch (error: any) {
+      // Record failure
+      const workflowId = `${platform}_${Date.now()}`;
+      feedbackCollector.recordFailure(workflowId, error);
+      
       const errorMessage = error.response?.data?.error || error.message || 'Something went wrong. Please try again.'
       toast.error(errorMessage)
     } finally {
