@@ -1,13 +1,19 @@
 import { DeepAnalysis, RecognizedPatterns, WorkflowArchitecture, FeedbackData } from './types';
 import { AIAnalyzer } from './ai-analyzer';
+import { AIService } from './ai-service';
+import { DatabaseService } from './database-service';
 
 export class LearningEngine {
   private aiAnalyzer: AIAnalyzer;
+  private aiService: AIService;
+  private databaseService: DatabaseService;
   private feedbackHistory: FeedbackData[] = [];
   private performanceMetrics: Map<string, any> = new Map();
   
   constructor() {
     this.aiAnalyzer = new AIAnalyzer();
+    this.aiService = new AIService();
+    this.databaseService = new DatabaseService();
   }
   
   async learn(feedback: FeedbackData): Promise<void> {
@@ -92,29 +98,128 @@ export class LearningEngine {
     console.log('Knowledge base updated with:', insights);
   }
   
-  getPerformanceMetrics(): any {
-    return Object.fromEntries(this.performanceMetrics);
+  async getPerformanceMetrics(): Promise<any> {
+    // Get metrics from database instead of local map
+    return await this.databaseService.getPerformanceMetrics();
+  }
+  
+  private getMetricBasedImprovements(workflow: WorkflowArchitecture, metrics: any): string[] {
+    const improvements = [];
+    
+    // Analyze node count
+    if (workflow.nodes.length > 30) {
+      improvements.push('Consider breaking this workflow into smaller sub-workflows for better maintainability');
+    }
+    
+    // Analyze complexity
+    if (workflow.estimatedComplexity > 0.8) {
+      improvements.push('Simplify complex logic by using more straightforward node configurations');
+    }
+    
+    // Check for common performance issues
+    if (workflow.nodes.some(n => n.type.includes('loop') || n.type.includes('iteration'))) {
+      improvements.push('Add batch processing to loops for better performance');
+    }
+    
+    // Check for missing error handling
+    const nodesWithoutErrorHandling = workflow.nodes.filter(n => 
+      !n.configuration.errorHandling && !n.configuration.continueOnFail
+    );
+    if (nodesWithoutErrorHandling.length > 0) {
+      improvements.push(`Add error handling to ${nodesWithoutErrorHandling.length} nodes that currently lack it`);
+    }
+    
+    // Analyze metrics for specific issues
+    for (const [key, metric] of Object.entries(metrics)) {
+      if (metric && typeof metric === 'object') {
+        const m = metric as any;
+        if (m.successRate < 0.8) {
+          improvements.push(`Improve reliability for ${key} workflows (current success rate: ${(m.successRate * 100).toFixed(1)}%)`);
+        }
+        if (m.avgExecutionTime > 30000) {
+          improvements.push(`Optimize performance for ${key} workflows (current avg time: ${(m.avgExecutionTime / 1000).toFixed(1)}s)`);
+        }
+      }
+    }
+    
+    return improvements;
+  }
+  
+  private getFallbackImprovements(workflow: WorkflowArchitecture): string[] {
+    const improvements = [
+      'Add comprehensive error handling to all nodes',
+      'Implement retry logic for external API calls',
+      'Add logging for debugging and monitoring',
+      'Optimize data transformations for performance',
+      'Consider caching frequently accessed data'
+    ];
+    
+    if (workflow.nodes.length > 20) {
+      improvements.push('Break down complex workflows into smaller, reusable components');
+    }
+    
+    if (workflow.connections.length > workflow.nodes.length * 1.5) {
+      improvements.push('Simplify workflow connections to improve maintainability');
+    }
+    
+    return improvements;
   }
   
   async suggestImprovements(workflow: WorkflowArchitecture): Promise<string[]> {
-    const metrics = this.getPerformanceMetrics();
-    const similarWorkflows = this.findSimilarWorkflows(workflow);
+    // Get recent feedback data from database
+    const recentFeedback = await this.databaseService.getRecentFeedback();
+    const metrics = await this.databaseService.getPerformanceMetrics();
     
-    const improvements = await this.aiAnalyzer.analyze(
-      `Suggest improvements for this workflow based on historical data:
+    // Analyze architecture for improvement opportunities
+    const improvementPrompt = `
+TASK: Analyze this workflow architecture and suggest specific improvements.
+
+ARCHITECTURE:
+${JSON.stringify(workflow, null, 2)}
+
+RECENT FEEDBACK (showing patterns of success and failure):
+${JSON.stringify(recentFeedback.slice(0, 10), null, 2)}
+
+PERFORMANCE METRICS:
+${JSON.stringify(metrics, null, 2)}
+
+Provide specific, actionable improvements in JSON format:
+{
+  "performance_improvements": ["specific performance optimizations"],
+  "reliability_improvements": ["reliability enhancements"],
+  "maintainability_improvements": ["maintainability enhancements"],
+  "security_improvements": ["security enhancements"],
+  "user_experience_improvements": ["UX improvements"],
+  "cost_optimizations": ["cost reduction strategies"]
+}
+
+Focus on:
+1. Common failure patterns from the feedback
+2. Performance bottlenecks
+3. Security vulnerabilities
+4. Scalability issues
+5. User experience problems`;
+
+    try {
+      const result = await this.aiService.getJSONResponse(improvementPrompt);
       
-      Current Workflow: ${JSON.stringify(workflow)}
-      Performance Metrics: ${JSON.stringify(metrics)}
-      Similar Workflows: ${JSON.stringify(similarWorkflows)}
+      // Flatten all improvements into a single array
+      const improvements = [];
+      for (const category of Object.values(result)) {
+        if (Array.isArray(category)) {
+          improvements.push(...category);
+        }
+      }
       
-      Provide specific suggestions for:
-      1. Performance optimization
-      2. Error reduction
-      3. Resource efficiency
-      4. User experience improvements`
-    );
-    
-    return improvements.suggestions || [];
+      // Add specific improvements based on metrics
+      improvements.push(...this.getMetricBasedImprovements(workflow, metrics));
+      
+      // Remove duplicates and return
+      return [...new Set(improvements)];
+    } catch (error) {
+      console.error('Failed to generate improvements:', error);
+      return this.getFallbackImprovements(workflow);
+    }
   }
   
   private findSimilarWorkflows(workflow: WorkflowArchitecture): FeedbackData[] {

@@ -49,6 +49,10 @@ export interface DeepAnalysis {
   uniqueness_factors: string[];
   similar_patterns: string[];
   adaptations?: string[];
+  technicalRequirements: string[];
+  constraints: string[];
+  potentialIssues: string[];
+  complexityScore: number;
 }
 
 export interface RecognizedPatterns {
@@ -77,6 +81,9 @@ export interface RecognizedPatterns {
     maintainability_practices: string[];
   };
   confidence: number;
+  successPatterns: any[];
+  failurePatterns: any[];
+  bestPractices: string[];
 }
 
 export interface WorkflowArchitecture {
@@ -90,6 +97,28 @@ export interface WorkflowArchitecture {
   integrationPoints: IntegrationPoint[];
   errorHandlingStrategy: ErrorStrategy;
   monitoringPoints: MonitoringPoint[];
+  nodes: WorkflowNode[];
+  connections: WorkflowConnection[];
+  estimatedComplexity: number;
+}
+
+export interface WorkflowNode {
+  id: string;
+  type: string;
+  purpose: string;
+  configuration: {
+    description?: string;
+    errorHandling?: boolean;
+    continueOnFail?: boolean;
+    [key: string]: any;
+  };
+}
+
+export interface WorkflowConnection {
+  source: string;
+  target: string;
+  type?: string;
+  index?: number;
 }
 
 export interface ProcessNode {
@@ -172,4 +201,45 @@ export interface Learning {
     failed_patterns: Record<string, any>;
     optimizations: string[];
   };
+}
+
+export interface FeedbackData {
+  workflowId: string;
+  workflowType: string;
+  outcome: 'success' | 'failure' | 'partial';
+  executionTime: number;
+  nodeCount: number;
+  errorDetails?: any[];
+  improvementsApplied?: string[];
+  timestamp: string;
+  userSatisfaction?: number;
+  additionalData?: Record<string, any>;
+  startTime?: number;
+}
+
+export interface DynamicPrompt {
+  systemPrompt: string;
+  userPrompt: string;
+  contextualGuidelines: string[];
+  qualityChecklist: string[];
+  metadata: {
+    analysisDepth: number;
+    patternCount: number;
+    nodeCount: number;
+    improvementCount: number;
+    generatedAt: string;
+  };
+}
+
+export interface Pattern {
+  id: string;
+  patternType: string;
+  patternName: string;
+  description: string;
+  successCount: number;
+  failureCount: number;
+  effectivenessScore: number;
+  lastUsedAt: string;
+  domain?: string;
+  metadata?: any;
 }

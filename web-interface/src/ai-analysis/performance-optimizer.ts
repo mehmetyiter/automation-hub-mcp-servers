@@ -105,35 +105,134 @@ export class PerformanceOptimizer {
       optimizations.push('add_caching');
     }
     
-    if (analysis.complexityScore > 0.7) {
-      optimizations.push('simplify_workflow');
+    // Analyze complexity vs performance
+    if (analysis.workflow_characteristics?.complexity === 'enterprise') {
       optimizations.push('break_into_subworkflows');
+      optimizations.push('implement_caching');
+      optimizations.push('use_connection_pooling');
+    } else if (analysis.complexityScore > 0.7) {
+      optimizations.push('simplify_workflow');
+      optimizations.push('reduce_decision_points');
     }
     
+    // Analyze integration patterns
+    if (analysis.workflow_characteristics?.external_integrations?.length > 5) {
+      optimizations.push('batch_api_calls');
+      optimizations.push('implement_circuit_breaker');
+      optimizations.push('add_request_throttling');
+    }
+    
+    // Analyze real-time requirements
+    if (analysis.technical_requirements?.real_time_requirements) {
+      optimizations.push('optimize_critical_path');
+      optimizations.push('use_event_driven_architecture');
+      optimizations.push('implement_async_processing');
+    }
+    
+    // Analyze urgency and scope
     if (analysis.intent.urgency === 'high') {
       optimizations.push('prioritize_critical_path');
       optimizations.push('add_parallel_processing');
+      optimizations.push('implement_fast_fail');
     }
     
-    return optimizations;
+    // Analyze data patterns
+    if (analysis.entities.data.length > 10) {
+      optimizations.push('implement_data_streaming');
+      optimizations.push('add_data_validation_early');
+      optimizations.push('use_data_compression');
+    }
+    
+    return [...new Set(optimizations)]; // Remove duplicates
   }
   
   private async applyOptimizations(analysis: DeepAnalysis, optimizations: string[]): Promise<DeepAnalysis> {
-    let optimizedAnalysis = { ...analysis };
+    // Create a deep copy of the analysis
+    const optimizedAnalysis = JSON.parse(JSON.stringify(analysis));
     
+    // Apply each optimization
     for (const optimization of optimizations) {
       switch (optimization) {
         case 'reduce_complexity':
           optimizedAnalysis.complexityScore = Math.min(0.7, optimizedAnalysis.complexityScore);
+          optimizedAnalysis.constraints.push('Reduce workflow complexity for better performance');
           break;
+          
         case 'simplify_workflow':
           optimizedAnalysis.constraints.push('Keep workflow simple and maintainable');
+          optimizedAnalysis.technicalRequirements.push('Use simple, proven patterns');
           break;
+          
+        case 'break_into_subworkflows':
+          optimizedAnalysis.technicalRequirements.push('Break into modular sub-workflows');
+          optimizedAnalysis.constraints.push('Each sub-workflow should handle one responsibility');
+          break;
+          
+        case 'add_caching':
+        case 'implement_caching':
+          if (!optimizedAnalysis.technical_requirements.storage_requirements.includes('cache')) {
+            optimizedAnalysis.technical_requirements.storage_requirements.push('cache');
+          }
+          optimizedAnalysis.technicalRequirements.push('Implement caching for frequently accessed data');
+          break;
+          
         case 'add_parallel_processing':
+        case 'implement_async_processing':
           optimizedAnalysis.technicalRequirements.push('Implement parallel processing where possible');
+          if (!optimizedAnalysis.technical_requirements.batch_processing) {
+            optimizedAnalysis.technical_requirements.batch_processing = true;
+          }
           break;
+          
         case 'prioritize_critical_path':
+        case 'optimize_critical_path':
           optimizedAnalysis.constraints.push('Focus on critical path optimization');
+          optimizedAnalysis.technicalRequirements.push('Identify and optimize the critical execution path');
+          break;
+          
+        case 'batch_api_calls':
+          optimizedAnalysis.technicalRequirements.push('Batch external API calls to reduce overhead');
+          break;
+          
+        case 'implement_circuit_breaker':
+          optimizedAnalysis.technicalRequirements.push('Implement circuit breaker pattern for external services');
+          break;
+          
+        case 'use_connection_pooling':
+          optimizedAnalysis.technicalRequirements.push('Use connection pooling for database and API connections');
+          break;
+          
+        case 'implement_data_streaming':
+          optimizedAnalysis.technicalRequirements.push('Use streaming for large data processing');
+          break;
+          
+        case 'use_event_driven_architecture':
+          optimizedAnalysis.technical_requirements.data_flow_pattern = 'mesh';
+          optimizedAnalysis.technicalRequirements.push('Implement event-driven architecture');
+          break;
+          
+        case 'add_request_throttling':
+          optimizedAnalysis.technicalRequirements.push('Implement request throttling and rate limiting');
+          break;
+          
+        case 'implement_fast_fail':
+          optimizedAnalysis.technicalRequirements.push('Implement fast-fail mechanisms');
+          break;
+          
+        case 'add_data_validation_early':
+          optimizedAnalysis.technicalRequirements.push('Validate data at entry points');
+          break;
+          
+        case 'use_data_compression':
+          optimizedAnalysis.technicalRequirements.push('Compress data for storage and transfer');
+          break;
+          
+        case 'reduce_decision_points':
+          if (optimizedAnalysis.workflow_characteristics.decision_points > 3) {
+            optimizedAnalysis.workflow_characteristics.decision_points = Math.max(3, 
+              Math.floor(optimizedAnalysis.workflow_characteristics.decision_points * 0.7)
+            );
+          }
           break;
       }
     }

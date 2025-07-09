@@ -1,111 +1,307 @@
 import { DeepAnalysis, RecognizedPatterns } from './types';
 import { AIAnalyzer } from './ai-analyzer';
+import { AIService } from './ai-service';
+import { DatabaseService } from './database-service';
 
 export class PatternRecognizer {
   private aiAnalyzer: AIAnalyzer;
-  private workflowDatabase: any; // Will be implemented with actual database
-
+  private aiService: AIService;
+  private databaseService: DatabaseService;
+  private patternCache: Map<string, RecognizedPatterns> = new Map();
+  
   constructor() {
     this.aiAnalyzer = new AIAnalyzer();
+    this.aiService = new AIService();
+    this.databaseService = new DatabaseService();
   }
+  
+  async recognizePatterns(analysis: DeepAnalysis): Promise<RecognizedPatterns> {
+    // Generate cache key from analysis
+    const cacheKey = this.generateCacheKey(analysis);
+    if (this.patternCache.has(cacheKey)) {
+      return this.patternCache.get(cacheKey)!;
+    }
 
-  async identifyPatterns(analysis: DeepAnalysis): Promise<RecognizedPatterns> {
-    // Instead of static templates, learn from successful workflows
-    const patterns = await this.analyzeSuccessfulWorkflows(analysis);
-    
-    return patterns;
-  }
+    // Get historical successful patterns from database
+    const historicalPatterns = await this.databaseService.getSuccessfulPatterns(
+      analysis.intent.businessContext
+    );
 
-  private async analyzeSuccessfulWorkflows(analysis: DeepAnalysis): Promise<RecognizedPatterns> {
-    // For now, we'll use AI to generate patterns based on the analysis
-    // In production, this would query a database of successful workflows
-    
-    const patternAnalysisPrompt = `
-TASK: Based on this workflow analysis, identify reusable patterns and best practices.
+    // Use AI to analyze and adapt patterns
+    const patternPrompt = `
+TASK: Based on this analysis and historical patterns, identify the best workflow patterns.
 
-CURRENT REQUEST ANALYSIS:
+CURRENT ANALYSIS:
 ${JSON.stringify(analysis, null, 2)}
 
-Extract patterns that can guide workflow creation:
+HISTORICAL SUCCESSFUL PATTERNS:
+${JSON.stringify(historicalPatterns, null, 2)}
 
+Return optimized patterns in this JSON structure:
 {
   "workflowPatterns": {
-    "architecture_patterns": ["what workflow structures would work well for this request"],
-    "branch_patterns": ["how branches should be organized based on the requirements"],
-    "flow_patterns": ["how data should flow through the system"],
-    "completion_patterns": ["how the workflow should properly complete and validate success"]
+    "architecture_patterns": ["best workflow structures for this request"],
+    "branch_patterns": ["optimal branching strategies"],
+    "flow_patterns": ["efficient data flow approaches"],
+    "completion_patterns": ["proper workflow completion strategies"]
   },
   "integrationPatterns": {
-    "connection_strategies": ["how to best connect the external systems mentioned"],
-    "data_transformation": ["how data should be transformed between systems"],
-    "authentication_patterns": ["how authentication should be handled for each system"],
-    "error_recovery": ["how to recover from integration errors"]
+    "connection_strategies": ["best ways to connect external systems"],
+    "data_transformation": ["optimal data transformation approaches"],
+    "authentication_patterns": ["secure authentication methods"],
+    "error_recovery": ["robust error recovery strategies"]
   },
   "errorPatterns": {
     "common_failure_points": ["where this type of workflow typically fails"],
-    "recovery_strategies": ["how to recover from these failures"],
+    "recovery_strategies": ["proven recovery approaches"],
     "prevention_measures": ["how to prevent common errors"],
-    "monitoring_strategies": ["what to monitor for early error detection"]
+    "monitoring_strategies": ["what to monitor for early detection"]
   },
   "optimizationPatterns": {
-    "performance_optimizations": ["how to optimize this workflow for performance"],
-    "scalability_approaches": ["how to ensure the workflow scales with growth"],
-    "resource_efficiency": ["how to use resources efficiently"],
-    "maintainability_practices": ["how to keep the workflow maintainable"]
+    "performance_optimizations": ["performance improvement strategies"],
+    "scalability_approaches": ["scalability best practices"],
+    "resource_efficiency": ["resource optimization techniques"],
+    "maintainability_practices": ["maintainability guidelines"]
   },
-  "confidence": 0.85
-}
+  "confidence": 0.9,
+  "successPatterns": ["patterns from successful workflows"],
+  "failurePatterns": ["patterns to avoid"],
+  "bestPractices": ["recommended best practices"]
+}`;
 
-IMPORTANT: Generate ADAPTABLE patterns specific to this request. Focus on practical strategies that will create a robust workflow.`;
-
-    const result = await this.aiAnalyzer.callAI(patternAnalysisPrompt);
-    
     try {
-      return JSON.parse(result);
+      const result = await this.aiService.getJSONResponse(patternPrompt);
+      
+      // Validate and enrich the patterns
+      const patterns = this.validatePatterns(result, analysis, historicalPatterns);
+      
+      // Cache the result
+      this.patternCache.set(cacheKey, patterns);
+      
+      // Save learned patterns to database
+      await this.saveLearnedPatterns(patterns, analysis);
+      
+      return patterns;
     } catch (error) {
-      console.error('Failed to parse pattern analysis:', error);
-      // Return default patterns if parsing fails
-      return {
-        workflowPatterns: {
-          architecture_patterns: ['linear flow with error handling'],
-          branch_patterns: ['parallel processing where applicable'],
-          flow_patterns: ['data validation at entry points'],
-          completion_patterns: ['success confirmation and logging']
-        },
-        integrationPatterns: {
-          connection_strategies: ['API-first approach'],
-          data_transformation: ['standardized data formats'],
-          authentication_patterns: ['secure credential storage'],
-          error_recovery: ['retry with exponential backoff']
-        },
-        errorPatterns: {
-          common_failure_points: ['external API failures'],
-          recovery_strategies: ['graceful degradation'],
-          prevention_measures: ['input validation'],
-          monitoring_strategies: ['comprehensive logging']
-        },
-        optimizationPatterns: {
-          performance_optimizations: ['batch processing where possible'],
-          scalability_approaches: ['horizontal scaling ready'],
-          resource_efficiency: ['minimize external API calls'],
-          maintainability_practices: ['modular design']
-        },
-        confidence: 0.7
-      };
+      console.error('Pattern recognition failed:', error);
+      return this.createFallbackPatterns(analysis, historicalPatterns);
     }
   }
-
-  private async findSimilarSuccessfulWorkflows(analysis: DeepAnalysis): Promise<any[]> {
-    // In production, this would use vector similarity or semantic search
-    // For now, we'll return an empty array as we don't have a database yet
-    const searchCriteria = {
-      intent: analysis.intent,
-      complexity: analysis.workflow_characteristics.complexity,
-      integrations: analysis.workflow_characteristics.external_integrations,
-      domain: analysis.intent.businessContext
+  
+  private validatePatterns(
+    result: any, 
+    analysis: DeepAnalysis, 
+    historicalPatterns: any[]
+  ): RecognizedPatterns {
+    return {
+      workflowPatterns: result.workflowPatterns || {
+        architecture_patterns: ['Sequential workflow'],
+        branch_patterns: ['Simple branching'],
+        flow_patterns: ['Linear data flow'],
+        completion_patterns: ['Standard completion']
+      },
+      integrationPatterns: result.integrationPatterns || {
+        connection_strategies: ['API-based connections'],
+        data_transformation: ['JSON transformations'],
+        authentication_patterns: ['API key authentication'],
+        error_recovery: ['Retry with backoff']
+      },
+      errorPatterns: result.errorPatterns || {
+        common_failure_points: ['External API failures'],
+        recovery_strategies: ['Retry logic'],
+        prevention_measures: ['Input validation'],
+        monitoring_strategies: ['Error logging']
+      },
+      optimizationPatterns: result.optimizationPatterns || {
+        performance_optimizations: ['Parallel processing'],
+        scalability_approaches: ['Horizontal scaling'],
+        resource_efficiency: ['Resource pooling'],
+        maintainability_practices: ['Modular design']
+      },
+      confidence: result.confidence || 0.7,
+      successPatterns: result.successPatterns || this.extractSuccessPatterns(historicalPatterns),
+      failurePatterns: result.failurePatterns || [],
+      bestPractices: result.bestPractices || this.generateBestPractices(analysis)
     };
-
-    // TODO: Implement actual database search
-    return [];
+  }
+  
+  private createFallbackPatterns(
+    analysis: DeepAnalysis, 
+    historicalPatterns: any[]
+  ): RecognizedPatterns {
+    return {
+      workflowPatterns: {
+        architecture_patterns: this.getDefaultArchitecturePatterns(analysis),
+        branch_patterns: this.getDefaultBranchPatterns(analysis),
+        flow_patterns: ['Linear flow', 'Sequential processing'],
+        completion_patterns: ['Success notification', 'Error handling']
+      },
+      integrationPatterns: {
+        connection_strategies: this.getConnectionStrategies(analysis),
+        data_transformation: ['JSON mapping', 'Data validation'],
+        authentication_patterns: this.getAuthPatterns(analysis),
+        error_recovery: ['Retry 3 times', 'Exponential backoff']
+      },
+      errorPatterns: {
+        common_failure_points: ['Network issues', 'Invalid data', 'Authentication failures'],
+        recovery_strategies: ['Retry logic', 'Fallback paths', 'Error notifications'],
+        prevention_measures: ['Input validation', 'Schema validation', 'Rate limiting'],
+        monitoring_strategies: ['Error tracking', 'Performance monitoring', 'Alerting']
+      },
+      optimizationPatterns: {
+        performance_optimizations: this.getPerformanceOptimizations(analysis),
+        scalability_approaches: ['Queue-based processing', 'Load balancing'],
+        resource_efficiency: ['Connection pooling', 'Caching'],
+        maintainability_practices: ['Clear naming', 'Documentation', 'Version control']
+      },
+      confidence: 0.6,
+      successPatterns: this.extractSuccessPatterns(historicalPatterns),
+      failurePatterns: [],
+      bestPractices: this.generateBestPractices(analysis)
+    };
+  }
+  
+  private getDefaultArchitecturePatterns(analysis: DeepAnalysis): string[] {
+    const patterns = ['Main workflow structure'];
+    
+    if (analysis.workflow_characteristics.parallel_processes > 0) {
+      patterns.push('Parallel processing branches');
+    }
+    
+    if (analysis.workflow_characteristics.decision_points > 0) {
+      patterns.push('Conditional branching');
+    }
+    
+    if (analysis.entities.systems.length > 2) {
+      patterns.push('Multi-system integration');
+    }
+    
+    return patterns;
+  }
+  
+  private getDefaultBranchPatterns(analysis: DeepAnalysis): string[] {
+    const patterns = [];
+    
+    if (analysis.workflow_characteristics.complexity === 'complex' || 
+        analysis.workflow_characteristics.complexity === 'enterprise') {
+      patterns.push('Complex branching with merge points');
+    } else {
+      patterns.push('Simple conditional branching');
+    }
+    
+    if (analysis.technical_requirements.real_time_requirements) {
+      patterns.push('Real-time processing branches');
+    }
+    
+    if (analysis.technical_requirements.batch_processing) {
+      patterns.push('Batch processing branches');
+    }
+    
+    return patterns.length > 0 ? patterns : ['Linear processing'];
+  }
+  
+  private getConnectionStrategies(analysis: DeepAnalysis): string[] {
+    const strategies = [];
+    
+    for (const system of analysis.entities.systems) {
+      if (system.includes('database')) {
+        strategies.push('Database connection pooling');
+      } else if (system.includes('api')) {
+        strategies.push('REST API integration');
+      } else if (system.includes('webhook')) {
+        strategies.push('Webhook listener setup');
+      }
+    }
+    
+    return strategies.length > 0 ? strategies : ['Standard HTTP connections'];
+  }
+  
+  private getAuthPatterns(analysis: DeepAnalysis): string[] {
+    const patterns = ['API key authentication'];
+    
+    if (analysis.implicit_requirements.security_considerations.includes('high')) {
+      patterns.push('OAuth 2.0 authentication');
+      patterns.push('JWT token management');
+    }
+    
+    if (analysis.entities.systems.some(s => s.includes('database'))) {
+      patterns.push('Database credentials management');
+    }
+    
+    return patterns;
+  }
+  
+  private getPerformanceOptimizations(analysis: DeepAnalysis): string[] {
+    const optimizations = [];
+    
+    if (analysis.technical_requirements.scalability_needs === 'high') {
+      optimizations.push('Horizontal scaling');
+      optimizations.push('Load balancing');
+    }
+    
+    if (analysis.workflow_characteristics.parallel_processes > 2) {
+      optimizations.push('Parallel processing optimization');
+    }
+    
+    if (analysis.entities.data.length > 3) {
+      optimizations.push('Data caching strategies');
+    }
+    
+    return optimizations.length > 0 ? optimizations : ['Standard optimization'];
+  }
+  
+  private extractSuccessPatterns(historicalPatterns: any[]): any[] {
+    return historicalPatterns
+      .filter(p => p.effectivenessScore > 0.8)
+      .map(p => ({
+        name: p.patternName,
+        type: p.patternType,
+        description: p.description
+      }))
+      .slice(0, 5); // Top 5 patterns
+  }
+  
+  private generateBestPractices(analysis: DeepAnalysis): string[] {
+    const practices = [
+      'Implement comprehensive error handling',
+      'Add logging at key points',
+      'Use environment variables for configuration',
+      'Document the workflow thoroughly'
+    ];
+    
+    if (analysis.workflow_characteristics.external_integrations.length > 0) {
+      practices.push('Implement retry logic for external calls');
+      practices.push('Add timeout handling for API calls');
+    }
+    
+    if (analysis.technical_requirements.real_time_requirements) {
+      practices.push('Optimize for low latency');
+      practices.push('Implement real-time monitoring');
+    }
+    
+    if (analysis.implicit_requirements.security_considerations !== 'Standard security') {
+      practices.push('Implement data encryption');
+      practices.push('Add audit logging');
+    }
+    
+    return practices;
+  }
+  
+  private async saveLearnedPatterns(patterns: RecognizedPatterns, analysis: DeepAnalysis): Promise<void> {
+    // Save successful patterns for future learning
+    const successfulPatterns = {
+      domain: analysis.intent.businessContext,
+      patterns: patterns.workflowPatterns.architecture_patterns,
+      confidence: patterns.confidence,
+      timestamp: new Date().toISOString()
+    };
+    
+    // In a real implementation, this would save to database
+    console.log('Learned patterns:', successfulPatterns);
+  }
+  
+  private generateCacheKey(analysis: DeepAnalysis): string {
+    const key = `${analysis.intent.primaryGoal}_${analysis.intent.businessContext}_${analysis.complexityScore}`;
+    return btoa(key).replace(/[^a-zA-Z0-9]/g, '');
   }
 }
