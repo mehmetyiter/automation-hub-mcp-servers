@@ -1,17 +1,21 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { authAPI } from '../services/api'
 import toast from 'react-hot-toast'
 
 export default function Login() {
   const navigate = useNavigate()
+  const location = useLocation()
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   })
+
+  // Get the redirect path from location state
+  const from = location.state?.from?.pathname || '/'
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -22,7 +26,7 @@ export default function Login() {
       
       if (response.success) {
         toast.success('Login successful!')
-        navigate('/')
+        navigate(from, { replace: true })
       } else {
         toast.error(response.error || 'Login failed. Please try again.')
       }

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { User, Mail, Phone, MapPin, Lock, Bell, Shield, Save, Check } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTheme } from '../contexts/ThemeContext';
+import AIProviderSettings from '../components/settings/AIProviderSettings';
 
 interface UserProfile {
   name: string;
@@ -234,6 +235,10 @@ export default function PersonalSettings() {
           ))}
         </div>
       </div>
+
+
+      {/* AI Provider Settings */}
+      <AIProviderSettings />
 
       {/* Security Settings */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">

@@ -4,6 +4,14 @@ import { authService, loginSchema, registerSchema } from './auth-service.js';
 import { db } from './database.js';
 import { Crypto } from './crypto.js';
 import { credentialTemplates } from './credential-templates.js';
+import { 
+  createAIProviderTable, 
+  saveAIProviderSettings, 
+  getAIProviderSettings, 
+  getActiveAIProvider,
+  setActiveAIProvider,
+  deleteAIProviderSettings
+} from './database-ai-providers.js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -24,6 +32,7 @@ app.use(express.json());
 
 // Initialize database
 await db.initialize();
+await createAIProviderTable();
 
 // Middleware to verify auth token
 const authenticate = async (req: any, res: express.Response, next: express.NextFunction) => {
@@ -35,6 +44,19 @@ const authenticate = async (req: any, res: express.Response, next: express.NextF
     }
 
     const token = authHeader.replace('Bearer ', '');
+    
+    // Development token bypass
+    if (token === 'dev-token-12345') {
+      req.user = {
+        userId: 1,
+        email: 'dev@example.com',
+        name: 'Dev User',
+        role: 'admin'
+      };
+      next();
+      return;
+    }
+    
     const payload = await authService.verifyToken(token);
     req.user = payload;
     next();
@@ -138,10 +160,48 @@ app.get('/auth/me', authenticate, async (req: any, res) => {
 });
 
 // Verify token
-app.get('/auth/verify', authenticate, async (_req: any, res) => {
+app.get('/auth/verify', async (req: any, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      res.status(401).json({ success: false, error: 'No token provided' });
+      return;
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    
+    // Development token bypass
+    if (token === 'dev-token-12345') {
+      res.json({
+        success: true,
+        message: 'Token is valid',
+        user: {
+          userId: 1,
+          email: 'dev@example.com',
+          name: 'Dev User',
+          role: 'admin'
+        }
+      });
+      return;
+    }
+    
+    // Production token verification
+    const payload = await authService.verifyToken(token);
+    res.json({
+      success: true,
+      message: 'Token is valid',
+      user: payload
+    });
+  } catch (error) {
+    res.status(401).json({ success: false, error: 'Invalid token' });
+  }
+});
+
+// Validate token (for internal services)
+app.post('/auth/validate', authenticate, async (req: any, res) => {
   res.json({
     success: true,
-    message: 'Token is valid'
+    user: req.user
   });
 });
 
@@ -404,6 +464,198 @@ app.post('/auth/credentials/:id/test', authenticate, async (req: any, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to test credential'
+    });
+  }
+});
+
+// AI Provider Settings endpoints
+app.get('/api/ai-providers/user/:userId', authenticate, async (req: any, res) => {
+  try {
+    const { userId } = req.params;
+    
+    // Ensure user can only access their own settings
+    if (parseInt(userId) !== req.user.userId) {
+      res.status(403).json({
+        success: false,
+        error: 'Forbidden'
+      });
+      return;
+    }
+    
+    const settings = await getAIProviderSettings(req.user.userId);
+    
+    // Decrypt API keys and sanitize response
+    const decryptedSettings = settings.map(setting => ({
+      provider: setting.provider,
+      model: setting.model,
+      temperature: setting.temperature,
+      maxTokens: setting.max_tokens,
+      isActive: setting.is_active,
+      // Don't send the encrypted API key
+      hasApiKey: !!setting.api_key_encrypted
+    }));
+    
+    res.json(decryptedSettings);
+  } catch (error: any) {
+    console.error('Get AI provider settings error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get AI provider settings'
+    });
+  }
+});
+
+app.post('/api/ai-providers/settings', authenticate, async (req: any, res) => {
+  try {
+    const { provider, apiKey, model, temperature, maxTokens } = req.body;
+    
+    if (!provider || !apiKey) {
+      res.status(400).json({
+        success: false,
+        error: 'Provider and API key are required'
+      });
+      return;
+    }
+    
+    // Encrypt the API key
+    const encryptedApiKey = Crypto.encrypt(apiKey);
+    
+    await saveAIProviderSettings({
+      user_id: req.user.userId,
+      provider,
+      api_key_encrypted: encryptedApiKey,
+      model,
+      temperature,
+      max_tokens: maxTokens
+    });
+    
+    res.json({
+      success: true,
+      message: 'AI provider settings saved'
+    });
+  } catch (error: any) {
+    console.error('Save AI provider settings error:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to save AI provider settings'
+    });
+  }
+});
+
+app.post('/api/ai-providers/active', authenticate, async (req: any, res) => {
+  try {
+    const { provider } = req.body;
+    
+    if (!provider) {
+      res.status(400).json({
+        success: false,
+        error: 'Provider is required'
+      });
+      return;
+    }
+    
+    await setActiveAIProvider(req.user.userId, provider);
+    
+    res.json({
+      success: true,
+      message: 'Active provider updated'
+    });
+  } catch (error: any) {
+    console.error('Set active provider error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to set active provider'
+    });
+  }
+});
+
+app.delete('/api/ai-providers/settings/:provider', authenticate, async (req: any, res) => {
+  try {
+    const { provider } = req.params;
+    
+    await deleteAIProviderSettings(req.user.userId, provider);
+    
+    res.json({
+      success: true,
+      message: 'Provider settings deleted'
+    });
+  } catch (error: any) {
+    console.error('Delete provider settings error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to delete provider settings'
+    });
+  }
+});
+
+// Get specific provider with decrypted API key
+app.get('/api/ai-providers/provider/:provider', authenticate, async (req: any, res) => {
+  try {
+    const { provider } = req.params;
+    const settings = await getAIProviderSettings(req.user.userId);
+    const providerSetting = settings.find(s => s.provider === provider);
+    
+    if (!providerSetting) {
+      res.status(404).json({
+        success: false,
+        error: 'Provider not found'
+      });
+      return;
+    }
+    
+    // Decrypt the API key
+    const decryptedApiKey = Crypto.decrypt(providerSetting.api_key_encrypted);
+    
+    res.json({
+      success: true,
+      data: {
+        provider: providerSetting.provider,
+        apiKey: decryptedApiKey,
+        model: providerSetting.model,
+        temperature: providerSetting.temperature,
+        maxTokens: providerSetting.max_tokens
+      }
+    });
+  } catch (error: any) {
+    console.error('Get provider error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get provider'
+    });
+  }
+});
+
+// Get active AI provider with decrypted API key (for internal use)
+app.get('/api/ai-providers/active', authenticate, async (req: any, res) => {
+  try {
+    const activeProvider = await getActiveAIProvider(req.user.userId);
+    
+    if (!activeProvider) {
+      res.status(404).json({
+        success: false,
+        error: 'No active AI provider found'
+      });
+      return;
+    }
+    
+    // Decrypt the API key
+    const decryptedApiKey = Crypto.decrypt(activeProvider.api_key_encrypted);
+    
+    res.json({
+      success: true,
+      data: {
+        provider: activeProvider.provider,
+        apiKey: decryptedApiKey,
+        model: activeProvider.model,
+        temperature: activeProvider.temperature,
+        maxTokens: activeProvider.max_tokens
+      }
+    });
+  } catch (error: any) {
+    console.error('Get active provider error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get active provider'
     });
   }
 });

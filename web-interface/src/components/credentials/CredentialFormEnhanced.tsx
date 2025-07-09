@@ -76,7 +76,7 @@ export default function CredentialFormEnhanced({
       if (credential) {
         setName(credential.name);
         // Use platform as templateId since that's what the server returns
-        setSelectedTemplateId(credential.templateId || credential.platform);
+        setSelectedTemplateId(credential.templateId || credential.platform || '');
         // Fetch full credential data including values
         loadCredentialData(credential.id);
       }

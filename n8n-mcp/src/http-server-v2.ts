@@ -1,9 +1,10 @@
 import express from 'express';
 import cors from 'cors';
 import { N8nClient } from './n8n-client.js';
-import { AIWorkflowGenerator } from './ai-workflow-generator.js';
+import { AIWorkflowGeneratorV2 } from './ai-workflow-generator-v2.js';
 import aiProvidersRouter from './routes/ai-providers.js';
 import dotenv from 'dotenv';
+import fetch from 'node-fetch';
 
 dotenv.config();
 
@@ -17,6 +18,15 @@ const n8nClient = new N8nClient({
 
 app.use(cors());
 app.use(express.json());
+
+// Extend Express Request type
+declare global {
+  namespace Express {
+    interface Request {
+      user?: any;
+    }
+  }
+}
 
 // AI Providers routes
 app.use('/api/ai-providers', aiProvidersRouter);
@@ -210,17 +220,21 @@ app.post('/tools/n8n_delete_workflow', async (req, res) => {
   }
 });
 
-// Generate workflow from prompt using AI
+// Generate workflow from prompt using AI V2
 app.post('/tools/n8n_generate_workflow', async (req, res) => {
-  console.log('\n=== n8n_generate_workflow endpoint called ===');
+  console.log('\n=== n8n_generate_workflow V2 endpoint called ===');
   console.log('Request body:', {
     prompt: req.body.prompt?.substring(0, 100) + '...',
     name: req.body.name,
-    hasApiKey: !!req.body.apiKey
+    provider: req.body.provider,
+    useUserSettings: req.body.useUserSettings,
+    hasApiKey: !!req.body.apiKey,
+    hasToken: !!req.headers.authorization
   });
   
   try {
-    const { prompt, name, apiKey } = req.body;
+    const { prompt, name, provider, apiKey, model, temperature, maxTokens, useUserSettings } = req.body;
+    const authToken = req.headers.authorization?.replace('Bearer ', '');
     
     if (!prompt) {
       console.error('Missing required field: prompt');
@@ -240,37 +254,78 @@ app.post('/tools/n8n_generate_workflow', async (req, res) => {
       return;
     }
     
-    // Determine provider and API key
-    const provider = process.env.AI_PROVIDER || 'anthropic';
-    let effectiveApiKey = apiKey;
+    let generatorOptions: any = {};
     
-    if (!effectiveApiKey) {
-      if (provider === 'anthropic') {
-        effectiveApiKey = process.env.ANTHROPIC_API_KEY;
-      } else {
-        effectiveApiKey = process.env.OPENAI_API_KEY;
+    // If user wants to use their saved AI provider settings
+    if (useUserSettings && authToken) {
+      try {
+        console.log('Fetching user AI provider settings...');
+        
+        // Get user's active AI provider
+        const activeProviderResponse = await fetch('http://localhost:3005/api/ai-providers/active', {
+          headers: {
+            'Authorization': `Bearer ${authToken}`
+          }
+        });
+        
+        if (activeProviderResponse.ok) {
+          const activeProvider = await activeProviderResponse.json();
+          
+          if (activeProvider.success && activeProvider.data) {
+            generatorOptions = {
+              provider: activeProvider.data.provider,
+              apiKey: activeProvider.data.apiKey,
+              model: activeProvider.data.model,
+              temperature: activeProvider.data.temperature || 0.7,
+              maxTokens: activeProvider.data.maxTokens || 8000
+            };
+            console.log('Using user AI provider settings:', {
+              provider: activeProvider.data.provider,
+              model: activeProvider.data.model
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Failed to fetch user AI provider settings:', error);
       }
     }
     
-    console.log('AI Provider:', provider);
-    console.log('API key source:', apiKey ? 'request' : 'environment');
-    console.log('API key available:', !!effectiveApiKey);
-    console.log('API key length:', effectiveApiKey?.length || 0);
+    // Use provided options or fall back to environment variables
+    if (!generatorOptions.apiKey) {
+      generatorOptions.provider = provider || process.env.AI_PROVIDER || 'openai';
+      generatorOptions.apiKey = apiKey;
+      generatorOptions.model = model;
+      generatorOptions.temperature = temperature;
+      generatorOptions.maxTokens = maxTokens;
+      
+      // If no API key provided, try environment variables
+      if (!generatorOptions.apiKey) {
+        if (generatorOptions.provider === 'anthropic') {
+          generatorOptions.apiKey = process.env.ANTHROPIC_API_KEY;
+        } else if (generatorOptions.provider === 'openai') {
+          generatorOptions.apiKey = process.env.OPENAI_API_KEY;
+        } else if (generatorOptions.provider === 'gemini') {
+          generatorOptions.apiKey = process.env.GEMINI_API_KEY;
+        }
+      }
+    }
     
-    if (!effectiveApiKey) {
-      console.error(`No ${provider} API key available`);
+    console.log('AI Provider:', generatorOptions.provider);
+    console.log('Model:', generatorOptions.model || 'default');
+    console.log('API key available:', !!generatorOptions.apiKey);
+    console.log('API key source:', apiKey ? 'request' : (useUserSettings ? 'user settings' : 'environment'));
+    
+    if (!generatorOptions.apiKey) {
+      console.error(`No API key available for ${generatorOptions.provider}`);
       res.status(400).json({
         success: false,
-        error: `${provider === 'anthropic' ? 'Anthropic' : 'OpenAI'} API key is required. Please provide it in the request or set ${provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'} environment variable.`
+        error: `API key is required for ${generatorOptions.provider}. Please provide it in the request, save it in your settings, or set the appropriate environment variable.`
       });
       return;
     }
     
-    console.log('Creating AI workflow generator...');
-    const generator = new AIWorkflowGenerator({
-      provider: provider as 'openai' | 'anthropic',
-      apiKey: effectiveApiKey
-    });
+    console.log('Creating AI workflow generator V2...');
+    const generator = new AIWorkflowGeneratorV2(generatorOptions);
     
     console.log('Calling generateFromPrompt...');
     const startTime = Date.now();
@@ -279,8 +334,7 @@ app.post('/tools/n8n_generate_workflow', async (req, res) => {
     console.log(`Generation completed in ${generationTime}ms`);
     console.log('Generation result:', {
       success: result.success,
-      method: result.method,
-      confidence: result.confidence,
+      provider: result.provider,
       error: result.error
     });
     
@@ -288,14 +342,14 @@ app.post('/tools/n8n_generate_workflow', async (req, res) => {
       console.error('Generation failed:', result.error);
       res.status(500).json({
         success: false,
-        error: result.error || 'Failed to generate workflow'
+        error: result.error || 'Failed to generate workflow',
+        provider: result.provider
       });
       return;
     }
     
     // Return the generated workflow WITHOUT creating it
     console.log('Generated workflow successfully');
-    console.log('Result workflow object:', JSON.stringify(result.workflow, null, 2));
     
     if (!result.workflow) {
       console.error('No workflow object in result');
@@ -309,9 +363,9 @@ app.post('/tools/n8n_generate_workflow', async (req, res) => {
     const response = {
       success: true,
       data: {
-        workflow: result.workflow,  // Return the generated workflow structure
-        confidence: result.confidence,
-        generatedBy: result.method === 'ai-generated' ? 'AI' : result.method
+        workflow: result.workflow,
+        provider: result.provider,
+        usage: result.usage
       }
     };
     
@@ -328,5 +382,5 @@ app.post('/tools/n8n_generate_workflow', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`n8n MCP HTTP Server running on http://localhost:${PORT}`);
+  console.log(`n8n MCP HTTP Server V2 running on http://localhost:${PORT}`);
 });

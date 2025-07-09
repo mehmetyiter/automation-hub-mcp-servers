@@ -4,7 +4,7 @@ export interface CredentialField {
   type: 'text' | 'password' | 'number' | 'boolean' | 'select' | 'textarea' | 'json';
   required: boolean;
   placeholder?: string;
-  options?: string[];
+  options?: string[] | Array<{ value: string; label: string }>;
   description?: string;
   defaultValue?: any;
 }
@@ -156,6 +156,9 @@ export const credentialTemplates: CredentialTemplate[] = [
     category: 'AI',
     fields: [
       { key: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'sk-...' },
+      { key: 'model', label: 'Default Model', type: 'select', required: false,
+        options: ['o3', 'o4-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-realtime-preview-2024-12-17', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1-preview', 'o1-mini'],
+        defaultValue: 'gpt-4o' },
       { key: 'organizationId', label: 'Organization ID', type: 'text', required: false },
       { key: 'baseUrl', label: 'Base URL', type: 'text', required: false, placeholder: 'https://api.openai.com/v1', description: 'Custom endpoint (optional)' }
     ]
@@ -166,7 +169,10 @@ export const credentialTemplates: CredentialTemplate[] = [
     platform: 'anthropic',
     category: 'AI',
     fields: [
-      { key: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'sk-ant-...' }
+      { key: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'sk-ant-...' },
+      { key: 'model', label: 'Default Model', type: 'select', required: false,
+        options: ['claude-4-opus', 'claude-4-sonnet', 'claude-3.7-sonnet', 'claude-3.7-sonnet-thinking', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307'],
+        defaultValue: 'claude-3-5-sonnet-20241022' }
     ]
   },
   {
@@ -176,7 +182,9 @@ export const credentialTemplates: CredentialTemplate[] = [
     category: 'AI',
     fields: [
       { key: 'apiKey', label: 'API Key', type: 'password', required: true },
-      { key: 'model', label: 'Default Model', type: 'text', required: false, defaultValue: 'gemini-pro' }
+      { key: 'model', label: 'Default Model', type: 'select', required: false, 
+        options: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro-deep-think', 'gemini-2.0-flash-thinking-exp', 'gemini-2.0-flash-exp', 'gemini-1.5-pro-002', 'gemini-1.5-pro', 'gemini-1.5-flash-002', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'],
+        defaultValue: 'gemini-2.0-flash-exp' }
     ]
   },
   {

@@ -272,11 +272,21 @@ export const CredentialForm: React.FC<CredentialFormProps> = ({
                         required={field.required}
                       >
                         <option value="">Select {field.label}</option>
-                        {field.options?.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
+                        {field.options?.map((option) => {
+                          if (typeof option === 'string') {
+                            return (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            );
+                          } else {
+                            return (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            );
+                          }
+                        })}
                       </select>
                     ) : field.type === 'textarea' ? (
                       <textarea

@@ -33,6 +33,15 @@ app.use('/api/auth', createProxyMiddleware({
   }
 }));
 
+// Add AI provider routes
+app.use('/api/ai-providers', createProxyMiddleware({
+  target: process.env.AUTH_MCP_URL || 'http://localhost:3005',
+  ...proxyOptions,
+  pathRewrite: {
+    '^/api/ai-providers': '/api/ai-providers'
+  }
+}));
+
 app.use('/api/n8n', createProxyMiddleware({
   target: process.env.N8N_MCP_URL || 'http://localhost:3006',
   ...proxyOptions,
@@ -69,6 +78,7 @@ app.listen(PORT, () => {
   console.log(`API Gateway running on http://localhost:${PORT}`);
   console.log('Proxying routes:');
   console.log(`  /api/auth/* -> ${process.env.AUTH_MCP_URL || 'http://localhost:3005'}`);
+  console.log(`  /api/ai-providers/* -> ${process.env.AUTH_MCP_URL || 'http://localhost:3005'}`);
   console.log(`  /api/n8n/* -> ${process.env.N8N_MCP_URL || 'http://localhost:3006'}`);
   console.log(`  /api/template/* -> ${process.env.TEMPLATE_MCP_URL || 'http://localhost:3007'}`);
   console.log(`  /api/community/* -> ${process.env.COMMUNITY_MCP_URL || 'http://localhost:3008'}`);

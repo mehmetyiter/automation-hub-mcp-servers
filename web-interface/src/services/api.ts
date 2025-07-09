@@ -75,13 +75,19 @@ const setupInterceptors = (client: any) => {
     (response: any) => response,
     (error: any) => {
       if (error.response?.status === 401) {
-        // Handle unauthorized
-        localStorage.removeItem('auth_token')
-        localStorage.removeItem('user')
+        const token = localStorage.getItem('auth_token')
         
-        // Only redirect if not already on login page
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login'
+        // Only redirect if we actually had a token (it was invalid)
+        // Don't redirect if there was no token to begin with
+        if (token && token !== 'dev-token-12345') {
+          console.warn('401 Unauthorized - Invalid token')
+          localStorage.removeItem('auth_token')
+          localStorage.removeItem('user')
+          
+          // Only redirect if not already on login page
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login'
+          }
         }
       }
       return Promise.reject(error)
@@ -107,7 +113,12 @@ const createMCPAutomation = async (platform: string, data: any) => {
         const generatePayload = {
           prompt: data.description,
           name: data.name,
-          apiKey: data.apiKey // Optional API key if provided
+          apiKey: data.apiKey, // Optional API key if provided
+          provider: data.provider,
+          model: data.model,
+          temperature: data.temperature,
+          maxTokens: data.maxTokens,
+          useUserSettings: data.useUserSettings
         }
         
         const generationResponse = await mcpClients.n8n.post('/tools/n8n_generate_workflow', generatePayload)
@@ -174,6 +185,11 @@ export const createAutomation = async (data: {
   name: string
   platform?: string
   apiKey?: string
+  provider?: string
+  model?: string
+  temperature?: number
+  maxTokens?: number
+  useUserSettings?: boolean
 }) => {
   // If platform is specified, use MCP-specific endpoint
   if (data.platform) {

@@ -11,6 +11,7 @@ import Credentials from './pages/Credentials'
 import PromptLibrary from './pages/PromptLibrary'
 import PersonalSettings from './pages/PersonalSettings'
 import Login from './pages/Login'
+import ProtectedRoute from './components/ProtectedRoute'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -55,9 +56,11 @@ function ErrorBoundary() {
 // Root layout component
 function RootLayout() {
   return (
-    <Layout>
-      <Outlet />
-    </Layout>
+    <ProtectedRoute>
+      <Layout>
+        <Outlet />
+      </Layout>
+    </ProtectedRoute>
   )
 }
 
@@ -115,7 +118,6 @@ const router = createBrowserRouter([
     v7_normalizeFormMethod: true,
     v7_partialHydration: true,
     v7_skipActionErrorRevalidation: true,
-    v7_startTransition: true,
   },
 })
 

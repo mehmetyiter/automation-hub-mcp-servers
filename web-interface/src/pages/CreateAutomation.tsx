@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { Wand2, Loader2, Sparkles, Mic, Type, Key, Eye, EyeOff, Shield } from 'lucide-react'
+import { Wand2, Loader2, Sparkles, Mic, Type, Key, Eye, EyeOff, Shield, MessageSquare } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { createAutomation, credentialAPI } from '../services/api'
 import { PromptHelper } from '../components/PromptHelper'
 import PlatformSelector from '../components/PlatformSelector'
+import AIProviderSelector from '../components/AIProviderSelector'
+import AIPromptAssistant from '../components/AIPromptAssistant'
 
 const platformLogos = {
   n8n: '🟧',
@@ -26,6 +28,9 @@ export default function CreateAutomation() {
   const [useStoredCredentials, setUseStoredCredentials] = useState(true)
   const [storedCredentials, setStoredCredentials] = useState<any[]>([])
   const [selectedCredentials, setSelectedCredentials] = useState<string[]>([])
+  const [aiProvider, setAiProvider] = useState<string | undefined>(undefined)
+  const [useUserAISettings, setUseUserAISettings] = useState(true)
+  const [showAIAssistant, setShowAIAssistant] = useState(false)
 
   // Handle incoming prompt from PromptLibrary
   useEffect(() => {
@@ -71,11 +76,20 @@ export default function CreateAutomation() {
         description,
         name,
         platform: platform,
+        useUserSettings: useUserAISettings
       }
       
-      // Include API key if provided
-      if (apiKey.trim()) {
-        payload.apiKey = apiKey
+      // Include AI provider settings
+      if (!useUserAISettings) {
+        if (aiProvider) {
+          payload.provider = aiProvider
+        }
+        if (apiKey.trim()) {
+          payload.apiKey = apiKey
+        }
+      } else {
+        // Use user's saved credentials
+        payload.useCredentials = true
       }
       
       // Include selected credentials
@@ -109,8 +123,14 @@ export default function CreateAutomation() {
     "When a support ticket is created, analyze sentiment and route to the right team",
   ]
 
+  const handlePromptGenerated = (prompt: string) => {
+    setDescription(prompt);
+    // Optionally close the assistant after prompt is used
+    // setShowAIAssistant(false);
+  };
+
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-7xl mx-auto">
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-foreground">Create New Automation</h1>
         <p className="mt-2 text-gray-600 dark:text-gray-400">
@@ -118,7 +138,9 @@ export default function CreateAutomation() {
         </p>
       </div>
 
-      <div className="bg-white dark:bg-card rounded-lg shadow-sm dark:shadow-none dark:border dark:border-border p-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Main Form */}
+        <div className="bg-white dark:bg-card rounded-lg shadow-sm dark:shadow-none dark:border dark:border-border p-8">
         {/* Input Mode Toggle */}
         <div className="flex justify-center mb-8">
           <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-1">
@@ -179,9 +201,18 @@ export default function CreateAutomation() {
 
         {/* Description Input */}
         <div className="mb-6">
-          <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            Describe Your Automation
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label htmlFor="description" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Describe Your Automation
+            </label>
+            <button
+              onClick={() => setShowAIAssistant(!showAIAssistant)}
+              className="flex items-center gap-2 px-3 py-1 text-sm bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded-lg hover:bg-blue-200 dark:hover:bg-blue-900/30 transition-colors"
+            >
+              <MessageSquare className="h-4 w-4" />
+              {showAIAssistant ? 'Hide' : 'Show'} AI Assistant
+            </button>
+          </div>
           {inputMode === 'text' ? (
             <textarea
               id="description"
@@ -205,8 +236,20 @@ export default function CreateAutomation() {
           )}
         </div>
 
-        {/* API Key (Optional) - Only for n8n platform */}
+        {/* AI Provider Selection - Only for n8n platform */}
         {platform === 'n8n' && (
+          <div className="mb-6">
+            <AIProviderSelector
+              value={aiProvider as any}
+              onChange={setAiProvider as any}
+              useUserSettings={useUserAISettings}
+              onUseSettingsChange={setUseUserAISettings}
+            />
+          </div>
+        )}
+
+        {/* API Key (Optional) - Only for n8n platform and when not using user settings */}
+        {platform === 'n8n' && !useUserAISettings && aiProvider && (
           <div className="mb-6">
             <label htmlFor="apiKey" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               AI API Key (Optional)
@@ -387,6 +430,14 @@ export default function CreateAutomation() {
             )}
           </button>
         </div>
+      </div>
+        
+        {/* AI Assistant */}
+        {showAIAssistant && (
+          <div className="lg:sticky lg:top-4">
+            <AIPromptAssistant onPromptGenerated={handlePromptGenerated} />
+          </div>
+        )}
       </div>
     </div>
   )
