@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, ChevronDown, Sparkles, Copy, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../services/api';
+import { getTemplateForDomain, generatePromptFromTemplate } from '../utils/domain-templates';
 
 interface Message {
   id: string;
@@ -65,8 +66,150 @@ export default function AIPromptAssistant({ onPromptGenerated }: AIPromptAssista
   };
 
   const generateWorkflowPrompt = (userRequest: string, aiResponse: string): string => {
-    // Extract key components from the conversation to create a structured prompt
-    return `${aiResponse}\n\nAdditional Requirements:\n- Ensure all nodes are properly connected\n- Include error handling\n- Add logging where appropriate\n- Make the workflow production-ready`;
+    // Enhanced structured prompt generation based on the conversation
+    const lowerRequest = userRequest.toLowerCase();
+    
+    // Analyze request type and domain
+    const domain = detectDomain(lowerRequest);
+    const triggers = extractTriggers(lowerRequest);
+    const integrations = extractIntegrations(lowerRequest);
+    const hasErrorHandling = lowerRequest.includes('error') || lowerRequest.includes('retry') || lowerRequest.includes('fallback');
+    
+    // Check if we have a domain template
+    if (domain) {
+      const template = getTemplateForDomain(domain);
+      if (template) {
+        // Use the domain template as base
+        let templatePrompt = generatePromptFromTemplate(template);
+        
+        // Enhance with AI response insights
+        templatePrompt = `## AI Assistant Analysis:\n${aiResponse}\n\n${templatePrompt}`;
+        
+        // Add any additional user-specific requirements
+        if (hasErrorHandling) {
+          templatePrompt += `\n## Enhanced Error Handling (User Requested):\n`;
+          templatePrompt += `- Implement advanced retry logic with exponential backoff\n`;
+          templatePrompt += `- Add circuit breaker patterns for external services\n`;
+          templatePrompt += `- Include detailed error logging and alerting\n`;
+        }
+        
+        return templatePrompt;
+      }
+    }
+    
+    // Fallback to custom structured prompt if no template
+    let structuredPrompt = `${aiResponse}\n\n`;
+    
+    // Add domain-specific requirements
+    if (domain) {
+      structuredPrompt += `## Domain: ${domain}\n\n`;
+    }
+    
+    // Add trigger section
+    if (triggers.length > 0) {
+      structuredPrompt += `## Trigger Events:\n`;
+      triggers.forEach(trigger => {
+        structuredPrompt += `- ${trigger}\n`;
+      });
+      structuredPrompt += '\n';
+    }
+    
+    // Add integration requirements
+    if (integrations.length > 0) {
+      structuredPrompt += `## Integrations:\n`;
+      integrations.forEach(integration => {
+        structuredPrompt += `- ${integration}\n`;
+      });
+      structuredPrompt += '\n';
+    }
+    
+    // Add error handling section
+    structuredPrompt += `## Error Handling:\n`;
+    if (hasErrorHandling) {
+      structuredPrompt += `- Implement retry logic for external API calls\n`;
+      structuredPrompt += `- Add fallback mechanisms for critical paths\n`;
+      structuredPrompt += `- Include error notification systems\n`;
+    } else {
+      structuredPrompt += `- Basic error handling for all external integrations\n`;
+      structuredPrompt += `- Logging of all errors\n`;
+    }
+    structuredPrompt += '\n';
+    
+    // Add expected outcomes
+    structuredPrompt += `## Expected Outcomes:\n`;
+    structuredPrompt += `- Automated workflow that handles the described process\n`;
+    structuredPrompt += `- Proper data validation and processing\n`;
+    structuredPrompt += `- Reliable execution with error recovery\n`;
+    structuredPrompt += `- Clear logging and monitoring\n\n`;
+    
+    // Add production requirements
+    structuredPrompt += `## Production Requirements:\n`;
+    structuredPrompt += `- All nodes must be properly connected\n`;
+    structuredPrompt += `- Include data validation at entry points\n`;
+    structuredPrompt += `- Add success/failure notifications\n`;
+    structuredPrompt += `- Implement proper logging throughout\n`;
+    structuredPrompt += `- Ensure scalability and performance\n`;
+    
+    return structuredPrompt;
+  };
+  
+  const detectDomain = (text: string): string => {
+    const domainPatterns = {
+      'Healthcare': ['hospital', 'patient', 'doctor', 'appointment', 'medical', 'health', 'clinic'],
+      'E-commerce': ['order', 'payment', 'product', 'inventory', 'shipping', 'customer', 'cart'],
+      'HR': ['employee', 'onboarding', 'leave', 'payroll', 'recruitment', 'hr', 'staff'],
+      'Finance': ['invoice', 'payment', 'accounting', 'budget', 'expense', 'financial'],
+      'Marketing': ['campaign', 'email', 'lead', 'crm', 'marketing', 'social'],
+      'IT Operations': ['server', 'monitoring', 'alert', 'deployment', 'backup', 'system']
+    };
+    
+    for (const [domain, keywords] of Object.entries(domainPatterns)) {
+      if (keywords.some(keyword => text.includes(keyword))) {
+        return domain;
+      }
+    }
+    return '';
+  };
+  
+  const extractTriggers = (text: string): string[] => {
+    const triggers = [];
+    const triggerPatterns = {
+      'Webhook trigger': ['webhook', 'api call', 'http request', 'incoming request'],
+      'Schedule trigger': ['daily', 'hourly', 'scheduled', 'cron', 'every day', 'every hour'],
+      'Manual trigger': ['manual', 'on-demand', 'when needed'],
+      'Database trigger': ['database change', 'new record', 'data update'],
+      'Email trigger': ['email received', 'incoming email', 'email trigger']
+    };
+    
+    for (const [triggerName, patterns] of Object.entries(triggerPatterns)) {
+      if (patterns.some(pattern => text.includes(pattern))) {
+        triggers.push(triggerName);
+      }
+    }
+    
+    return triggers.length > 0 ? triggers : ['Manual trigger'];
+  };
+  
+  const extractIntegrations = (text: string): string[] => {
+    const integrations = [];
+    const integrationPatterns = {
+      'Database (PostgreSQL/MySQL)': ['database', 'mysql', 'postgresql', 'postgres', 'sql'],
+      'Email (SMTP/SendGrid)': ['email', 'smtp', 'sendgrid', 'mail'],
+      'SMS (Twilio)': ['sms', 'twilio', 'text message'],
+      'Slack': ['slack', 'slack notification'],
+      'Calendar (Google/Outlook)': ['calendar', 'appointment', 'schedule', 'booking'],
+      'Payment (Stripe/PayPal)': ['payment', 'stripe', 'paypal', 'checkout'],
+      'CRM (Salesforce/HubSpot)': ['crm', 'salesforce', 'hubspot', 'customer'],
+      'API Integration': ['api', 'rest', 'webhook', 'external service']
+    };
+    
+    for (const [integrationName, patterns] of Object.entries(integrationPatterns)) {
+      if (patterns.some(pattern => text.includes(pattern))) {
+        integrations.push(integrationName);
+      }
+    }
+    
+    return integrations;
   };
 
   const handleSend = async () => {
@@ -97,10 +240,31 @@ export default function AIPromptAssistant({ onPromptGenerated }: AIPromptAssista
           messages: [
             {
               role: 'system',
-              content: `You are an AI assistant specialized in creating detailed workflow automation prompts. 
-              When users describe what they want to build, help them create comprehensive, well-structured prompts 
-              that include: trigger events, data processing steps, integrations needed, error handling, 
-              and expected outcomes. Always think about edge cases and production requirements.`
+              content: `You are an AI assistant specialized in creating detailed workflow automation prompts for n8n. 
+
+Your role is to help users create comprehensive, production-ready workflow prompts by:
+
+1. Understanding their automation needs
+2. Identifying required triggers, integrations, and data flows
+3. Suggesting error handling and edge cases
+4. Structuring the prompt for maximum clarity
+
+When responding:
+- Ask clarifying questions if the request is vague
+- Suggest additional features that might be helpful
+- Structure your response with clear sections
+- Include specific technical requirements
+- Consider scalability and reliability
+
+Format your responses to include:
+- Brief summary of the workflow
+- List of triggers and their configuration
+- Required integrations and APIs
+- Data processing steps
+- Error handling strategies
+- Expected outcomes and success criteria
+
+Always aim for production-ready, enterprise-grade workflows.`
             },
             ...messages.slice(1).map(m => ({ role: m.role, content: m.content })),
             { role: 'user', content: input }

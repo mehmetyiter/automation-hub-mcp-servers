@@ -103,14 +103,83 @@ export class AIWorkflowGenerator {
   }
   
   private isComplexPrompt(prompt: string): boolean {
-    const indicators = [
-      'BRANCH', 'PARALLEL', 'multiple channels', 'simultaneously',
-      'different flows', 'complex', 'advanced', '20+ nodes',
-      'MAIN FLOW', 'PARALLEL FLOW', 'multiple branches'
+    const lowerPrompt = prompt.toLowerCase();
+    let complexityScore = 0;
+    
+    // Multiple sections/phases (high complexity indicator)
+    const sectionIndicators = [
+      'trigger events', 'data collection', 'integrations', 'error handling',
+      'expected outcomes', 'edge cases', 'phase 1', 'phase 2', 'branch',
+      'parallel', 'stage', 'step 1', 'step 2', 'workflow:', 'main flow',
+      'parallel flow', 'multiple branches', 'simultaneously', 'different flows'
     ];
-    return indicators.some(indicator => 
-      prompt.toUpperCase().includes(indicator.toUpperCase())
-    );
+    sectionIndicators.forEach(indicator => {
+      if (lowerPrompt.includes(indicator)) complexityScore += 3;
+    });
+    
+    // Multiple triggers (parallel branches)
+    const triggers = ['webhook', 'cron', 'schedule', 'trigger', 'when'];
+    let triggerCount = 0;
+    triggers.forEach(trigger => {
+      const matches = (lowerPrompt.match(new RegExp(trigger, 'g')) || []).length;
+      triggerCount += matches;
+    });
+    if (triggerCount >= 3) complexityScore += 5;
+    
+    // Integration count (external systems)
+    const integrations = [
+      'database', 'api', 'email', 'sms', 'slack', 'calendar', 
+      'webhook', 'mysql', 'postgresql', 'twilio', 'sendgrid',
+      'stripe', 'paypal', 'aws', 'google', 'microsoft', 'azure'
+    ];
+    let integrationCount = 0;
+    integrations.forEach(integration => {
+      if (lowerPrompt.includes(integration)) integrationCount++;
+    });
+    if (integrationCount >= 4) complexityScore += 4;
+    
+    // Error handling complexity
+    const errorHandling = [
+      'error handling', 'retry', 'fallback', 'try', 'catch',
+      'failure', 'timeout', 'validation', 'exception', 'rollback'
+    ];
+    errorHandling.forEach(error => {
+      if (lowerPrompt.includes(error)) complexityScore += 2;
+    });
+    
+    // Business logic complexity
+    const businessLogic = [
+      'approval', 'escalation', 'conditional', 'if', 'decision',
+      'loop', 'iterate', 'batch', 'queue', 'priority', 'workflow',
+      'orchestration', 'coordination', 'synchronization'
+    ];
+    businessLogic.forEach(logic => {
+      if (lowerPrompt.includes(logic)) complexityScore += 2;
+    });
+    
+    // Word count (longer prompts = more complex)
+    const wordCount = prompt.split(' ').length;
+    if (wordCount > 200) complexityScore += 3;
+    if (wordCount > 400) complexityScore += 5;
+    
+    // Line count (structured prompts)
+    const lineCount = prompt.split('\n').length;
+    if (lineCount > 10) complexityScore += 3;
+    if (lineCount > 20) complexityScore += 5;
+    
+    // Specific complexity indicators
+    const complexityIndicators = [
+      '20+ nodes', '30+ nodes', 'complex', 'advanced', 'enterprise',
+      'production-ready', 'scalable', 'distributed', 'microservices'
+    ];
+    complexityIndicators.forEach(indicator => {
+      if (lowerPrompt.includes(indicator)) complexityScore += 5;
+    });
+    
+    console.log(`Complexity analysis: Score = ${complexityScore}, Word count = ${wordCount}, Line count = ${lineCount}`);
+    
+    // Threshold for complex workflow (15+ points)
+    return complexityScore >= 15;
   }
   
   private async generateInStages(prompt: string, name: string): Promise<any> {
@@ -292,7 +361,12 @@ Important:
     const nodes = branch.nodes || [];
     let connections = this.normalizeConnectionFormat(branch.connections || {});
     
-    // If we have nodes but no connections, create a linear flow
+    // 1. Ensure all nodes have required parameters
+    nodes.forEach((node: any) => {
+      this.addMissingNodeParameters(node);
+    });
+    
+    // 2. If we have nodes but no connections, create a linear flow
     if (nodes.length > 0 && Object.keys(connections).length === 0) {
       console.log(`Creating linear connections for ${nodes.length} nodes in ${nodePrefix}`);
       for (let i = 0; i < nodes.length - 1; i++) {
@@ -727,6 +801,268 @@ Important:
     });
     
     return fixedConnections;
+  }
+  
+  private addMissingNodeParameters(node: any): void {
+    // Add missing parameters based on node type
+    switch (node.type) {
+      case 'n8n-nodes-base.set':
+        if (!node.parameters) node.parameters = {};
+        if (!node.parameters.mode) node.parameters.mode = 'manual';
+        if (!node.parameters.values) node.parameters.values = { values: [] };
+        break;
+        
+      case 'n8n-nodes-base.code':
+        if (!node.parameters) node.parameters = {};
+        if (!node.parameters.language) node.parameters.language = 'javaScript';
+        if (!node.parameters.jsCode) node.parameters.jsCode = 'return items;';
+        break;
+        
+      case 'n8n-nodes-base.httpRequest':
+        if (!node.parameters) node.parameters = {};
+        if (!node.parameters.method) node.parameters.method = 'GET';
+        if (!node.parameters.url) node.parameters.url = 'https://api.example.com';
+        if (!node.parameters.options) node.parameters.options = {};
+        break;
+        
+      case 'n8n-nodes-base.if':
+        if (!node.parameters) node.parameters = {};
+        if (!node.parameters.conditions) {
+          node.parameters.conditions = {
+            options: { version: 2 },
+            conditions: [{
+              leftValue: '={{ $json.field }}',
+              rightValue: 'value',
+              operator: { type: 'string', operation: 'equals' }
+            }]
+          };
+        }
+        break;
+        
+      case 'n8n-nodes-base.switch':
+        if (!node.parameters) node.parameters = {};
+        if (!node.parameters.rules) {
+          node.parameters.rules = {
+            rules: [{
+              conditions: {
+                conditions: [{
+                  leftValue: '={{ $json.field }}',
+                  rightValue: 'value',
+                  operator: { type: 'string', operation: 'equals' }
+                }]
+              },
+              output: 0
+            }]
+          };
+        }
+        break;
+        
+      case 'n8n-nodes-base.merge':
+        if (!node.parameters) node.parameters = {};
+        if (!node.parameters.mode) node.parameters.mode = 'combine';
+        if (!node.parameters.combinationMode) node.parameters.combinationMode = 'mergeByPosition';
+        break;
+        
+      case 'n8n-nodes-base.emailSend':
+        if (!node.parameters) node.parameters = {};
+        if (!node.parameters.fromEmail) node.parameters.fromEmail = 'noreply@example.com';
+        if (!node.parameters.toEmail) node.parameters.toEmail = '={{ $json.email }}';
+        if (!node.parameters.subject) node.parameters.subject = 'Notification';
+        if (!node.parameters.text) node.parameters.text = 'Email content here';
+        break;
+        
+      case 'n8n-nodes-base.webhook':
+        if (!node.parameters) node.parameters = {};
+        if (!node.parameters.path) node.parameters.path = 'webhook';
+        if (!node.parameters.method) node.parameters.method = 'POST';
+        if (!node.parameters.responseMode) node.parameters.responseMode = 'lastNode';
+        break;
+        
+      case 'n8n-nodes-base.cron':
+        if (!node.parameters) node.parameters = {};
+        if (!node.parameters.cronTimes) {
+          node.parameters.cronTimes = {
+            item: [{ mode: 'everyMinute' }]
+          };
+        }
+        break;
+    }
+  }
+  
+  private ensureMergeNodesHaveOutputs(workflow: any): void {
+    const nodes = workflow.nodes || [];
+    const connections = workflow.connections || {};
+    
+    // Find all merge nodes
+    const mergeNodes = nodes.filter((node: any) => 
+      node.type === 'n8n-nodes-base.merge' || 
+      node.name.toLowerCase().includes('merge')
+    );
+    
+    mergeNodes.forEach((mergeNode: any) => {
+      // Check if merge node has output connections
+      if (!connections[mergeNode.name] || 
+          !connections[mergeNode.name].main || 
+          connections[mergeNode.name].main[0].length === 0) {
+        
+        // Find a suitable node to connect after merge
+        const completionNode = nodes.find((node: any) => 
+          node.name.toLowerCase().includes('complete') ||
+          node.name.toLowerCase().includes('final') ||
+          node.name.toLowerCase().includes('log')
+        );
+        
+        if (completionNode && completionNode.name !== mergeNode.name) {
+          if (!connections[mergeNode.name]) {
+            connections[mergeNode.name] = { main: [[]] };
+          }
+          connections[mergeNode.name].main[0] = [{
+            node: completionNode.name,
+            type: 'main',
+            index: 0
+          }];
+          console.log(`Connected merge node ${mergeNode.name} to ${completionNode.name}`);
+        }
+      }
+    });
+  }
+  
+  private findOrphanedNodes(workflow: any): any[] {
+    const nodes = workflow.nodes || [];
+    const connections = workflow.connections || {};
+    
+    const connectedNodes = new Set<string>();
+    
+    // Add all nodes that appear in connections
+    Object.entries(connections).forEach(([source, targets]: [string, any]) => {
+      connectedNodes.add(source);
+      if (targets.main) {
+        targets.main.forEach((targetGroup: any[]) => {
+          targetGroup.forEach((target: any) => {
+            connectedNodes.add(target.node);
+          });
+        });
+      }
+    });
+    
+    // Find nodes not in connections
+    return nodes.filter((node: any) => !connectedNodes.has(node.name));
+  }
+  
+  private connectOrphanedNodes(workflow: any, orphanedNodes: any[]): void {
+    const nodes = workflow.nodes || [];
+    const connections = workflow.connections || {};
+    
+    orphanedNodes.forEach((orphan: any) => {
+      // Find best connection point based on node position and type
+      let connected = false;
+      
+      // Try to connect based on node type
+      if (orphan.name.toLowerCase().includes('merge') || 
+          orphan.name.toLowerCase().includes('final')) {
+        // Connect merge/final nodes to end of branches
+        const branchEndNodes = nodes.filter((n: any) => 
+          n.name.toLowerCase().includes('complete') ||
+          n.name.toLowerCase().includes('send') ||
+          n.name.toLowerCase().includes('update')
+        );
+        
+        branchEndNodes.forEach((endNode: any) => {
+          if (!connections[endNode.name]) {
+            connections[endNode.name] = { main: [[]] };
+          }
+          connections[endNode.name].main[0].push({
+            node: orphan.name,
+            type: 'main',
+            index: 0
+          });
+          connected = true;
+        });
+      }
+      
+      if (!connected) {
+        // Connect to nearest node by position
+        const nearestNode = this.findNearestNode(orphan, nodes, connections);
+        if (nearestNode) {
+          if (!connections[nearestNode.name]) {
+            connections[nearestNode.name] = { main: [[]] };
+          }
+          connections[nearestNode.name].main[0].push({
+            node: orphan.name,
+            type: 'main',
+            index: 0
+          });
+        }
+      }
+    });
+  }
+  
+  private findNearestNode(targetNode: any, allNodes: any[], connections: any): any {
+    let nearestNode = null;
+    let minDistance = Infinity;
+    
+    allNodes.forEach((node: any) => {
+      if (node.name !== targetNode.name) {
+        const distance = Math.sqrt(
+          Math.pow(targetNode.position[0] - node.position[0], 2) +
+          Math.pow(targetNode.position[1] - node.position[1], 2)
+        );
+        
+        // Prefer nodes to the left (earlier in flow)
+        if (distance < minDistance && node.position[0] < targetNode.position[0]) {
+          minDistance = distance;
+          nearestNode = node;
+        }
+      }
+    });
+    
+    return nearestNode;
+  }
+  
+  private addErrorHandlingConnections(workflow: any): void {
+    const nodes = workflow.nodes || [];
+    const connections = workflow.connections || {};
+    
+    // Find nodes that should have error handling
+    const criticalNodes = nodes.filter((node: any) => 
+      node.type === 'n8n-nodes-base.httpRequest' ||
+      node.type === 'n8n-nodes-base.postgres' ||
+      node.type === 'n8n-nodes-base.emailSend' ||
+      node.type === 'n8n-nodes-base.twilioSms' ||
+      node.name.toLowerCase().includes('api') ||
+      node.name.toLowerCase().includes('database')
+    );
+    
+    // Find or create error handler nodes
+    const errorHandlers = nodes.filter((node: any) => 
+      node.name.toLowerCase().includes('error') ||
+      node.name.toLowerCase().includes('handler')
+    );
+    
+    criticalNodes.forEach((node: any) => {
+      const nodeConnections = connections[node.name];
+      if (nodeConnections && nodeConnections.main && !nodeConnections.main[1]) {
+        // Find appropriate error handler
+        const errorHandler = errorHandlers.find((handler: any) => {
+          // Try to match by branch prefix
+          const nodePrefix = node.id.split('_')[0];
+          return handler.id.startsWith(nodePrefix);
+        }) || errorHandlers[0];
+        
+        if (errorHandler) {
+          // Add error output connection
+          if (!nodeConnections.main[1]) {
+            nodeConnections.main[1] = [];
+          }
+          nodeConnections.main[1] = [{
+            node: errorHandler.name,
+            type: 'main',
+            index: 0
+          }];
+          console.log(`Added error handling: ${node.name} -> ${errorHandler.name}`);
+        }
+      }
+    });
   }
   
   private async callAIAPI(prompt: string): Promise<any> {
