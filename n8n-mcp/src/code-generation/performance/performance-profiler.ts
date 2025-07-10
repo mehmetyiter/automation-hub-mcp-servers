@@ -8,6 +8,7 @@ import {
   ValidationError 
 } from '../errors/custom-errors';
 import { ExecutionContext } from '../types/common-types';
+import { EventEmitter } from 'events';
 
 export interface PerformanceProfile {
   id: string;
@@ -163,6 +164,65 @@ export interface OptimizationSuggestion {
   effort: number; // hours
 }
 
+// Real-time monitoring interfaces
+export interface RealTimeMetrics {
+  timestamp: number;
+  codeId: string;
+  memory: {
+    heapUsed: number;
+    heapTotal: number;
+    rss: number;
+    external: number;
+  };
+  cpu: {
+    user: number;
+    system: number;
+    total: number;
+  };
+  trends: PerformanceTrends;
+  eventLoop: number; // lag in ms
+  gc: GCInfo;
+}
+
+export interface PerformanceTrends {
+  memory: {
+    direction: 'increasing' | 'decreasing' | 'stable';
+    rate: number; // bytes per second
+  };
+  cpu: {
+    direction: 'increasing' | 'decreasing' | 'stable';
+    rate: number; // ms per second
+  };
+}
+
+export interface GCInfo {
+  forced: boolean;
+  duration: number;
+  type: string;
+}
+
+export interface PerformanceThresholds {
+  memory?: {
+    heapUsed?: number;
+    rss?: number;
+  };
+  cpu?: {
+    user?: number;
+    system?: number;
+    total?: number;
+  };
+  eventLoopLag?: number;
+}
+
+export interface PerformanceAlert {
+  type: 'memory' | 'cpu' | 'eventloop' | 'memory_leak';
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  message: string;
+  timestamp: number;
+  value: number;
+  threshold: number;
+}
+
 export interface ProfilingOptions {
   duration?: number; // ms
   sampleRate?: number; // samples per second
@@ -177,12 +237,18 @@ export class PerformanceProfiler {
   private performanceObserver?: PerformanceObserver;
   private profileCache: Map<string, PerformanceProfile>;
   private activeProfiles: Map<string, any>;
+  private monitoringIntervals: Map<string, NodeJS.Timeout>;
+  private performanceStreams: Map<string, any>;
+  private realTimeMetrics: Map<string, RealTimeMetrics[]>;
 
   constructor(provider?: string) {
     this.aiService = new AIService(provider);
     this.database = new CodeGenerationDatabase();
     this.profileCache = new Map();
     this.activeProfiles = new Map();
+    this.monitoringIntervals = new Map();
+    this.performanceStreams = new Map();
+    this.realTimeMetrics = new Map();
   }
 
   async profileCodeExecution(
@@ -943,5 +1009,273 @@ ${profile.optimizationSuggestions
 4. Consider caching for frequently computed results
 5. Monitor memory usage in production
 `;
+  }
+
+  // Real-time Performance Monitoring Implementation
+  async startRealTimeMonitoring(
+    codeId: string,
+    options: {
+      interval?: number;
+      thresholds?: PerformanceThresholds;
+      onAlert?: (alert: PerformanceAlert) => void;
+      onMetrics?: (metrics: RealTimeMetrics) => void;
+    } = {}
+  ): Promise<string> {
+    const monitoringId = `monitor_${codeId}_${Date.now()}`;
+    const interval = options.interval || 1000; // Default 1 second
+    
+    console.log(`🔄 Starting real-time monitoring for ${codeId} (interval: ${interval}ms)`);
+    
+    // Initialize metrics storage
+    this.realTimeMetrics.set(monitoringId, []);
+    
+    const monitoringInterval = setInterval(async () => {
+      try {
+        const metrics = await this.collectRealTimeMetrics(codeId);
+        
+        // Store metrics
+        const metricsHistory = this.realTimeMetrics.get(monitoringId) || [];
+        metricsHistory.push(metrics);
+        
+        // Keep only last 100 measurements to prevent memory issues
+        if (metricsHistory.length > 100) {
+          metricsHistory.shift();
+        }
+        this.realTimeMetrics.set(monitoringId, metricsHistory);
+        
+        // Check thresholds and generate alerts
+        if (options.thresholds) {
+          const alerts = this.checkThresholds(metrics, options.thresholds);
+          alerts.forEach(alert => {
+            console.warn(`⚠️ Performance Alert: ${alert.message}`);
+            options.onAlert?.(alert);
+          });
+        }
+        
+        // Emit metrics
+        options.onMetrics?.(metrics);
+        
+      } catch (error) {
+        console.error('Real-time monitoring error:', error);
+      }
+    }, interval);
+    
+    this.monitoringIntervals.set(monitoringId, monitoringInterval);
+    
+    return monitoringId;
+  }
+
+  async stopRealTimeMonitoring(monitoringId: string): Promise<void> {
+    const interval = this.monitoringIntervals.get(monitoringId);
+    if (interval) {
+      clearInterval(interval);
+      this.monitoringIntervals.delete(monitoringId);
+      console.log(`⏹️ Stopped real-time monitoring: ${monitoringId}`);
+    }
+    
+    // Clean up metrics data
+    this.realTimeMetrics.delete(monitoringId);
+  }
+
+  private async collectRealTimeMetrics(codeId: string): Promise<RealTimeMetrics> {
+    const timestamp = Date.now();
+    const memoryUsage = process.memoryUsage();
+    const cpuUsage = process.cpuUsage();
+    
+    // Get current resource usage
+    const resourceMetrics = {
+      memory: {
+        heapUsed: memoryUsage.heapUsed,
+        heapTotal: memoryUsage.heapTotal,
+        rss: memoryUsage.rss,
+        external: memoryUsage.external
+      },
+      cpu: {
+        user: cpuUsage.user / 1000, // Convert to ms
+        system: cpuUsage.system / 1000,
+        total: (cpuUsage.user + cpuUsage.system) / 1000
+      }
+    };
+    
+    // Calculate rates and trends
+    const previousMetrics = this.getPreviousMetrics(codeId);
+    const trends = this.calculateTrends(resourceMetrics, previousMetrics);
+    
+    return {
+      timestamp,
+      codeId,
+      memory: resourceMetrics.memory,
+      cpu: resourceMetrics.cpu,
+      trends,
+      eventLoop: await this.measureEventLoopLag(),
+      gc: this.getGCStats()
+    };
+  }
+
+  private getPreviousMetrics(codeId: string): RealTimeMetrics | null {
+    for (const [_, metrics] of this.realTimeMetrics.entries()) {
+      const codeMetrics = metrics.filter(m => m.codeId === codeId);
+      if (codeMetrics.length > 0) {
+        return codeMetrics[codeMetrics.length - 1];
+      }
+    }
+    return null;
+  }
+
+  private calculateTrends(
+    current: { memory: any; cpu: any },
+    previous: RealTimeMetrics | null
+  ): PerformanceTrends {
+    if (!previous) {
+      return {
+        memory: { direction: 'stable', rate: 0 },
+        cpu: { direction: 'stable', rate: 0 }
+      };
+    }
+    
+    const memoryDiff = current.memory.heapUsed - previous.memory.heapUsed;
+    const cpuDiff = current.cpu.total - previous.cpu.total;
+    const timeDiff = Date.now() - previous.timestamp;
+    
+    return {
+      memory: {
+        direction: memoryDiff > 0 ? 'increasing' : memoryDiff < 0 ? 'decreasing' : 'stable',
+        rate: memoryDiff / (timeDiff / 1000) // bytes per second
+      },
+      cpu: {
+        direction: cpuDiff > 0 ? 'increasing' : cpuDiff < 0 ? 'decreasing' : 'stable',
+        rate: cpuDiff / (timeDiff / 1000) // ms per second
+      }
+    };
+  }
+
+  private async measureEventLoopLag(): Promise<number> {
+    return new Promise((resolve) => {
+      const start = process.hrtime.bigint();
+      setImmediate(() => {
+        const lag = Number(process.hrtime.bigint() - start) / 1000000; // Convert to ms
+        resolve(lag);
+      });
+    });
+  }
+
+  private getGCStats(): GCInfo {
+    // Basic GC info - would require --expose-gc flag for detailed stats
+    return {
+      forced: false,
+      duration: 0,
+      type: 'unknown'
+    };
+  }
+
+  private checkThresholds(
+    metrics: RealTimeMetrics,
+    thresholds: PerformanceThresholds
+  ): PerformanceAlert[] {
+    const alerts: PerformanceAlert[] = [];
+    
+    // Memory threshold checks
+    if (thresholds.memory?.heapUsed && metrics.memory.heapUsed > thresholds.memory.heapUsed) {
+      alerts.push({
+        type: 'memory',
+        severity: 'high',
+        message: `Heap usage (${(metrics.memory.heapUsed / 1024 / 1024).toFixed(2)}MB) exceeds threshold`,
+        timestamp: metrics.timestamp,
+        value: metrics.memory.heapUsed,
+        threshold: thresholds.memory.heapUsed
+      });
+    }
+    
+    // CPU threshold checks
+    if (thresholds.cpu?.total && metrics.cpu.total > thresholds.cpu.total) {
+      alerts.push({
+        type: 'cpu',
+        severity: 'medium',
+        message: `CPU usage (${metrics.cpu.total.toFixed(2)}ms) exceeds threshold`,
+        timestamp: metrics.timestamp,
+        value: metrics.cpu.total,
+        threshold: thresholds.cpu.total
+      });
+    }
+    
+    // Event loop lag check
+    if (thresholds.eventLoopLag && metrics.eventLoop > thresholds.eventLoopLag) {
+      alerts.push({
+        type: 'eventloop',
+        severity: 'critical',
+        message: `Event loop lag (${metrics.eventLoop.toFixed(2)}ms) exceeds threshold`,
+        timestamp: metrics.timestamp,
+        value: metrics.eventLoop,
+        threshold: thresholds.eventLoopLag
+      });
+    }
+    
+    // Memory trend alerts
+    if (metrics.trends.memory.direction === 'increasing' && metrics.trends.memory.rate > 1024 * 1024) { // 1MB/s
+      alerts.push({
+        type: 'memory_leak',
+        severity: 'high',
+        message: `Potential memory leak detected (${(metrics.trends.memory.rate / 1024 / 1024).toFixed(2)}MB/s growth)`,
+        timestamp: metrics.timestamp,
+        value: metrics.trends.memory.rate,
+        threshold: 1024 * 1024
+      });
+    }
+    
+    return alerts;
+  }
+
+  getRealTimeMetrics(monitoringId: string): RealTimeMetrics[] {
+    return this.realTimeMetrics.get(monitoringId) || [];
+  }
+
+  getActiveMonitors(): string[] {
+    return Array.from(this.monitoringIntervals.keys());
+  }
+
+  async generateRealTimeReport(monitoringId: string): Promise<string> {
+    const metrics = this.getRealTimeMetrics(monitoringId);
+    
+    if (metrics.length === 0) {
+      return 'No real-time metrics available';
+    }
+    
+    const latest = metrics[metrics.length - 1];
+    const duration = metrics.length > 1 ? latest.timestamp - metrics[0].timestamp : 0;
+    
+    return `
+# Real-Time Performance Report
+## Monitoring ID: ${monitoringId}
+## Duration: ${(duration / 1000).toFixed(2)} seconds
+## Samples: ${metrics.length}
+
+### Latest Metrics (${new Date(latest.timestamp).toISOString()})
+- Memory: ${(latest.memory.heapUsed / 1024 / 1024).toFixed(2)}MB / ${(latest.memory.heapTotal / 1024 / 1024).toFixed(2)}MB
+- CPU: ${latest.cpu.total.toFixed(2)}ms (User: ${latest.cpu.user.toFixed(2)}ms, System: ${latest.cpu.system.toFixed(2)}ms)
+- Event Loop Lag: ${latest.eventLoop.toFixed(2)}ms
+
+### Trends
+- Memory: ${latest.trends.memory.direction} (${(latest.trends.memory.rate / 1024).toFixed(2)} KB/s)
+- CPU: ${latest.trends.cpu.direction} (${latest.trends.cpu.rate.toFixed(2)} ms/s)
+
+### Statistics
+- Average Memory: ${(metrics.reduce((sum, m) => sum + m.memory.heapUsed, 0) / metrics.length / 1024 / 1024).toFixed(2)}MB
+- Peak Memory: ${(Math.max(...metrics.map(m => m.memory.heapUsed)) / 1024 / 1024).toFixed(2)}MB
+- Average CPU: ${(metrics.reduce((sum, m) => sum + m.cpu.total, 0) / metrics.length).toFixed(2)}ms
+- Peak Event Loop Lag: ${Math.max(...metrics.map(m => m.eventLoop)).toFixed(2)}ms
+`;
+  }
+
+  cleanup(): void {
+    // Stop all active monitoring
+    for (const [monitoringId] of this.monitoringIntervals) {
+      this.stopRealTimeMonitoring(monitoringId);
+    }
+    
+    // Clear all data
+    this.realTimeMetrics.clear();
+    this.performanceStreams.clear();
+    
+    console.log('🧹 Performance monitoring cleanup completed');
   }
 }
