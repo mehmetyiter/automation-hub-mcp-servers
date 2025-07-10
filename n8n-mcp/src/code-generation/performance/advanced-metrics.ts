@@ -84,11 +84,15 @@ export class AdvancedPerformanceMetrics {
   private aiService: AIService;
   private database: CodeGenerationDatabase;
   private metricsCache: Map<string, DetailedMetrics>;
+  private cacheAccessTimes: Map<string, number> = new Map();
+  private readonly MAX_CACHE_SIZE = 100;
+  private readonly CACHE_CLEANUP_THRESHOLD = 120;
 
   constructor(provider?: string) {
     this.aiService = new AIService(provider);
     this.database = new CodeGenerationDatabase();
     this.metricsCache = new Map();
+    this.cacheAccessTimes = new Map();
   }
 
   async collectDetailedMetrics(
@@ -98,8 +102,12 @@ export class AdvancedPerformanceMetrics {
   ): Promise<DetailedMetrics> {
     console.log('📊 Collecting detailed performance metrics...');
     
+    // Track access time for LRU
+    this.cacheAccessTimes.set(codeId, Date.now());
+    
     // Check cache first
     if (this.metricsCache.has(codeId)) {
+      console.log('🎯 Cache hit for metrics:', codeId);
       return this.metricsCache.get(codeId)!;
     }
 
@@ -123,6 +131,10 @@ export class AdvancedPerformanceMetrics {
 
     // Cache the results
     this.metricsCache.set(codeId, detailedMetrics);
+    this.cacheAccessTimes.set(codeId, Date.now());
+    
+    // Clean cache if needed
+    this.cleanCache();
 
     // Store in database
     await this.saveMetricsToDatabase(codeId, detailedMetrics);
@@ -526,6 +538,25 @@ Identify security vulnerabilities:
       console.log(`💾 Saved metrics for code ${codeId}`);
     } catch (error) {
       console.error('Failed to save metrics to database:', error);
+    }
+  }
+
+  private cleanCache(): void {
+    if (this.metricsCache.size > this.CACHE_CLEANUP_THRESHOLD) {
+      console.log(`🧹 Cleaning metrics cache using LRU (size: ${this.metricsCache.size})`);
+      
+      // Use LRU strategy - sort by access time
+      const entries = Array.from(this.cacheAccessTimes.entries())
+        .sort((a, b) => a[1] - b[1]); // Sort by access time (oldest first)
+      
+      // Remove oldest entries to get back to MAX_CACHE_SIZE
+      const toRemove = entries.slice(0, this.metricsCache.size - this.MAX_CACHE_SIZE);
+      toRemove.forEach(([key]) => {
+        this.metricsCache.delete(key);
+        this.cacheAccessTimes.delete(key);
+      });
+      
+      console.log(`✅ Removed ${toRemove.length} metrics from cache`);
     }
   }
 

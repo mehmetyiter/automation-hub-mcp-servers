@@ -385,7 +385,15 @@ Return validation result:
       throw new LanguageAdapterError(
         'SQL validation failed',
         'sql',
-        error
+        { 
+          originalError: error,
+          context: { 
+            sql,
+            dialect,
+            validationPrompt: validationPrompt.substring(0, 200) + '...' 
+          },
+          timestamp: new Date().toISOString()
+        }
       );
     }
   }

@@ -288,6 +288,27 @@ export class PerformanceProfiler {
     context: ExecutionContext,
     options?: ProfilingOptions
   ): Promise<ExecutionProfile> {
+    // Add timeout protection
+    const PROFILING_TIMEOUT = 30000; // 30 seconds
+    
+    return Promise.race([
+      this.actualProfiling(code, context, options),
+      new Promise<ExecutionProfile>((_, reject) => 
+        setTimeout(() => reject(new PerformanceError(
+          'Profiling timeout exceeded',
+          'execution_time',
+          PROFILING_TIMEOUT,
+          PROFILING_TIMEOUT
+        )), PROFILING_TIMEOUT)
+      )
+    ]);
+  }
+
+  private async actualProfiling(
+    code: string,
+    context: ExecutionContext,
+    options?: ProfilingOptions
+  ): Promise<ExecutionProfile> {
     const phases: ExecutionPhase[] = [];
     const functionCalls: Map<string, FunctionCall> = new Map();
     const asyncOps: Map<string, AsyncOperation> = new Map();

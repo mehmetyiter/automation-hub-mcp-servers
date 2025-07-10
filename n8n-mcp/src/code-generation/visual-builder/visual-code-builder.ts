@@ -1,10 +1,10 @@
-import { CodeGenerationRequest, GeneratedCode } from '../types';
-import { DynamicCodeGenerator } from '../dynamic-code-generator';
-import { AIService } from '../../ai-service';
+import { CodeGenerationRequest, GeneratedCode } from '../types.js';
+import { DynamicCodeGenerator } from '../dynamic-code-generator.js';
+import { AIService } from '../../ai-service.js';
 import { 
   ValidationError,
   WorkflowError 
-} from '../errors/custom-errors';
+} from '../errors/custom-errors.js';
 
 export interface VisualBlock {
   id: string;
@@ -466,7 +466,7 @@ export class VisualCodeBuilder {
       const placeholder = `{{${param.name}}}`;
       const value = typeof param.value === 'object' 
         ? JSON.stringify(param.value)
-        : param.value;
+        : String(param.value ?? '');
       code = code.replace(new RegExp(placeholder, 'g'), value);
     });
     
@@ -670,7 +670,8 @@ Return suggestions as JSON:
       // Map to available templates
       const templates: BlockTemplate[] = [];
       suggestions.forEach((suggestion: { type: string; reason: string }) => {
-        const typeTemplates = this.blockTemplates.get(suggestion.type) || [];
+        const blockType = suggestion.type as BlockType;
+        const typeTemplates = this.blockTemplates.get(blockType) || [];
         templates.push(...typeTemplates.filter(t => 
           t.supportedLanguages.includes(flow.metadata.language)
         ));
@@ -714,14 +715,14 @@ Return suggestions as JSON:
   }
 
   private generateFlowId(): string {
-    return `flow_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `flow_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
   private generateBlockId(): string {
-    return `block_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `block_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 
   private generateConnectionId(): string {
-    return `conn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    return `conn_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
   }
 }
