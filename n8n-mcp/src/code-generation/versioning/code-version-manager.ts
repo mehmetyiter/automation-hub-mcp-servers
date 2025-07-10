@@ -4,6 +4,39 @@ import { DynamicCodeGenerator } from '../dynamic-code-generator';
 import { RealTimeQualityAssessor } from '../quality/real-time-quality-assessor';
 import { AdvancedPerformanceMetrics } from '../performance/advanced-metrics';
 import * as crypto from 'crypto';
+import { 
+  VersioningError,
+  ValidationError 
+} from '../errors/custom-errors';
+
+// Internal types for performance metrics
+interface PerformanceMetricsData {
+  performance: {
+    executionTime: {
+      avg: number;
+      min: number;
+      max: number;
+    };
+    throughput: {
+      itemsPerSecond: number;
+    };
+  };
+  memoryProfile: {
+    heapUsed: number;
+    heapTotal: number;
+  };
+  codeQuality?: {
+    maintainabilityIndex: number;
+    cyclomaticComplexity: number;
+    documentationScore: number;
+  };
+  security?: {
+    vulnerabilities: Array<{
+      severity: 'critical' | 'high' | 'medium' | 'low';
+      type: string;
+    }>;
+  };
+}
 
 export interface CodeVersion {
   id: string;
@@ -25,8 +58,8 @@ export interface VersionMetadata {
   description: string;
   changeType: 'major' | 'minor' | 'patch' | 'rollback';
   changes: string[];
-  context: any;
-  request: any;
+  context: Record<string, unknown>;
+  request: Record<string, unknown>;
   improvements: string[];
   regressions: string[];
 }
@@ -35,7 +68,7 @@ export interface DeploymentStatus {
   deployed: boolean;
   environment?: string;
   deployedAt?: Date;
-  performanceMetrics?: any;
+  performanceMetrics?: Record<string, unknown>;
   issues?: string[];
 }
 
@@ -101,7 +134,7 @@ export interface RollbackRequest {
 export interface RollbackResult {
   success: boolean;
   newVersion: CodeVersion;
-  validationResults?: any;
+  validationResults?: Record<string, unknown>;
   warnings?: string[];
   performanceComparison?: PerformanceDiff;
 }
@@ -209,8 +242,20 @@ export class CodeVersionManager {
     const versionA = versions.find(v => v.id === versionAId);
     const versionB = versions.find(v => v.id === versionBId);
     
-    if (!versionA || !versionB) {
-      throw new Error('Version not found');
+    if (!versionA) {
+      throw new VersioningError(
+        `Version ${versionAId} not found`,
+        codeId,
+        'compareVersions'
+      );
+    }
+    
+    if (!versionB) {
+      throw new VersioningError(
+        `Version ${versionBId} not found`,
+        codeId,
+        'compareVersions'
+      );
     }
     
     // Perform comparisons in parallel
@@ -245,12 +290,20 @@ export class CodeVersionManager {
     const targetVersion = versions.find(v => v.id === request.targetVersion);
     
     if (!targetVersion) {
-      throw new Error(`Target version ${request.targetVersion} not found`);
+      throw new VersioningError(
+        `Target version ${request.targetVersion} not found`,
+        request.codeId,
+        'rollback'
+      );
     }
     
     const currentVersion = versions.find(v => v.isActive);
     if (!currentVersion) {
-      throw new Error('No active version found');
+      throw new VersioningError(
+        'No active version found',
+        request.codeId,
+        'rollback'
+      );
     }
     
     // Create rollback metadata
@@ -485,7 +538,7 @@ Analyze the differences and provide:
     };
   }
 
-  private identifyPerformanceImprovements(perfA: any, perfB: any): string[] {
+  private identifyPerformanceImprovements(perfA: PerformanceMetricsData, perfB: PerformanceMetricsData): string[] {
     const improvements: string[] = [];
     
     if (perfB.performance.executionTime.avg < perfA.performance.executionTime.avg) {
@@ -503,7 +556,7 @@ Analyze the differences and provide:
     return improvements;
   }
 
-  private identifyPerformanceRegressions(perfA: any, perfB: any): string[] {
+  private identifyPerformanceRegressions(perfA: PerformanceMetricsData, perfB: PerformanceMetricsData): string[] {
     const regressions: string[] = [];
     
     if (perfB.performance.executionTime.avg > perfA.performance.executionTime.avg * 1.2) {
@@ -662,7 +715,7 @@ Provide validation results:
     return Math.round(totalScore);
   }
 
-  private calculatePerformanceScore(metrics: any): number {
+  private calculatePerformanceScore(metrics: PerformanceMetricsData): number {
     // Convert detailed metrics to 0-100 score
     let score = 100;
     
@@ -677,8 +730,8 @@ Provide validation results:
     }
     
     // Penalize security issues
-    score -= metrics.security.vulnerabilities.filter((v: any) => v.severity === 'critical').length * 20;
-    score -= metrics.security.vulnerabilities.filter((v: any) => v.severity === 'high').length * 10;
+    score -= metrics.security.vulnerabilities.filter(v => v.severity === 'critical').length * 20;
+    score -= metrics.security.vulnerabilities.filter(v => v.severity === 'high').length * 10;
     
     return Math.max(0, Math.round(score));
   }

@@ -8,6 +8,17 @@ import {
   CodeGenerationRequest,
   GeneratedCode
 } from '../types';
+import { 
+  DatabaseError 
+} from '../errors/custom-errors';
+import { 
+  CodePatternRow,
+  ExecutionMetricsRow,
+  LearningDataRow,
+  CodeVersionRow,
+  UserFeedbackRow,
+  DatabaseRow 
+} from '../types/common-types';
 
 export interface PatternCriteria {
   type?: string;
@@ -30,10 +41,12 @@ export interface CodeVersion {
 export class CodeGenerationDatabase {
   private db: Database;
   private dbPath: string;
+  private isConnected: boolean = false;
 
   constructor(dbPath?: string) {
     this.dbPath = dbPath || path.join(process.cwd(), 'data', 'code-generation.db');
     this.initializeDatabase();
+    this.setupCleanup();
   }
 
   private initializeDatabase() {
@@ -46,12 +59,47 @@ export class CodeGenerationDatabase {
     // Create database connection
     const Database = require('better-sqlite3');
     this.db = new Database(this.dbPath);
+    this.isConnected = true;
 
-    // Enable foreign keys
+    // Enable foreign keys and WAL mode for better performance
     this.db.exec('PRAGMA foreign_keys = ON');
+    this.db.exec('PRAGMA journal_mode = WAL');
 
     // Create tables
     this.createTables();
+    
+    console.log('📊 Database connected successfully');
+  }
+
+  async disconnect(): Promise<void> {
+    if (this.isConnected && this.db) {
+      try {
+        this.db.close();
+        this.isConnected = false;
+        console.log('📊 Database disconnected');
+      } catch (error) {
+        const dbError = new DatabaseError(
+          'Failed to close database connection',
+          'disconnect',
+          error
+        );
+        console.error(dbError);
+        throw dbError;
+      }
+    }
+  }
+
+  private setupCleanup(): void {
+    // Automatically close database on process exit
+    process.on('exit', () => this.disconnect());
+    process.on('SIGINT', () => {
+      this.disconnect();
+      process.exit(0);
+    });
+    process.on('SIGTERM', () => {
+      this.disconnect();
+      process.exit(0);
+    });
   }
 
   private createTables() {
@@ -163,27 +211,35 @@ export class CodeGenerationDatabase {
 
   // Pattern management methods
   async saveCodePattern(pattern: CodePattern): Promise<string> {
-    const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO code_patterns 
-      (id, name, description, pattern_type, category, language, pattern, 
-       performance_score, reliability_score, metadata, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-    `);
+    try {
+      const stmt = this.db.prepare(`
+        INSERT OR REPLACE INTO code_patterns 
+        (id, name, description, pattern_type, category, language, pattern, 
+         performance_score, reliability_score, metadata, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      `);
 
-    stmt.run(
-      pattern.id,
-      pattern.name,
-      pattern.description,
-      pattern.category || 'general',
-      pattern.category,
-      'javascript', // Default, extend as needed
-      pattern.pattern,
-      pattern.performance,
-      pattern.reliability,
-      JSON.stringify(pattern.usage || [])
-    );
+      stmt.run(
+        pattern.id,
+        pattern.name,
+        pattern.description,
+        pattern.category || 'general',
+        pattern.category,
+        'javascript', // Default, extend as needed
+        pattern.pattern,
+        pattern.performance,
+        pattern.reliability,
+        JSON.stringify(pattern.usage || [])
+      );
 
-    return pattern.id;
+      return pattern.id;
+    } catch (error: any) {
+      throw new DatabaseError(
+        `Failed to save code pattern: ${pattern.id}`,
+        'saveCodePattern',
+        error
+      );
+    }
   }
 
   async getSuccessfulPatterns(criteria: PatternCriteria): Promise<CodePattern[]> {
@@ -191,7 +247,7 @@ export class CodeGenerationDatabase {
       SELECT * FROM code_patterns 
       WHERE 1=1
     `;
-    const params: any[] = [];
+    const params: (string | number)[] = [];
 
     if (criteria.type) {
       query += ' AND pattern_type = ?';
@@ -221,7 +277,7 @@ export class CodeGenerationDatabase {
     }
 
     const stmt = this.db.prepare(query);
-    const rows = stmt.all(...params);
+    const rows = stmt.all(...params) as CodePatternRow[];
 
     return rows.map(row => ({
       id: row.id,
@@ -249,24 +305,32 @@ export class CodeGenerationDatabase {
 
   // Execution metrics methods
   async saveExecutionMetrics(metrics: ExecutionMetrics): Promise<void> {
-    const stmt = this.db.prepare(`
-      INSERT INTO code_execution_metrics
-      (code_id, execution_time, memory_usage, success, error_details, 
-       input_size, output_size, performance_issues, timestamp)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    try {
+      const stmt = this.db.prepare(`
+        INSERT INTO code_execution_metrics
+        (code_id, execution_time, memory_usage, success, error_details, 
+         input_size, output_size, performance_issues, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
 
-    stmt.run(
-      metrics.codeId,
-      metrics.executionTime,
-      metrics.memoryUsed,
-      metrics.success ? 1 : 0,
-      metrics.error || null,
-      metrics.inputSize,
-      metrics.outputSize,
-      JSON.stringify(metrics),
-      metrics.timestamp
-    );
+      stmt.run(
+        metrics.codeId,
+        metrics.executionTime,
+        metrics.memoryUsed,
+        metrics.success ? 1 : 0,
+        metrics.error || null,
+        metrics.inputSize,
+        metrics.outputSize,
+        JSON.stringify(metrics),
+        metrics.timestamp
+      );
+    } catch (error: any) {
+      throw new DatabaseError(
+        `Failed to save execution metrics for code: ${metrics.codeId}`,
+        'saveExecutionMetrics',
+        error
+      );
+    }
   }
 
   async getExecutionMetrics(codeId: string): Promise<ExecutionMetrics[]> {
@@ -276,7 +340,7 @@ export class CodeGenerationDatabase {
       ORDER BY timestamp DESC
     `);
 
-    const rows = stmt.all(codeId);
+    const rows = stmt.all(codeId) as ExecutionMetricsRow[];
 
     return rows.map(row => ({
       codeId: row.code_id,
@@ -292,23 +356,31 @@ export class CodeGenerationDatabase {
 
   // Learning data methods
   async saveLearningData(data: LearningData): Promise<void> {
-    const requestHash = this.hashRequest(data.request);
-    
-    const stmt = this.db.prepare(`
-      INSERT INTO learning_data
-      (request_hash, request, generated_code, execution_result, user_feedback, patterns, timestamp)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+    try {
+      const requestHash = this.hashRequest(data.request);
+      
+      const stmt = this.db.prepare(`
+        INSERT INTO learning_data
+        (request_hash, request, generated_code, execution_result, user_feedback, patterns, timestamp)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
 
-    stmt.run(
-      requestHash,
-      JSON.stringify(data.request),
-      data.generatedCode,
-      JSON.stringify(data.executionResult),
-      data.userFeedback ? JSON.stringify(data.userFeedback) : null,
-      JSON.stringify(data.patterns),
-      data.timestamp
-    );
+      stmt.run(
+        requestHash,
+        JSON.stringify(data.request),
+        data.generatedCode,
+        JSON.stringify(data.executionResult),
+        data.userFeedback ? JSON.stringify(data.userFeedback) : null,
+        JSON.stringify(data.patterns),
+        data.timestamp
+      );
+    } catch (error: any) {
+      throw new DatabaseError(
+        'Failed to save learning data',
+        'saveLearningData',
+        error
+      );
+    }
   }
 
   async getLearningData(limit: number = 100): Promise<LearningData[]> {
@@ -318,7 +390,7 @@ export class CodeGenerationDatabase {
       LIMIT ?
     `);
 
-    const rows = stmt.all(limit);
+    const rows = stmt.all(limit) as LearningDataRow[];
 
     return rows.map(row => ({
       request: JSON.parse(row.request),
@@ -336,51 +408,67 @@ export class CodeGenerationDatabase {
     request: CodeGenerationRequest,
     result: GeneratedCode
   ): Promise<void> {
-    const requestHash = this.hashRequest(request);
-    
-    const stmt = this.db.prepare(`
-      INSERT INTO generated_codes
-      (id, request_hash, code, language, context, metadata, validation_result)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+    try {
+      const requestHash = this.hashRequest(request);
+      
+      const stmt = this.db.prepare(`
+        INSERT INTO generated_codes
+        (id, request_hash, code, language, context, metadata, validation_result)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
 
-    stmt.run(
-      codeId,
-      requestHash,
-      result.code,
-      request.requirements?.language || 'javascript',
-      JSON.stringify(result.context),
-      JSON.stringify(result.metadata),
-      JSON.stringify(result.validation)
-    );
+      stmt.run(
+        codeId,
+        requestHash,
+        result.code,
+        request.requirements?.language || 'javascript',
+        JSON.stringify(result.context),
+        JSON.stringify(result.metadata),
+        JSON.stringify(result.validation)
+      );
+    } catch (error: any) {
+      throw new DatabaseError(
+        `Failed to save generated code: ${codeId}`,
+        'saveGeneratedCode',
+        error
+      );
+    }
   }
 
   // Code versioning methods
   async saveCodeVersion(version: CodeVersion): Promise<void> {
-    // Get current version number
-    const currentVersion = this.db.prepare(`
-      SELECT MAX(version_number) as max_version 
-      FROM code_versions 
-      WHERE code_id = ?
-    `).get(version.codeId);
+    try {
+      // Get current version number
+      const currentVersion = this.db.prepare(`
+        SELECT MAX(version_number) as max_version 
+        FROM code_versions 
+        WHERE code_id = ?
+      `).get(version.codeId) as { max_version: number | null } | undefined;
 
-    const versionNumber = (currentVersion?.max_version || 0) + 1;
+      const versionNumber = (currentVersion?.max_version || 0) + 1;
 
-    const stmt = this.db.prepare(`
-      INSERT INTO code_versions
-      (id, code_id, version_number, code, metadata, performance, quality)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `);
+      const stmt = this.db.prepare(`
+        INSERT INTO code_versions
+        (id, code_id, version_number, code, metadata, performance, quality)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
 
-    stmt.run(
-      version.id,
-      version.codeId,
-      versionNumber,
-      version.code,
-      JSON.stringify(version.metadata),
-      JSON.stringify(version.performance),
-      JSON.stringify(version.quality)
-    );
+      stmt.run(
+        version.id,
+        version.codeId,
+        versionNumber,
+        version.code,
+        JSON.stringify(version.metadata),
+        JSON.stringify(version.performance),
+        JSON.stringify(version.quality)
+      );
+    } catch (error: any) {
+      throw new DatabaseError(
+        `Failed to save code version: ${version.id}`,
+        'saveCodeVersion',
+        error
+      );
+    }
   }
 
   async getCodeVersions(codeId: string): Promise<CodeVersion[]> {
@@ -390,7 +478,7 @@ export class CodeGenerationDatabase {
       ORDER BY version_number DESC
     `);
 
-    const rows = stmt.all(codeId);
+    const rows = stmt.all(codeId) as CodeVersionRow[];
 
     return rows.map(row => ({
       id: row.id,
@@ -413,29 +501,43 @@ export class CodeGenerationDatabase {
       suggestions?: string[];
     }
   ): Promise<void> {
-    const stmt = this.db.prepare(`
-      INSERT INTO user_feedback
-      (code_id, rating, worked, issues, suggestions)
-      VALUES (?, ?, ?, ?, ?)
-    `);
+    try {
+      const stmt = this.db.prepare(`
+        INSERT INTO user_feedback
+        (code_id, rating, worked, issues, suggestions)
+        VALUES (?, ?, ?, ?, ?)
+      `);
 
-    stmt.run(
-      codeId,
-      feedback.rating,
-      feedback.worked ? 1 : 0,
-      feedback.issues ? JSON.stringify(feedback.issues) : null,
-      feedback.suggestions ? JSON.stringify(feedback.suggestions) : null
-    );
+      stmt.run(
+        codeId,
+        feedback.rating,
+        feedback.worked ? 1 : 0,
+        feedback.issues ? JSON.stringify(feedback.issues) : null,
+        feedback.suggestions ? JSON.stringify(feedback.suggestions) : null
+      );
+    } catch (error: any) {
+      throw new DatabaseError(
+        `Failed to save user feedback for code: ${codeId}`,
+        'saveUserFeedback',
+        error
+      );
+    }
   }
 
-  async getUserFeedback(codeId: string): Promise<any[]> {
+  async getUserFeedback(codeId: string): Promise<Array<{
+    rating: number;
+    worked: boolean;
+    issues: string[];
+    suggestions: string[];
+    timestamp: string;
+  }>> {
     const stmt = this.db.prepare(`
       SELECT * FROM user_feedback
       WHERE code_id = ?
       ORDER BY timestamp DESC
     `);
 
-    const rows = stmt.all(codeId);
+    const rows = stmt.all(codeId) as UserFeedbackRow[];
 
     return rows.map(row => ({
       rating: row.rating,

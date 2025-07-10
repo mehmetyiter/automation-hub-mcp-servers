@@ -18,6 +18,22 @@ import { PerformanceProfiler } from './performance/performance-profiler';
 import { AdvancedPromptingEngine } from './prompting/advanced-prompting-engine';
 import { CodeVersionManager, VersionMetadata } from './versioning/code-version-manager';
 import { AIService } from '../ai-service';
+import { 
+  CodeGenerationError, 
+  ValidationError, 
+  SecurityError, 
+  AIServiceError,
+  LanguageAdapterError,
+  VersioningError,
+  ErrorHandler 
+} from './errors/custom-errors';
+import { 
+  ExecutionContext, 
+  ValidationContext,
+  CodeMetadata,
+  RequestParameters 
+} from './types/common-types';
+import { ProfilingOptions, PerformanceProfile } from './performance/performance-profiler';
 
 export class DynamicCodeGenerator {
   private aiService: AIService;
@@ -117,8 +133,9 @@ export class DynamicCodeGenerator {
         metadata,
         validation: finalValidation
       };
-    } catch (error: any) {
-      console.error('❌ Code generation failed:', error);
+    } catch (error) {
+      const customError = ErrorHandler.handle(error);
+      console.error('❌ Code generation failed:', customError);
       
       // Generate fallback code
       const fallbackCode = this.generateFallbackCode(request);
@@ -134,7 +151,7 @@ export class DynamicCodeGenerator {
           issues: [{
             type: 'logic',
             severity: 'warning',
-            message: 'Fallback code generated due to error: ' + error.message
+            message: `Fallback code generated due to error: ${customError.message} (${customError.code})`
           }],
           suggestions: ['Review and customize the generated code']
         }
@@ -164,10 +181,10 @@ export class DynamicCodeGenerator {
       case 'oracle':
         const dialect = language === 'sql' ? 'postgresql' : language;
         return this.sqlAdapter.generateSQLCode(request, context, {
-          dialect: dialect as any,
+          dialect: dialect as 'mysql' | 'postgresql' | 'sqlite' | 'mssql' | 'oracle',
           includeTransactions: request.requirements?.includeTransactions,
           includeErrorHandling: true,
-          outputFormat: request.requirements?.outputFormat as any || 'json',
+          outputFormat: (request.requirements?.outputFormat as 'json' | 'table' | 'csv') || 'json',
           performanceOptimized: request.requirements?.performanceLevel === 'optimized'
         });
         
@@ -175,11 +192,11 @@ export class DynamicCodeGenerator {
       case 'ts':
         return this.typeScriptAdapter.generateTypeScriptCode(request, context, {
           strict: request.requirements?.strict ?? true,
-          targetES: request.requirements?.targetES as any || 'ES2020',
-          moduleSystem: request.requirements?.moduleSystem as any || 'commonjs',
+          targetES: (request.requirements?.targetES as 'ES2015' | 'ES2016' | 'ES2017' | 'ES2018' | 'ES2019' | 'ES2020' | 'ES2021' | 'ES2022' | 'ESNext') || 'ES2020',
+          moduleSystem: (request.requirements?.moduleSystem as 'commonjs' | 'es6' | 'amd' | 'umd' | 'system') || 'commonjs',
           includeTypes: true,
           asyncAwait: true,
-          errorHandling: request.requirements?.errorHandling as any || 'try-catch'
+          errorHandling: (request.requirements?.errorHandling as 'try-catch' | 'promise' | 'async-await' | 'callback') || 'try-catch'
         });
         
       case 'r':
@@ -187,7 +204,7 @@ export class DynamicCodeGenerator {
           libraries: request.requirements?.libraries,
           tidyverse: request.requirements?.tidyverse ?? true,
           includeVisualization: request.requirements?.includeVisualization,
-          outputFormat: request.requirements?.outputFormat as any || 'json',
+          outputFormat: (request.requirements?.outputFormat as 'json' | 'table' | 'csv') || 'json',
           statisticalAnalysis: request.requirements?.statisticalAnalysis,
           parallel: request.requirements?.parallel
         });
@@ -409,15 +426,29 @@ return processedItems;`;
 
   async executeGeneratedCode(
     codeId: string, 
-    executionContext: any
-  ): Promise<any> {
+    executionContext: ExecutionContext
+  ): Promise<unknown> {
     const generatedCode = this.generatedCodeCache.get(codeId);
     
     if (!generatedCode) {
-      throw new Error(`Code with ID ${codeId} not found in cache`);
+      throw new ValidationError(
+        `Code with ID ${codeId} not found in cache`,
+        { field: 'codeId', value: codeId }
+      );
     }
     
-    // Monitor the execution
+    // Validate code security before execution
+    const securityCheck = this.validateCodeSecurity(generatedCode.code);
+    if (!securityCheck.isSecure) {
+      console.error('Security validation failed:', securityCheck.issues);
+      throw new SecurityError(
+        'Code execution blocked due to security issues',
+        securityCheck.issues,
+        'critical'
+      );
+    }
+    
+    // Monitor the execution in sandbox
     const executionResult = await this.executionMonitor.monitorExecution(
       codeId,
       {
@@ -431,7 +462,11 @@ return processedItems;`;
     
     if (!executionResult.success) {
       console.error('Code execution failed:', executionResult.error);
-      throw new Error(executionResult.error || 'Code execution failed');
+      throw new CodeGenerationError(
+        executionResult.error || 'Code execution failed',
+        'EXECUTION_ERROR',
+        { codeId, executionContext }
+      );
     }
     
     return executionResult.output;
@@ -459,12 +494,18 @@ return processedItems;`;
 
   async collectAdvancedMetrics(
     codeId: string,
-    executionContext?: any
-  ): Promise<any> {
+    executionContext?: ExecutionContext
+  ): Promise<{
+    metrics: unknown;
+    report: string;
+  }> {
     const generatedCode = this.generatedCodeCache.get(codeId);
     
     if (!generatedCode) {
-      throw new Error(`Code with ID ${codeId} not found in cache`);
+      throw new ValidationError(
+        `Code with ID ${codeId} not found in cache`,
+        { field: 'codeId', value: codeId }
+      );
     }
     
     // Collect detailed performance metrics
@@ -510,7 +551,7 @@ return processedItems;`;
     );
   }
 
-  private createDefaultExecutionContext(): any {
+  private createDefaultExecutionContext(): ExecutionContext {
     return {
       $input: {
         all: () => [
@@ -522,6 +563,73 @@ return processedItems;`;
       $workflow: {},
       $item: {}
     };
+  }
+
+  private validateCodeSecurity(code: string): { isSecure: boolean; issues: string[] } {
+    const issues: string[] = [];
+    const dangerousPatterns = [
+      { pattern: /\beval\s*\(/g, message: 'eval() function detected - high security risk' },
+      { pattern: /new\s+Function\s*\(/g, message: 'Function constructor detected - potential security risk' },
+      { pattern: /\bsetTimeout\s*\([^,]+,/g, message: 'setTimeout with string argument detected' },
+      { pattern: /\bsetInterval\s*\([^,]+,/g, message: 'setInterval with string argument detected' },
+      { pattern: /\brequire\s*\(\s*[^'"]/g, message: 'Dynamic require detected - potential security risk' },
+      { pattern: /\bprocess\.env/g, message: 'Environment variable access detected' },
+      { pattern: /\bchild_process/g, message: 'Child process execution detected' },
+      { pattern: /\bfs\s*\.\s*(unlink|rmdir|rm)/g, message: 'File deletion operation detected' },
+      { pattern: /\b__dirname/g, message: 'Directory path access detected' },
+      { pattern: /\b__filename/g, message: 'File path access detected' }
+    ];
+
+    for (const { pattern, message } of dangerousPatterns) {
+      if (pattern.test(code)) {
+        issues.push(message);
+      }
+    }
+
+    return {
+      isSecure: issues.length === 0,
+      issues
+    };
+  }
+
+  async executeInSandbox(code: string, context: ExecutionContext): Promise<unknown> {
+    // Validate code security first
+    const securityCheck = this.validateCodeSecurity(code);
+    
+    if (!securityCheck.isSecure) {
+      throw new SecurityError(
+        'Code security validation failed',
+        securityCheck.issues,
+        'high'
+      );
+    }
+
+    try {
+      // Create a restricted context
+      const safeContext = {
+        ...context,
+        // Block dangerous globals
+        eval: undefined,
+        Function: undefined,
+        setTimeout: (fn: Function, ms: number) => setTimeout(fn, ms),
+        setInterval: (fn: Function, ms: number) => setInterval(fn, ms),
+        require: undefined,
+        process: undefined,
+        __dirname: undefined,
+        __filename: undefined
+      };
+
+      // Execute in restricted environment
+      const fn = new Function(...Object.keys(safeContext), code);
+      return await fn(...Object.values(safeContext));
+    } catch (error) {
+      const customError = ErrorHandler.handle(error);
+      throw new CodeGenerationError(
+        `Code execution failed: ${customError.message}`,
+        'SANDBOX_EXECUTION_ERROR',
+        { originalError: customError }
+      );
+    }
   }
 
   async getCodeVersions(codeId: string) {
@@ -560,7 +668,11 @@ return processedItems;`;
     // Get the active version
     const activeVersion = await this.versionManager.getActiveVersion(codeId);
     if (!activeVersion) {
-      throw new Error('No active version found');
+      throw new VersioningError(
+        'No active version found',
+        codeId,
+        'getActiveVersion'
+      );
     }
     
     // Generate improved code based on feedback
@@ -608,12 +720,15 @@ Generate the improved code maintaining all existing functionality while addressi
 
   async profileCode(
     codeId: string,
-    options?: any
-  ): Promise<any> {
+    options?: ProfilingOptions
+  ): Promise<PerformanceProfile> {
     const generatedCode = this.generatedCodeCache.get(codeId);
     
     if (!generatedCode) {
-      throw new Error(`Code with ID ${codeId} not found in cache`);
+      throw new ValidationError(
+        `Code with ID ${codeId} not found in cache`,
+        { field: 'codeId', value: codeId }
+      );
     }
     
     // Profile the code execution
@@ -630,11 +745,19 @@ Generate the improved code maintaining all existing functionality while addressi
   async optimizeCodeWithProfile(
     codeId: string,
     profileId?: string
-  ): Promise<any> {
+  ): Promise<{
+    originalProfile: PerformanceProfile;
+    optimizedProfile: PerformanceProfile;
+    comparison: unknown;
+    newVersion: unknown;
+  }> {
     const generatedCode = this.generatedCodeCache.get(codeId);
     
     if (!generatedCode) {
-      throw new Error(`Code with ID ${codeId} not found in cache`);
+      throw new ValidationError(
+        `Code with ID ${codeId} not found in cache`,
+        { field: 'codeId', value: codeId }
+      );
     }
     
     // Get or create performance profile
@@ -660,7 +783,7 @@ Generate the improved code maintaining all existing functionality while addressi
       changeType: 'minor',
       changes: profile.optimizationSuggestions.map(s => s.description),
       context: generatedCode.context,
-      request: { description: 'Performance optimization' } as any,
+      request: { description: 'Performance optimization', nodeType: 'code', workflowContext: {} } as CodeGenerationRequest,
       improvements: profile.optimizationSuggestions.map(s => 
         `${s.description} (${s.expectedImprovement}% improvement)`
       ),
@@ -695,16 +818,23 @@ Generate the improved code maintaining all existing functionality while addressi
     };
   }
 
-  async getProfile(profileId: string): Promise<any> {
+  async getProfile(profileId: string): Promise<PerformanceProfile> {
     // This would retrieve from cache or database
-    throw new Error('Profile retrieval not implemented');
+    throw new CodeGenerationError(
+      'Profile retrieval not implemented',
+      'NOT_IMPLEMENTED',
+      { profileId }
+    );
   }
 
   async generatePerformanceReport(codeId: string): Promise<string> {
     const generatedCode = this.generatedCodeCache.get(codeId);
     
     if (!generatedCode) {
-      throw new Error(`Code with ID ${codeId} not found in cache`);
+      throw new ValidationError(
+        `Code with ID ${codeId} not found in cache`,
+        { field: 'codeId', value: codeId }
+      );
     }
     
     // Profile the code
@@ -717,7 +847,7 @@ Generate the improved code maintaining all existing functionality while addressi
   async compareCodePerformance(
     codeId1: string,
     codeId2: string
-  ): Promise<any> {
+  ): Promise<unknown> {
     // Profile both codes
     const [profile1, profile2] = await Promise.all([
       this.profileCode(codeId1),

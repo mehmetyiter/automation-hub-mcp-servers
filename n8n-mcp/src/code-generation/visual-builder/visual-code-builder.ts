@@ -1,6 +1,10 @@
 import { CodeGenerationRequest, GeneratedCode } from '../types';
 import { DynamicCodeGenerator } from '../dynamic-code-generator';
 import { AIService } from '../../ai-service';
+import { 
+  ValidationError,
+  WorkflowError 
+} from '../errors/custom-errors';
 
 export interface VisualBlock {
   id: string;
@@ -33,9 +37,9 @@ export enum BlockType {
 export interface BlockParameter {
   name: string;
   type: 'string' | 'number' | 'boolean' | 'array' | 'object' | 'code';
-  value: any;
+  value: string | number | boolean | null | undefined | unknown[] | Record<string, unknown>;
   required?: boolean;
-  options?: any[];
+  options?: Array<{ label: string; value: string | number | boolean }>;
   placeholder?: string;
 }
 
@@ -88,6 +92,8 @@ export class VisualCodeBuilder {
   private aiService: AIService;
   private blockTemplates: Map<BlockType, BlockTemplate[]>;
   private flowCache: Map<string, VisualFlow>;
+  private readonly MAX_CACHE_SIZE = 100;
+  private readonly CACHE_CLEANUP_THRESHOLD = 120;
 
   constructor(provider?: string) {
     this.dynamicCodeGenerator = new DynamicCodeGenerator(provider);
@@ -95,6 +101,24 @@ export class VisualCodeBuilder {
     this.blockTemplates = new Map();
     this.flowCache = new Map();
     this.initializeBlockTemplates();
+  }
+
+  private cleanCache(): void {
+    if (this.flowCache.size > this.CACHE_CLEANUP_THRESHOLD) {
+      console.log(`🧹 Cleaning flow cache (size: ${this.flowCache.size})`);
+      
+      // Convert to array and sort by last update time
+      const entries = Array.from(this.flowCache.entries())
+        .sort((a, b) => a[1].metadata.updatedAt.getTime() - b[1].metadata.updatedAt.getTime());
+      
+      // Remove oldest entries to get back to MAX_CACHE_SIZE
+      const toRemove = entries.slice(0, this.flowCache.size - this.MAX_CACHE_SIZE);
+      toRemove.forEach(([key]) => {
+        this.flowCache.delete(key);
+      });
+      
+      console.log(`✅ Removed ${toRemove.length} flows from cache`);
+    }
   }
 
   private initializeBlockTemplates() {
@@ -206,6 +230,7 @@ export class VisualCodeBuilder {
     };
 
     this.flowCache.set(flow.id, flow);
+    this.cleanCache(); // Clean cache after adding new flow
     return flow;
   }
 
@@ -217,13 +242,19 @@ export class VisualCodeBuilder {
   ): Promise<VisualBlock> {
     const flow = this.flowCache.get(flowId);
     if (!flow) {
-      throw new Error('Flow not found');
+      throw new WorkflowError(
+        'Flow not found',
+        flowId
+      );
     }
 
     const templates = this.blockTemplates.get(blockType) || [];
     const template = templates.find(t => t.name === templateName);
     if (!template) {
-      throw new Error('Block template not found');
+      throw new ValidationError(
+        'Block template not found',
+        { field: 'templateName', value: templateName }
+      );
     }
 
     const block: VisualBlock = {
@@ -255,7 +286,10 @@ export class VisualCodeBuilder {
   ): Promise<FlowConnection> {
     const flow = this.flowCache.get(flowId);
     if (!flow) {
-      throw new Error('Flow not found');
+      throw new WorkflowError(
+        'Flow not found',
+        flowId
+      );
     }
 
     const connection: FlowConnection = {
@@ -285,21 +319,31 @@ export class VisualCodeBuilder {
     flowId: string,
     blockId: string,
     parameterName: string,
-    value: any
+    value: string | number | boolean | null | undefined | unknown[] | Record<string, unknown>
   ): Promise<void> {
     const flow = this.flowCache.get(flowId);
     if (!flow) {
-      throw new Error('Flow not found');
+      throw new WorkflowError(
+        'Flow not found',
+        flowId
+      );
     }
 
     const block = flow.blocks.find(b => b.id === blockId);
     if (!block) {
-      throw new Error('Block not found');
+      throw new WorkflowError(
+        'Block not found',
+        flowId,
+        blockId
+      );
     }
 
     const parameter = block.parameters.find(p => p.name === parameterName);
     if (!parameter) {
-      throw new Error('Parameter not found');
+      throw new ValidationError(
+        'Parameter not found',
+        { field: 'parameterName', value: parameterName }
+      );
     }
 
     parameter.value = value;
@@ -309,7 +353,10 @@ export class VisualCodeBuilder {
   async generateCodeFromVisualFlow(flowId: string): Promise<GeneratedCode> {
     const flow = this.flowCache.get(flowId);
     if (!flow) {
-      throw new Error('Flow not found');
+      throw new WorkflowError(
+        'Flow not found',
+        flowId
+      );
     }
 
     // Determine execution order
@@ -518,7 +565,10 @@ process_visual_flow()`;
   async previewCode(flowId: string): Promise<CodePreview> {
     const flow = this.flowCache.get(flowId);
     if (!flow) {
-      throw new Error('Flow not found');
+      throw new WorkflowError(
+        'Flow not found',
+        flowId
+      );
     }
     
     const executionOrder = this.determineExecutionOrder(flow);
@@ -544,7 +594,10 @@ process_visual_flow()`;
   async exportFlow(flowId: string): Promise<string> {
     const flow = this.flowCache.get(flowId);
     if (!flow) {
-      throw new Error('Flow not found');
+      throw new WorkflowError(
+        'Flow not found',
+        flowId
+      );
     }
     
     return JSON.stringify(flow, null, 2);
@@ -556,6 +609,7 @@ process_visual_flow()`;
     flow.metadata.updatedAt = new Date();
     
     this.flowCache.set(flow.id, flow);
+    this.cleanCache(); // Clean cache after importing flow
     return flow;
   }
 
@@ -579,7 +633,10 @@ process_visual_flow()`;
   ): Promise<BlockTemplate[]> {
     const flow = this.flowCache.get(flowId);
     if (!flow) {
-      throw new Error('Flow not found');
+      throw new WorkflowError(
+        'Flow not found',
+        flowId
+      );
     }
     
     const block = flow.blocks.find(b => b.id === afterBlockId);
@@ -612,7 +669,7 @@ Return suggestions as JSON:
       
       // Map to available templates
       const templates: BlockTemplate[] = [];
-      suggestions.forEach((suggestion: any) => {
+      suggestions.forEach((suggestion: { type: string; reason: string }) => {
         const typeTemplates = this.blockTemplates.get(suggestion.type) || [];
         templates.push(...typeTemplates.filter(t => 
           t.supportedLanguages.includes(flow.metadata.language)

@@ -3,6 +3,11 @@ import { AIService } from '../../ai-service';
 import { CodeGenerationDatabase } from '../database/code-generation-db';
 import * as v8 from 'v8';
 import * as os from 'os';
+import { 
+  PerformanceError,
+  ValidationError 
+} from '../errors/custom-errors';
+import { ExecutionContext } from '../types/common-types';
 
 export interface PerformanceProfile {
   id: string;
@@ -183,7 +188,7 @@ export class PerformanceProfiler {
   async profileCodeExecution(
     codeId: string,
     code: string,
-    executionContext: any,
+    executionContext: ExecutionContext,
     options?: ProfilingOptions
   ): Promise<PerformanceProfile> {
     console.log('🔬 Starting performance profiling...');
@@ -191,65 +196,77 @@ export class PerformanceProfiler {
     const profileId = this.generateProfileId(codeId);
     const startTime = performance.now();
     
-    // Initialize profiling
-    this.initializeProfiler(options);
-    
-    // Collect baseline metrics
-    const baselineMetrics = this.collectBaselineMetrics();
-    
-    // Execute code with profiling
-    const executionProfile = await this.profileExecution(code, executionContext, options);
-    
-    // Collect memory profile
-    const memoryProfile = await this.profileMemory(code, executionContext);
-    
-    // Collect CPU profile
-    const cpuProfile = await this.profileCPU(code, executionContext, options);
-    
-    // Calculate resource usage
-    const resourceUsage = this.calculateResourceUsage(baselineMetrics);
-    
-    // Identify bottlenecks
-    const bottlenecks = await this.identifyBottlenecks(
-      executionProfile,
-      memoryProfile,
-      cpuProfile
-    );
-    
-    // Generate optimization suggestions
-    const optimizationSuggestions = await this.generateOptimizationSuggestions(
-      code,
-      bottlenecks,
-      executionProfile,
-      memoryProfile
-    );
-    
-    const endTime = performance.now();
-    
-    const profile: PerformanceProfile = {
-      id: profileId,
-      codeId,
-      timestamp: new Date(),
-      executionProfile,
-      memoryProfile,
-      cpuProfile,
-      resourceUsage,
-      bottlenecks,
-      optimizationSuggestions,
-      overallScore: this.calculateOverallScore(
+    try {
+      // Initialize profiling
+      this.initializeProfiler(options);
+      
+      // Collect baseline metrics
+      const baselineMetrics = this.collectBaselineMetrics();
+      
+      // Execute code with profiling
+      const executionProfile = await this.profileExecution(code, executionContext, options);
+      
+      // Collect memory profile
+      const memoryProfile = await this.profileMemory(code, executionContext);
+      
+      // Collect CPU profile
+      const cpuProfile = await this.profileCPU(code, executionContext, options);
+      
+      // Calculate resource usage
+      const resourceUsage = this.calculateResourceUsage(baselineMetrics);
+      
+      // Identify bottlenecks
+      const bottlenecks = await this.identifyBottlenecks(
         executionProfile,
         memoryProfile,
-        bottlenecks
-      )
-    };
+        cpuProfile
+      );
+      
+      // Generate optimization suggestions
+      const optimizationSuggestions = await this.generateOptimizationSuggestions(
+        code,
+        bottlenecks,
+        executionProfile,
+        memoryProfile
+      );
+      
+      const endTime = performance.now();
     
-    // Cache and store profile
-    this.profileCache.set(profileId, profile);
-    await this.storeProfile(profile);
-    
-    console.log(`✅ Profiling completed in ${endTime - startTime}ms`);
-    
-    return profile;
+      const profile: PerformanceProfile = {
+        id: profileId,
+        codeId,
+        timestamp: new Date(),
+        executionProfile,
+        memoryProfile,
+        cpuProfile,
+        resourceUsage,
+        bottlenecks,
+        optimizationSuggestions,
+        overallScore: this.calculateOverallScore(
+          executionProfile,
+          memoryProfile,
+          bottlenecks
+        )
+      };
+      
+      // Cache and store profile
+      this.profileCache.set(profileId, profile);
+      await this.storeProfile(profile);
+      
+      console.log(`✅ Profiling completed in ${endTime - startTime}ms`);
+      
+      return profile;
+    } finally {
+      // Clean up performance observer to prevent memory leaks
+      if (this.performanceObserver) {
+        this.performanceObserver.disconnect();
+        this.performanceObserver = undefined;
+      }
+      
+      // Clear performance marks and measures
+      performance.clearMarks();
+      performance.clearMeasures();
+    }
   }
 
   private initializeProfiler(options?: ProfilingOptions) {
@@ -268,7 +285,7 @@ export class PerformanceProfiler {
 
   private async profileExecution(
     code: string,
-    context: any,
+    context: ExecutionContext,
     options?: ProfilingOptions
   ): Promise<ExecutionProfile> {
     const phases: ExecutionPhase[] = [];
@@ -381,7 +398,7 @@ __perf.measure('code-execution', 'code-start', 'code-end');
     
     // Take initial heap snapshot
     const initialHeap = v8.getHeapStatistics();
-    const heapSnapshots: any[] = [];
+    const heapSnapshots: v8.HeapInfo[] = [];
     const allocations: MemoryAllocation[] = [];
     
     // Track allocations during execution
@@ -441,7 +458,7 @@ __perf.measure('code-execution', 'code-start', 'code-end');
   }
 
   private detectMemoryLeaks(
-    heapSnapshots: any[],
+    heapSnapshots: v8.HeapInfo[],
     allocations: MemoryAllocation[]
   ): MemoryLeak[] {
     const leaks: MemoryLeak[] = [];
@@ -480,7 +497,7 @@ __perf.measure('code-execution', 'code-start', 'code-end');
 
   private async profileCPU(
     code: string,
-    context: any,
+    context: ExecutionContext,
     options?: ProfilingOptions
   ): Promise<CPUProfile> {
     const samples: CPUSample[] = [];
@@ -524,7 +541,11 @@ __perf.measure('code-execution', 'code-start', 'code-end');
     };
   }
 
-  private collectBaselineMetrics(): any {
+  private collectBaselineMetrics(): {
+    cpu: NodeJS.CpuUsage;
+    memory: NodeJS.MemoryUsage;
+    time: number;
+  } {
     return {
       cpu: process.cpuUsage(),
       memory: process.memoryUsage(),
@@ -532,7 +553,11 @@ __perf.measure('code-execution', 'code-start', 'code-end');
     };
   }
 
-  private calculateResourceUsage(baseline: any): ResourceUsage {
+  private calculateResourceUsage(baseline: {
+    cpu: NodeJS.CpuUsage;
+    memory: NodeJS.MemoryUsage;
+    time: number;
+  }): ResourceUsage {
     const currentCPU = process.cpuUsage(baseline.cpu);
     const currentMemory = process.memoryUsage();
     
@@ -776,13 +801,39 @@ Focus on:
   ): Promise<{
     improvement: number;
     details: string;
-    comparison: any;
+    comparison: {
+      executionTime: {
+        before: number;
+        after: number;
+        change: number;
+      };
+      memoryUsage: {
+        before: number;
+        after: number;
+        change: number;
+      };
+      bottlenecks: {
+        before: number;
+        after: number;
+        resolved: Bottleneck[];
+      };
+    };
   }> {
     const profile1 = this.profileCache.get(profileId1);
     const profile2 = this.profileCache.get(profileId2);
     
-    if (!profile1 || !profile2) {
-      throw new Error('Profile not found');
+    if (!profile1) {
+      throw new ValidationError(
+        'Profile 1 not found',
+        { field: 'profileId1', value: profileId1 }
+      );
+    }
+    
+    if (!profile2) {
+      throw new ValidationError(
+        'Profile 2 not found',
+        { field: 'profileId2', value: profileId2 }
+      );
     }
     
     const improvement = profile2.overallScore - profile1.overallScore;

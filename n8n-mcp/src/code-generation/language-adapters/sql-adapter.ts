@@ -1,5 +1,11 @@
 import { CodeGenerationRequest, CodeContext } from '../types';
 import { AIService } from '../../ai-service';
+import { 
+  LanguageAdapterError, 
+  ValidationError,
+  SecurityError 
+} from '../errors/custom-errors';
+import { SQLQueryParams, SQLDialectInfo } from '../types/common-types';
 
 export interface SQLCodeGenerationOptions {
   dialect?: 'mysql' | 'postgresql' | 'sqlite' | 'mssql' | 'oracle';
@@ -11,11 +17,44 @@ export interface SQLCodeGenerationOptions {
 
 export class SQLCodeAdapter {
   private aiService: AIService;
-  private dialectPatterns: Map<string, any>;
+  private dialectPatterns: Map<string, SQLDialectInfo>;
 
   constructor(provider?: string) {
     this.aiService = new AIService(provider);
     this.initializeDialectPatterns();
+  }
+
+  private sanitizeIdentifier(identifier: string): string {
+    // SQL identifier sanitization - only allow alphanumeric, underscore, and dot (for schema.table)
+    return identifier.replace(/[^a-zA-Z0-9_\.]/g, '');
+  }
+
+  private validateParameters(params: SQLQueryParams): boolean {
+    // Validate that all parameters are safe types
+    if (!params || typeof params !== 'object') {
+      return false;
+    }
+    
+    for (const [key, value] of Object.entries(params)) {
+      if (value !== null && 
+          value !== undefined && 
+          typeof value !== 'string' && 
+          typeof value !== 'number' && 
+          typeof value !== 'boolean' && 
+          !(value instanceof Date)) {
+        throw new ValidationError(
+          `Invalid parameter type for '${key}'`,
+          { field: key, value, rule: 'type' }
+        );
+      }
+    }
+    
+    return true;
+  }
+
+  private escapeStringValue(value: string): string {
+    // Escape single quotes in string values
+    return value.replace(/'/g, "''");
   }
 
   private initializeDialectPatterns() {
@@ -149,14 +188,40 @@ The SQL should work within n8n's database node context.`;
 const inputItems = $input.all();
 const parameters = {};
 
-// Extract parameters from input
+// Validation function for SQL parameters
+function validateSQLParameters(params) {
+  const validTypes = ['string', 'number', 'boolean'];
+  
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== null && value !== undefined && !validTypes.includes(typeof value)) {
+      throw new ValidationError(
+        \`Invalid parameter type for '\${key}': \${typeof value}\`,
+        { field: key, value, rule: 'type' }
+      );
+    }
+    
+    // Additional validation for strings to prevent SQL injection
+    if (typeof value === 'string' && value.includes("'") && value.includes('"')) {
+      console.warn(\`Parameter '\${key}' contains quotes, ensure proper parameterization\`);
+    }
+  }
+  
+  return true;
+}
+
+// Extract and validate parameters from input
 if (inputItems.length > 0) {
   const firstItem = inputItems[0].json;
   
   // Map input fields to query parameters
   Object.keys(firstItem).forEach(key => {
-    parameters[key] = firstItem[key];
+    // Sanitize parameter names
+    const sanitizedKey = key.replace(/[^a-zA-Z0-9_]/g, '');
+    parameters[sanitizedKey] = firstItem[key];
   });
+  
+  // Validate parameters
+  validateSQLParameters(parameters);
 }
 
 // Main SQL query
@@ -317,11 +382,11 @@ Return validation result:
       const result = await this.aiService.getJSONResponse(validationPrompt);
       return result;
     } catch (error) {
-      return {
-        isValid: true,
-        errors: [],
-        warnings: ['Automated validation unavailable']
-      };
+      throw new LanguageAdapterError(
+        'SQL validation failed',
+        'sql',
+        error
+      );
     }
   }
 

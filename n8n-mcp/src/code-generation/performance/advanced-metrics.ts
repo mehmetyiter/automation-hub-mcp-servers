@@ -1,6 +1,5 @@
 import { AIService } from '../../ai-service';
 import { CodeGenerationDatabase } from '../database/code-generation-db';
-import * as crypto from 'crypto';
 
 export interface CodeQualityMetrics {
   cyclomaticComplexity: number;
