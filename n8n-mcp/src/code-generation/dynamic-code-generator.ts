@@ -10,6 +10,13 @@ import { CodeValidationEngine } from './code-validation-engine';
 import { CodeOptimizationEngine } from './code-optimization-engine';
 import { CodeExecutionMonitor } from './code-execution-monitor';
 import { PythonCodeAdapter } from './language-adapters/python-adapter';
+import { SQLCodeAdapter } from './language-adapters/sql-adapter';
+import { TypeScriptCodeAdapter } from './language-adapters/typescript-adapter';
+import { RCodeAdapter } from './language-adapters/r-adapter';
+import { AdvancedPerformanceMetrics } from './performance/advanced-metrics';
+import { PerformanceProfiler } from './performance/performance-profiler';
+import { AdvancedPromptingEngine } from './prompting/advanced-prompting-engine';
+import { CodeVersionManager, VersionMetadata } from './versioning/code-version-manager';
 import { AIService } from '../ai-service';
 
 export class DynamicCodeGenerator {
@@ -19,6 +26,13 @@ export class DynamicCodeGenerator {
   private optimizationEngine: CodeOptimizationEngine;
   private executionMonitor: CodeExecutionMonitor;
   private pythonAdapter: PythonCodeAdapter;
+  private sqlAdapter: SQLCodeAdapter;
+  private typeScriptAdapter: TypeScriptCodeAdapter;
+  private rAdapter: RCodeAdapter;
+  private performanceMetrics: AdvancedPerformanceMetrics;
+  private performanceProfiler: PerformanceProfiler;
+  private promptingEngine: AdvancedPromptingEngine;
+  private versionManager: CodeVersionManager;
   private generatedCodeCache: Map<string, GeneratedCode>;
 
   constructor(provider?: string) {
@@ -28,6 +42,13 @@ export class DynamicCodeGenerator {
     this.optimizationEngine = new CodeOptimizationEngine(provider);
     this.executionMonitor = new CodeExecutionMonitor(provider);
     this.pythonAdapter = new PythonCodeAdapter(provider);
+    this.sqlAdapter = new SQLCodeAdapter(provider);
+    this.typeScriptAdapter = new TypeScriptCodeAdapter(provider);
+    this.rAdapter = new RCodeAdapter(provider);
+    this.performanceMetrics = new AdvancedPerformanceMetrics(provider);
+    this.performanceProfiler = new PerformanceProfiler(provider);
+    this.promptingEngine = new AdvancedPromptingEngine(provider);
+    this.versionManager = new CodeVersionManager(provider);
     this.generatedCodeCache = new Map();
   }
 
@@ -67,6 +88,25 @@ export class DynamicCodeGenerator {
       
       // Generate metadata
       const metadata = this.optimizationEngine.generateMetadata(optimizedCode, context);
+      
+      // Create code version
+      const codeId = this.generateCodeId(request);
+      const versionMetadata: VersionMetadata = {
+        description: `Generated code for: ${request.description}`,
+        changeType: 'major',
+        changes: ['Initial code generation'],
+        context,
+        request,
+        improvements: [],
+        regressions: []
+      };
+      
+      await this.versionManager.createVersion(
+        codeId,
+        optimizedCode,
+        versionMetadata,
+        'ai_generator'
+      );
       
       console.log('✨ Code generation completed successfully!');
       
@@ -109,85 +149,79 @@ export class DynamicCodeGenerator {
     request: CodeGenerationRequest
   ): Promise<string> {
     
-    // Check if Python is requested
-    if (request.requirements?.language === 'python') {
-      return this.pythonAdapter.generatePythonCode(request, context);
+    const language = request.requirements?.language?.toLowerCase() || 'javascript';
+    
+    // Route to appropriate language adapter
+    switch (language) {
+      case 'python':
+        return this.pythonAdapter.generatePythonCode(request, context);
+        
+      case 'sql':
+      case 'mysql':
+      case 'postgresql':
+      case 'sqlite':
+      case 'mssql':
+      case 'oracle':
+        const dialect = language === 'sql' ? 'postgresql' : language;
+        return this.sqlAdapter.generateSQLCode(request, context, {
+          dialect: dialect as any,
+          includeTransactions: request.requirements?.includeTransactions,
+          includeErrorHandling: true,
+          outputFormat: request.requirements?.outputFormat as any || 'json',
+          performanceOptimized: request.requirements?.performanceLevel === 'optimized'
+        });
+        
+      case 'typescript':
+      case 'ts':
+        return this.typeScriptAdapter.generateTypeScriptCode(request, context, {
+          strict: request.requirements?.strict ?? true,
+          targetES: request.requirements?.targetES as any || 'ES2020',
+          moduleSystem: request.requirements?.moduleSystem as any || 'commonjs',
+          includeTypes: true,
+          asyncAwait: true,
+          errorHandling: request.requirements?.errorHandling as any || 'try-catch'
+        });
+        
+      case 'r':
+        return this.rAdapter.generateRCode(request, context, {
+          libraries: request.requirements?.libraries,
+          tidyverse: request.requirements?.tidyverse ?? true,
+          includeVisualization: request.requirements?.includeVisualization,
+          outputFormat: request.requirements?.outputFormat as any || 'json',
+          statisticalAnalysis: request.requirements?.statisticalAnalysis,
+          parallel: request.requirements?.parallel
+        });
+        
+      case 'javascript':
+      case 'js':
+      default:
+        // Use advanced prompting engine for JavaScript
+        const enhancedPrompt = await this.promptingEngine.generateContextAwarePrompt(request);
+        const formattedPrompt = this.promptingEngine.formatPromptForAI(enhancedPrompt, request);
+        
+        // Generate code using enhanced prompt
+        console.log('🎯 Using advanced prompting strategy...');
+        const generatedCode = await this.aiService.callAI(formattedPrompt);
+        
+        // Clean the generated code
+        let cleanCode = generatedCode;
+        
+        // Remove markdown if present
+        cleanCode = cleanCode.replace(/```javascript\n?/g, '');
+        cleanCode = cleanCode.replace(/```\n?/g, '');
+        cleanCode = cleanCode.trim();
+        
+        // Ensure the code has proper structure
+        if (!cleanCode.includes('$input')) {
+          cleanCode = this.addInputHandling(cleanCode);
+        }
+        
+        if (!cleanCode.includes('return')) {
+          cleanCode = this.addReturnStatement(cleanCode);
+        }
+        
+        return cleanCode;
     }
-    
-    // Default to JavaScript
-    const codeGenerationPrompt = `
-TASK: Generate production-ready JavaScript code for n8n Code Node based on detailed analysis.
-
-USER REQUEST: "${request.description}"
-
-CONTEXT ANALYSIS:
-${JSON.stringify(context, null, 2)}
-
-ENVIRONMENT:
-${JSON.stringify(environment, null, 2)}
-
-LOGIC PATTERNS:
-${JSON.stringify(patterns, null, 2)}
-
-WORKFLOW CONTEXT:
-${JSON.stringify(request.workflowContext, null, 2)}
-
-Generate complete, executable JavaScript code that:
-
-1. **IMPLEMENTS SPECIFIC BUSINESS LOGIC** (not generic "return items")
-2. **HANDLES INPUT DATA VALIDATION**
-3. **PERFORMS REQUIRED CALCULATIONS/TRANSFORMATIONS**
-4. **INCLUDES COMPREHENSIVE ERROR HANDLING**
-5. **OPTIMIZES FOR PERFORMANCE**
-6. **FOLLOWS n8n BEST PRACTICES**
-
-CODE REQUIREMENTS:
-- Use const/let appropriately (no var)
-- Include detailed comments for complex logic
-- Handle edge cases (empty input, null values, type mismatches)
-- Validate input data structure
-- Return proper n8n data structure: [{json: {...}}]
-- Include error logging with context
-- Optimize for readability and maintenance
-
-CRITICAL GUIDELINES:
-❌ DO NOT return generic "return items;"
-❌ DO NOT use placeholder comments like "// Add your logic here"
-❌ DO NOT skip error handling
-❌ DO NOT ignore the specific request details
-✅ DO implement actual business logic based on the request
-✅ DO include specific calculations/transformations requested
-✅ DO handle real data transformations
-✅ DO provide production-ready code
-✅ DO add meaningful variable names
-✅ DO structure code logically
-
-RESPONSE FORMAT:
-Return ONLY the JavaScript code, no markdown formatting, no explanations.
-The code should be ready to paste directly into n8n Code Node.
-
-Based on the analysis, generate code that specifically addresses: ${context.intent.primaryFunction}`;
-
-    const generatedCode = await this.aiService.callAI(codeGenerationPrompt);
-    
-    // Clean the generated code
-    let cleanCode = generatedCode;
-    
-    // Remove markdown if present
-    cleanCode = cleanCode.replace(/```javascript\n?/g, '');
-    cleanCode = cleanCode.replace(/```\n?/g, '');
-    cleanCode = cleanCode.trim();
-    
-    // Ensure the code has proper structure
-    if (!cleanCode.includes('$input')) {
-      cleanCode = this.addInputHandling(cleanCode);
-    }
-    
-    if (!cleanCode.includes('return')) {
-      cleanCode = this.addReturnStatement(cleanCode);
-    }
-    
-    return cleanCode;
   }
 
   private addInputHandling(code: string): string {
@@ -217,13 +251,41 @@ if (!inputItems || inputItems.length === 0) {
   }
 
   private generateFallbackCode(request: CodeGenerationRequest): string {
-    // Check if Python is requested
-    if (request.requirements?.language === 'python') {
-      return this.pythonAdapter.generatePythonFallbackCode(request);
-    }
+    const language = request.requirements?.language?.toLowerCase() || 'javascript';
     
-    // JavaScript fallback
-    const description = request.description.toLowerCase();
+    // Route to appropriate fallback generator
+    switch (language) {
+      case 'python':
+        return this.pythonAdapter.generatePythonFallbackCode(request);
+        
+      case 'sql':
+      case 'mysql':
+      case 'postgresql':
+      case 'sqlite':
+      case 'mssql':
+      case 'oracle':
+        const dialect = language === 'sql' ? 'postgresql' : language;
+        return this.sqlAdapter.generateSQLFallbackCode(request, dialect);
+        
+      case 'typescript':
+      case 'ts':
+        return this.typeScriptAdapter.generateTypeScriptFallbackCode(request, {
+          strict: true,
+          includeTypes: true,
+          errorHandling: 'try-catch'
+        });
+        
+      case 'r':
+        return this.rAdapter.generateRFallbackCode(request, {
+          tidyverse: true,
+          outputFormat: 'json'
+        });
+        
+      case 'javascript':
+      case 'js':
+      default:
+        // JavaScript fallback
+        const description = request.description.toLowerCase();
     
     // Generate context-aware fallback code
     let code = `// Fallback code for: ${request.description}
@@ -393,6 +455,277 @@ return processedItems;`;
 
   async getPerformanceReport(codeId: string): Promise<string> {
     return this.executionMonitor.generatePerformanceReport(codeId);
+  }
+
+  async collectAdvancedMetrics(
+    codeId: string,
+    executionContext?: any
+  ): Promise<any> {
+    const generatedCode = this.generatedCodeCache.get(codeId);
+    
+    if (!generatedCode) {
+      throw new Error(`Code with ID ${codeId} not found in cache`);
+    }
+    
+    // Collect detailed performance metrics
+    const detailedMetrics = await this.performanceMetrics.collectDetailedMetrics(
+      codeId,
+      generatedCode.code,
+      executionContext || this.createDefaultExecutionContext()
+    );
+    
+    // Generate comprehensive report
+    const report = await this.performanceMetrics.generateMetricsReport(codeId);
+    
+    return {
+      metrics: detailedMetrics,
+      report
+    };
+  }
+
+  async getCodeQualityScore(codeId: string): Promise<number> {
+    const generatedCode = this.generatedCodeCache.get(codeId);
+    
+    if (!generatedCode) {
+      return 0;
+    }
+    
+    const metrics = await this.performanceMetrics.collectDetailedMetrics(
+      codeId,
+      generatedCode.code,
+      this.createDefaultExecutionContext()
+    );
+    
+    // Calculate overall quality score
+    const qualityFactors = [
+      metrics.codeQuality.maintainabilityIndex,
+      metrics.codeQuality.readabilityScore,
+      metrics.codeQuality.documentationScore,
+      metrics.security.securityScore,
+      100 - metrics.codeQuality.cyclomaticComplexity * 5
+    ];
+    
+    return Math.round(
+      qualityFactors.reduce((sum, score) => sum + score, 0) / qualityFactors.length
+    );
+  }
+
+  private createDefaultExecutionContext(): any {
+    return {
+      $input: {
+        all: () => [
+          { json: { id: 1, data: 'test' } }
+        ]
+      },
+      $json: {},
+      $node: {},
+      $workflow: {},
+      $item: {}
+    };
+  }
+
+  async getCodeVersions(codeId: string) {
+    return this.versionManager.getVersionHistory(codeId);
+  }
+
+  async compareCodeVersions(codeId: string, versionAId: string, versionBId: string) {
+    return this.versionManager.compareVersions(codeId, versionAId, versionBId);
+  }
+
+  async rollbackCode(codeId: string, targetVersionId: string, reason: string) {
+    return this.versionManager.rollback({
+      codeId,
+      targetVersion: targetVersionId,
+      reason
+    });
+  }
+
+  async getActiveCodeVersion(codeId: string) {
+    return this.versionManager.getActiveVersion(codeId);
+  }
+
+  async autoSelectBestVersion(codeId: string) {
+    return this.versionManager.autoSelectBestVersion(codeId);
+  }
+
+  async deployCodeVersion(codeId: string, versionId: string, environment: string) {
+    return this.versionManager.deployVersion(codeId, versionId, environment);
+  }
+
+  async generateVersionReport(codeId: string) {
+    return this.versionManager.generateVersionReport(codeId);
+  }
+
+  async improveCode(codeId: string, improvements: string[], reason: string) {
+    // Get the active version
+    const activeVersion = await this.versionManager.getActiveVersion(codeId);
+    if (!activeVersion) {
+      throw new Error('No active version found');
+    }
+    
+    // Generate improved code based on feedback
+    const improvementRequest = `
+Improve this code based on the following feedback:
+
+Current Code:
+${activeVersion.code}
+
+Improvements requested:
+${improvements.map((imp, i) => `${i + 1}. ${imp}`).join('\n')}
+
+Reason for improvements: ${reason}
+
+Generate the improved code maintaining all existing functionality while addressing the requested improvements.`;
+
+    const improvedCode = await this.aiService.callAI(improvementRequest);
+    
+    // Clean the improved code
+    let cleanCode = improvedCode;
+    cleanCode = cleanCode.replace(/```javascript\n?/g, '');
+    cleanCode = cleanCode.replace(/```\n?/g, '');
+    cleanCode = cleanCode.trim();
+    
+    // Create new version with improvements
+    const versionMetadata: VersionMetadata = {
+      description: `Improvements based on feedback: ${reason}`,
+      changeType: 'minor',
+      changes: improvements,
+      context: activeVersion.metadata.context,
+      request: activeVersion.metadata.request,
+      improvements: improvements,
+      regressions: []
+    };
+    
+    const newVersion = await this.versionManager.createVersion(
+      codeId,
+      cleanCode,
+      versionMetadata,
+      'improvement_system'
+    );
+    
+    return newVersion;
+  }
+
+  async profileCode(
+    codeId: string,
+    options?: any
+  ): Promise<any> {
+    const generatedCode = this.generatedCodeCache.get(codeId);
+    
+    if (!generatedCode) {
+      throw new Error(`Code with ID ${codeId} not found in cache`);
+    }
+    
+    // Profile the code execution
+    const profile = await this.performanceProfiler.profileCodeExecution(
+      codeId,
+      generatedCode.code,
+      this.createDefaultExecutionContext(),
+      options
+    );
+    
+    return profile;
+  }
+
+  async optimizeCodeWithProfile(
+    codeId: string,
+    profileId?: string
+  ): Promise<any> {
+    const generatedCode = this.generatedCodeCache.get(codeId);
+    
+    if (!generatedCode) {
+      throw new Error(`Code with ID ${codeId} not found in cache`);
+    }
+    
+    // Get or create performance profile
+    let profile;
+    if (profileId) {
+      // Use existing profile
+      profile = await this.getProfile(profileId);
+    } else {
+      // Create new profile
+      profile = await this.profileCode(codeId);
+    }
+    
+    // Optimize code based on profile
+    const optimizedCode = await this.performanceProfiler.optimizeCode(
+      codeId,
+      generatedCode.code,
+      profile
+    );
+    
+    // Create new version with optimized code
+    const versionMetadata: VersionMetadata = {
+      description: `Performance optimization based on profiling`,
+      changeType: 'minor',
+      changes: profile.optimizationSuggestions.map(s => s.description),
+      context: generatedCode.context,
+      request: { description: 'Performance optimization' } as any,
+      improvements: profile.optimizationSuggestions.map(s => 
+        `${s.description} (${s.expectedImprovement}% improvement)`
+      ),
+      regressions: []
+    };
+    
+    const newVersion = await this.versionManager.createVersion(
+      codeId,
+      optimizedCode,
+      versionMetadata,
+      'performance_optimizer'
+    );
+    
+    // Update cache with optimized code
+    generatedCode.code = optimizedCode;
+    this.generatedCodeCache.set(codeId, generatedCode);
+    
+    // Re-profile to measure improvement
+    const newProfile = await this.profileCode(codeId);
+    
+    // Compare profiles
+    const comparison = await this.performanceProfiler.compareProfiles(
+      profile.id,
+      newProfile.id
+    );
+    
+    return {
+      originalProfile: profile,
+      optimizedProfile: newProfile,
+      comparison,
+      newVersion
+    };
+  }
+
+  async getProfile(profileId: string): Promise<any> {
+    // This would retrieve from cache or database
+    throw new Error('Profile retrieval not implemented');
+  }
+
+  async generatePerformanceReport(codeId: string): Promise<string> {
+    const generatedCode = this.generatedCodeCache.get(codeId);
+    
+    if (!generatedCode) {
+      throw new Error(`Code with ID ${codeId} not found in cache`);
+    }
+    
+    // Profile the code
+    const profile = await this.profileCode(codeId);
+    
+    // Generate report
+    return this.performanceProfiler.generatePerformanceReport(profile);
+  }
+
+  async compareCodePerformance(
+    codeId1: string,
+    codeId2: string
+  ): Promise<any> {
+    // Profile both codes
+    const [profile1, profile2] = await Promise.all([
+      this.profileCode(codeId1),
+      this.profileCode(codeId2)
+    ]);
+    
+    // Compare profiles
+    return this.performanceProfiler.compareProfiles(profile1.id, profile2.id);
   }
 
   private generateCodeId(request: CodeGenerationRequest): string {

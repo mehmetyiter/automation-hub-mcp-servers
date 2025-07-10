@@ -1,7 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import { N8nClient } from './n8n-client.js';
-import { AIWorkflowGenerator } from './ai-workflow-generator.js';
+import { AIWorkflowGeneratorV3 } from './ai-workflow-generator-v3.js';
+import { DynamicCodeGenerator } from './code-generation/dynamic-code-generator.js';
+import { VisualCodeBuilder } from './code-generation/visual-builder/visual-code-builder.js';
 import aiProvidersRouter from './routes/ai-providers.js';
 import dotenv from 'dotenv';
 
@@ -14,6 +16,9 @@ const n8nClient = new N8nClient({
   apiKey: process.env.N8N_API_KEY || '',
   baseUrl: process.env.N8N_BASE_URL || 'http://localhost:5678'
 });
+
+const dynamicCodeGenerator = new DynamicCodeGenerator(process.env.AI_PROVIDER);
+const visualCodeBuilder = new VisualCodeBuilder(process.env.AI_PROVIDER);
 
 app.use(cors());
 app.use(express.json());
@@ -266,8 +271,8 @@ app.post('/tools/n8n_generate_workflow', async (req, res) => {
       return;
     }
     
-    console.log('Creating AI workflow generator...');
-    const generator = new AIWorkflowGenerator({
+    console.log('Creating AI workflow generator V3 with real-time learning...');
+    const generator = new AIWorkflowGeneratorV3({
       provider: provider as 'openai' | 'anthropic',
       apiKey: effectiveApiKey
     });
@@ -324,6 +329,352 @@ app.post('/tools/n8n_generate_workflow', async (req, res) => {
       success: false,
       error: error.message || 'Failed to generate workflow'
     });
+  }
+});
+
+// Multi-language code generation endpoint
+app.post('/api/n8n/code/generate', async (req, res) => {
+  try {
+    const { description, language, nodeType, requirements } = req.body;
+    
+    if (!description) {
+      res.status(400).json({ error: 'Description is required' });
+      return;
+    }
+    
+    const request = {
+      description,
+      nodeType: nodeType || 'code',
+      requirements: {
+        language: language || 'javascript',
+        ...requirements
+      },
+      workflowContext: {}
+    };
+    
+    const result = await dynamicCodeGenerator.generateCode(request);
+    
+    res.json({
+      success: result.success,
+      code: result.code,
+      language: request.requirements.language,
+      metadata: result.metadata,
+      validation: result.validation
+    });
+  } catch (error: any) {
+    console.error('Code generation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get supported languages
+app.get('/api/n8n/code/languages', (req, res) => {
+  res.json({
+    languages: [
+      { id: 'javascript', name: 'JavaScript', extensions: ['.js'] },
+      { id: 'typescript', name: 'TypeScript', extensions: ['.ts'] },
+      { id: 'python', name: 'Python', extensions: ['.py'] },
+      { id: 'sql', name: 'SQL', extensions: ['.sql'], dialects: ['mysql', 'postgresql', 'sqlite', 'mssql', 'oracle'] },
+      { id: 'r', name: 'R', extensions: ['.r', '.R'] }
+    ]
+  });
+});
+
+// Code versioning endpoints
+app.get('/api/n8n/code/versions/:codeId', async (req, res) => {
+  try {
+    const codeId = req.params.codeId;
+    const versions = await dynamicCodeGenerator.getCodeVersions(codeId);
+    res.json({ versions });
+  } catch (error: any) {
+    console.error('Failed to get code versions:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/n8n/code/versions/:codeId/active', async (req, res) => {
+  try {
+    const codeId = req.params.codeId;
+    const version = await dynamicCodeGenerator.getActiveCodeVersion(codeId);
+    res.json({ version });
+  } catch (error: any) {
+    console.error('Failed to get active version:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/n8n/code/versions/:codeId/compare', async (req, res) => {
+  try {
+    const codeId = req.params.codeId;
+    const { versionAId, versionBId } = req.body;
+    const comparison = await dynamicCodeGenerator.compareCodeVersions(codeId, versionAId, versionBId);
+    res.json({ comparison });
+  } catch (error: any) {
+    console.error('Failed to compare versions:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/n8n/code/versions/:codeId/rollback', async (req, res) => {
+  try {
+    const codeId = req.params.codeId;
+    const { targetVersionId, reason } = req.body;
+    const result = await dynamicCodeGenerator.rollbackCode(codeId, targetVersionId, reason);
+    res.json({ result });
+  } catch (error: any) {
+    console.error('Failed to rollback code:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/n8n/code/versions/:codeId/improve', async (req, res) => {
+  try {
+    const codeId = req.params.codeId;
+    const { improvements, reason } = req.body;
+    const newVersion = await dynamicCodeGenerator.improveCode(codeId, improvements, reason);
+    res.json({ version: newVersion });
+  } catch (error: any) {
+    console.error('Failed to improve code:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/n8n/code/versions/:codeId/deploy', async (req, res) => {
+  try {
+    const codeId = req.params.codeId;
+    const { versionId, environment } = req.body;
+    await dynamicCodeGenerator.deployCodeVersion(codeId, versionId, environment);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Failed to deploy version:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/n8n/code/versions/:codeId/report', async (req, res) => {
+  try {
+    const codeId = req.params.codeId;
+    const report = await dynamicCodeGenerator.generateVersionReport(codeId);
+    res.json({ report });
+  } catch (error: any) {
+    console.error('Failed to generate version report:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Visual Code Builder endpoints
+app.post('/api/n8n/visual-builder/flows', async (req, res) => {
+  try {
+    const { name, description, language } = req.body;
+    if (!name) {
+      res.status(400).json({ error: 'Flow name is required' });
+      return;
+    }
+    
+    const flow = await visualCodeBuilder.createVisualFlow(
+      name,
+      description || '',
+      language || 'javascript'
+    );
+    
+    res.json({ flow });
+  } catch (error: any) {
+    console.error('Failed to create visual flow:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/n8n/visual-builder/flows/:flowId/blocks', async (req, res) => {
+  try {
+    const flowId = req.params.flowId;
+    const { blockType, templateName, position } = req.body;
+    
+    const block = await visualCodeBuilder.addBlock(
+      flowId,
+      blockType,
+      templateName,
+      position || { x: 0, y: 0 }
+    );
+    
+    res.json({ block });
+  } catch (error: any) {
+    console.error('Failed to add block:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/n8n/visual-builder/flows/:flowId/connections', async (req, res) => {
+  try {
+    const flowId = req.params.flowId;
+    const { fromBlockId, fromOutput, toBlockId, toInput } = req.body;
+    
+    const connection = await visualCodeBuilder.connectBlocks(
+      flowId,
+      fromBlockId,
+      fromOutput || 'output',
+      toBlockId,
+      toInput || 'input'
+    );
+    
+    res.json({ connection });
+  } catch (error: any) {
+    console.error('Failed to connect blocks:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/n8n/visual-builder/flows/:flowId/blocks/:blockId/parameters', async (req, res) => {
+  try {
+    const { flowId, blockId } = req.params;
+    const { parameterName, value } = req.body;
+    
+    await visualCodeBuilder.updateBlockParameter(
+      flowId,
+      blockId,
+      parameterName,
+      value
+    );
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Failed to update block parameter:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/n8n/visual-builder/flows/:flowId/generate', async (req, res) => {
+  try {
+    const flowId = req.params.flowId;
+    const result = await visualCodeBuilder.generateCodeFromVisualFlow(flowId);
+    
+    res.json({
+      success: result.success,
+      code: result.code,
+      metadata: result.metadata,
+      validation: result.validation
+    });
+  } catch (error: any) {
+    console.error('Failed to generate code from visual flow:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/n8n/visual-builder/flows/:flowId/preview', async (req, res) => {
+  try {
+    const flowId = req.params.flowId;
+    const preview = await visualCodeBuilder.previewCode(flowId);
+    
+    res.json({ preview });
+  } catch (error: any) {
+    console.error('Failed to preview code:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/n8n/visual-builder/flows/:flowId/export', async (req, res) => {
+  try {
+    const flowId = req.params.flowId;
+    const exportData = await visualCodeBuilder.exportFlow(flowId);
+    
+    res.json({ data: exportData });
+  } catch (error: any) {
+    console.error('Failed to export flow:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/n8n/visual-builder/flows/import', async (req, res) => {
+  try {
+    const { data } = req.body;
+    if (!data) {
+      res.status(400).json({ error: 'Flow data is required' });
+      return;
+    }
+    
+    const flow = await visualCodeBuilder.importFlow(data);
+    res.json({ flow });
+  } catch (error: any) {
+    console.error('Failed to import flow:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/n8n/visual-builder/templates/:language', async (req, res) => {
+  try {
+    const language = req.params.language;
+    const templates = visualCodeBuilder.getAvailableBlockTemplates(language);
+    
+    res.json({ templates });
+  } catch (error: any) {
+    console.error('Failed to get block templates:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/n8n/visual-builder/flows/:flowId/suggest/:blockId', async (req, res) => {
+  try {
+    const { flowId, blockId } = req.params;
+    const suggestions = await visualCodeBuilder.suggestNextBlock(flowId, blockId);
+    
+    res.json({ suggestions });
+  } catch (error: any) {
+    console.error('Failed to get block suggestions:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Performance profiling endpoints
+app.post('/api/n8n/code/profile/:codeId', async (req, res) => {
+  try {
+    const codeId = req.params.codeId;
+    const options = req.body.options || {};
+    
+    const profile = await dynamicCodeGenerator.profileCode(codeId, options);
+    res.json({ profile });
+  } catch (error: any) {
+    console.error('Failed to profile code:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/n8n/code/optimize/:codeId', async (req, res) => {
+  try {
+    const codeId = req.params.codeId;
+    const { profileId } = req.body;
+    
+    const result = await dynamicCodeGenerator.optimizeCodeWithProfile(codeId, profileId);
+    res.json({ result });
+  } catch (error: any) {
+    console.error('Failed to optimize code:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/n8n/code/performance-report/:codeId', async (req, res) => {
+  try {
+    const codeId = req.params.codeId;
+    const report = await dynamicCodeGenerator.generatePerformanceReport(codeId);
+    res.json({ report });
+  } catch (error: any) {
+    console.error('Failed to generate performance report:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/n8n/code/compare-performance', async (req, res) => {
+  try {
+    const { codeId1, codeId2 } = req.body;
+    
+    if (!codeId1 || !codeId2) {
+      res.status(400).json({ error: 'Both codeId1 and codeId2 are required' });
+      return;
+    }
+    
+    const comparison = await dynamicCodeGenerator.compareCodePerformance(codeId1, codeId2);
+    res.json({ comparison });
+  } catch (error: any) {
+    console.error('Failed to compare code performance:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

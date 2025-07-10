@@ -5,11 +5,13 @@ import {
   PerformanceIssue 
 } from './types';
 import { CodeGenerationLearningEngine } from './code-generation-learning-engine';
+import { CodeGenerationDatabase } from './database/code-generation-db';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
 export class CodeExecutionMonitor {
   private learningEngine: CodeGenerationLearningEngine;
+  private database: CodeGenerationDatabase;
   private executionHistory: Map<string, ExecutionMetrics[]>;
   private performanceThresholds: {
     executionTime: number;
@@ -20,6 +22,7 @@ export class CodeExecutionMonitor {
 
   constructor(provider?: string) {
     this.learningEngine = new CodeGenerationLearningEngine(provider);
+    this.database = new CodeGenerationDatabase();
     this.executionHistory = new Map();
     this.performanceThresholds = {
       executionTime: 1000, // 1 second
@@ -69,7 +72,7 @@ export class CodeExecutionMonitor {
       };
       
       // Store execution metrics
-      this.recordExecutionMetrics(codeId, executionMetrics);
+      await this.recordExecutionMetrics(codeId, executionMetrics);
       
       // Analyze performance
       const performanceIssues = this.analyzePerformance(executionMetrics);
@@ -210,7 +213,8 @@ try {
 }`;
   }
 
-  private recordExecutionMetrics(codeId: string, metrics: ExecutionMetrics): void {
+  private async recordExecutionMetrics(codeId: string, metrics: ExecutionMetrics): Promise<void> {
+    // Store in memory cache
     if (!this.executionHistory.has(codeId)) {
       this.executionHistory.set(codeId, []);
     }
@@ -218,9 +222,16 @@ try {
     const history = this.executionHistory.get(codeId)!;
     history.push(metrics);
     
-    // Keep only last 100 executions per code
+    // Keep only last 100 executions per code in memory
     if (history.length > 100) {
       history.shift();
+    }
+    
+    // Also save to database
+    try {
+      await this.database.saveExecutionMetrics(metrics);
+    } catch (error) {
+      console.error('Failed to save execution metrics to database:', error);
     }
   }
 
@@ -268,7 +279,13 @@ try {
     commonErrors: string[];
     performanceTrend: 'improving' | 'stable' | 'degrading';
   }> {
-    const history = this.executionHistory.get(codeId) || [];
+    // Get history from database
+    let history: ExecutionMetrics[];
+    try {
+      history = await this.database.getExecutionMetrics(codeId);
+    } catch (error) {
+      history = this.executionHistory.get(codeId) || [];
+    }
     
     if (history.length === 0) {
       return {
@@ -336,19 +353,9 @@ try {
   ): Promise<void> {
     console.log('💬 Processing user feedback...');
     
-    const feedbackData = {
-      codeId,
-      ...feedback,
-      timestamp: new Date().toISOString()
-    };
-    
-    // Save feedback
-    const feedbackFile = path.join(this.monitoringDataPath, `feedback_${codeId}.json`);
     try {
-      const existingFeedback = await this.loadFeedback(codeId);
-      existingFeedback.push(feedbackData);
-      
-      await fs.writeFile(feedbackFile, JSON.stringify(existingFeedback, null, 2));
+      // Save to database
+      await this.database.saveUserFeedback(codeId, feedback);
       
       // Update learning engine based on feedback
       if (!feedback.worked || feedback.rating < 3) {
@@ -363,10 +370,8 @@ try {
   }
 
   private async loadFeedback(codeId: string): Promise<any[]> {
-    const feedbackFile = path.join(this.monitoringDataPath, `feedback_${codeId}.json`);
     try {
-      const data = await fs.readFile(feedbackFile, 'utf-8');
-      return JSON.parse(data);
+      return await this.database.getUserFeedback(codeId);
     } catch {
       return [];
     }
@@ -396,20 +401,10 @@ try {
 
   private async loadExecutionHistory(): Promise<void> {
     try {
-      const files = await fs.readdir(this.monitoringDataPath);
-      
-      for (const file of files) {
-        if (file.startsWith('monitoring_')) {
-          const data = await fs.readFile(path.join(this.monitoringDataPath, file), 'utf-8');
-          const monitoring = JSON.parse(data);
-          
-          if (monitoring.codeId && monitoring.latestExecution) {
-            this.recordExecutionMetrics(monitoring.codeId, monitoring.latestExecution);
-          }
-        }
-      }
-      
-      console.log(`📊 Loaded execution history for ${this.executionHistory.size} code instances`);
+      // Load recent execution metrics from database
+      // This would need a method to get all recent metrics
+      // For now, we'll start with empty cache
+      console.log('📊 Execution history will be loaded from database on demand');
     } catch (error) {
       console.log('📝 No existing execution history found');
     }

@@ -5,11 +5,13 @@ import {
   CodePattern 
 } from './types';
 import { AIService } from '../ai-service';
+import { CodeGenerationDatabase } from './database/code-generation-db';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 
 export class CodeGenerationLearningEngine {
   private aiService: AIService;
+  private database: CodeGenerationDatabase;
   private learningDataPath: string;
   private patterns: Map<string, CodePattern>;
   private successfulPatterns: CodePattern[] = [];
@@ -17,6 +19,7 @@ export class CodeGenerationLearningEngine {
 
   constructor(provider?: string) {
     this.aiService = new AIService(provider);
+    this.database = new CodeGenerationDatabase();
     this.learningDataPath = path.join(process.cwd(), 'learning-data', 'code-generation');
     this.patterns = new Map();
     this.initializeLearningData();
@@ -24,10 +27,7 @@ export class CodeGenerationLearningEngine {
 
   private async initializeLearningData() {
     try {
-      // Create learning data directory if it doesn't exist
-      await fs.mkdir(this.learningDataPath, { recursive: true });
-      
-      // Load existing patterns
+      // Load existing patterns from database
       await this.loadPatterns();
     } catch (error) {
       console.error('Failed to initialize learning data:', error);
@@ -170,6 +170,9 @@ Identify:
         
         this.patterns.set(pattern.id, pattern);
         this.successfulPatterns.push(pattern);
+        
+        // Save to database immediately
+        await this.database.saveCodePattern(pattern);
       }
     }
     
@@ -280,15 +283,16 @@ Identify:
 
   private async loadPatterns(): Promise<void> {
     try {
-      const patternsFile = path.join(this.learningDataPath, 'patterns.json');
-      const data = await fs.readFile(patternsFile, 'utf-8');
-      const savedPatterns = JSON.parse(data);
+      // Load patterns from database
+      const savedPatterns = await this.database.getSuccessfulPatterns({
+        limit: 1000 // Load up to 1000 patterns
+      });
       
       savedPatterns.forEach((pattern: CodePattern) => {
         this.patterns.set(pattern.id, pattern);
       });
       
-      console.log(`📖 Loaded ${this.patterns.size} code patterns`);
+      console.log(`📖 Loaded ${this.patterns.size} code patterns from database`);
     } catch (error) {
       console.log('📝 No existing patterns found, starting fresh');
     }
@@ -296,10 +300,8 @@ Identify:
 
   private async saveLearningData(data: LearningData): Promise<void> {
     try {
-      const filename = `learning_${Date.now()}.json`;
-      const filepath = path.join(this.learningDataPath, filename);
-      
-      await fs.writeFile(filepath, JSON.stringify(data, null, 2));
+      // Save to database
+      await this.database.saveLearningData(data);
       
       // Also save current patterns
       await this.savePatterns();
@@ -310,10 +312,14 @@ Identify:
 
   private async savePatterns(): Promise<void> {
     try {
-      const patternsFile = path.join(this.learningDataPath, 'patterns.json');
+      // Save patterns to database
       const patterns = Array.from(this.patterns.values());
       
-      await fs.writeFile(patternsFile, JSON.stringify(patterns, null, 2));
+      for (const pattern of patterns) {
+        await this.database.saveCodePattern(pattern);
+      }
+      
+      console.log(`💾 Saved ${patterns.length} patterns to database`);
     } catch (error) {
       console.error('Failed to save patterns:', error);
     }
@@ -346,5 +352,24 @@ Identify:
     });
     
     return [...new Set(failures)]; // Remove duplicates
+  }
+
+  async recordSuccessfulGeneration(
+    request: CodeGenerationRequest,
+    result: any
+  ): Promise<void> {
+    try {
+      // Create a simple execution result for learning
+      const executionResult: CodeExecutionResult = {
+        success: true,
+        executionTime: 0,
+        memoryUsed: 0
+      };
+      
+      // Learn from this successful generation
+      await this.learnFromCodeSuccess(request, result.code, executionResult);
+    } catch (error) {
+      console.error('Failed to record successful generation:', error);
+    }
   }
 }
