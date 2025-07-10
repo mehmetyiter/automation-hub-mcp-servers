@@ -1,6 +1,8 @@
 import { default as fetch } from 'node-fetch';
 import * as fs from 'fs';
 import * as path from 'path';
+import { DynamicCodeGenerator } from './code-generation/dynamic-code-generator';
+import { CodeGenerationRequest } from './code-generation/types';
 
 export interface WorkflowGenerationOptions {
   apiKey?: string;
@@ -21,10 +23,12 @@ export class AIWorkflowGenerator {
   private apiKey?: string;
   private provider: 'openai' | 'anthropic';
   private trainingData: any;
+  private codeGenerator: DynamicCodeGenerator;
 
   constructor(options?: WorkflowGenerationOptions) {
     this.apiKey = options?.apiKey;
     this.provider = options?.provider || 'anthropic';
+    this.codeGenerator = new DynamicCodeGenerator(this.provider);
     this.loadTrainingData();
   }
 
@@ -815,7 +819,19 @@ Important:
       case 'n8n-nodes-base.code':
         if (!node.parameters) node.parameters = {};
         if (!node.parameters.language) node.parameters.language = 'javaScript';
-        if (!node.parameters.jsCode) node.parameters.jsCode = 'return items;';
+        
+        // Check if node name suggests Python
+        const nodeName = node.name?.toLowerCase() || '';
+        if (nodeName.includes('python') || nodeName.includes('py')) {
+          node.parameters.language = 'python';
+        }
+        
+        // Generate code based on language
+        if (node.parameters.language === 'python' && !node.parameters.pythonCode) {
+          node.parameters.pythonCode = this.generateDynamicCodeForNode(node, 'python');
+        } else if (!node.parameters.jsCode) {
+          node.parameters.jsCode = this.generateDynamicCodeForNode(node, 'javascript');
+        }
         break;
         
       case 'n8n-nodes-base.httpRequest':
@@ -1374,5 +1390,588 @@ IMPORTANT RULES:
 6. Always include error handling${additionalGuidelines}
 
 Return ONLY valid JSON with the exact structure shown above.`;
+  }
+
+  private generateDynamicCodeForNode(node: any, language: string = 'javascript'): string {
+    // Check if we have context about what this node should do
+    const nodeName = node.name?.toLowerCase() || '';
+    const nodeId = node.id || '';
+    
+    try {
+      // Try to use AI-powered code generation first
+      const request: CodeGenerationRequest = {
+        description: this.extractCodePurposeFromNodeName(node.name),
+        nodeType: 'code',
+        workflowContext: {
+          workflowPurpose: 'Dynamic workflow automation'
+        },
+        requirements: {
+          language: language === 'python' ? 'python' : 'javascript'
+        }
+      };
+      
+      // Use synchronous code generation based on patterns
+      const result = this.codeGenerator.generateCodeForNode('code', {
+        nodeName: node.name,
+        purpose: this.extractCodePurposeFromNodeName(node.name)
+      });
+      
+      // Store code ID for future monitoring
+      node.codeGenerationId = `node_${nodeId}_${Date.now()}`;
+      
+      return result;
+    } catch (error) {
+      console.log('AI code generation unavailable, using template-based approach');
+      
+      // Fallback to template-based generation
+      if (nodeName.includes('calculate') || nodeName.includes('calc')) {
+        return this.generateCalculationCode();
+      } else if (nodeName.includes('transform') || nodeName.includes('format')) {
+        return this.generateTransformationCode();
+      } else if (nodeName.includes('validate') || nodeName.includes('check')) {
+        return this.generateValidationCode();
+      } else if (nodeName.includes('filter')) {
+        return this.generateFilterCode();
+      } else if (nodeName.includes('process') || nodeName.includes('handle')) {
+        return this.generateProcessingCode();
+      } else if (nodeName.includes('aggregate') || nodeName.includes('sum') || nodeName.includes('total')) {
+        return this.generateAggregationCode();
+      } else if (nodeName.includes('parse') || nodeName.includes('extract')) {
+        return this.generateParsingCode();
+      } else if (nodeName.includes('log') || nodeName.includes('debug')) {
+        return this.generateLoggingCode();
+      }
+      
+      // Default to a context-aware processing code
+      return this.generateDefaultProcessingCode();
+    }
+  }
+
+  private extractCodePurposeFromNodeName(nodeName: string): string {
+    if (!nodeName) return 'Process data items';
+    
+    // Extract purpose from node name
+    const lowerName = nodeName.toLowerCase();
+    
+    if (lowerName.includes('calculate')) return 'Calculate numeric values from input data';
+    if (lowerName.includes('transform')) return 'Transform data structure to new format';
+    if (lowerName.includes('validate')) return 'Validate data against business rules';
+    if (lowerName.includes('filter')) return 'Filter items based on conditions';
+    if (lowerName.includes('aggregate')) return 'Aggregate and summarize data';
+    if (lowerName.includes('parse')) return 'Parse and extract data from text';
+    if (lowerName.includes('format')) return 'Format data for output';
+    
+    return `Process data for ${nodeName}`;
+  }
+
+  private generateCalculationCode(): string {
+    return `// Dynamic calculation logic
+const inputItems = $input.all();
+const processedItems = [];
+
+for (const item of inputItems) {
+  try {
+    const data = item.json;
+    
+    // Perform calculations
+    const calculatedValue = Object.keys(data)
+      .filter(key => typeof data[key] === 'number')
+      .reduce((sum, key) => sum + data[key], 0);
+    
+    processedItems.push({
+      json: {
+        ...data,
+        calculated_total: calculatedValue,
+        calculation_timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Calculation error:', error);
+    processedItems.push({
+      json: {
+        ...item.json,
+        error: error.message,
+        calculation_failed: true
+      }
+    });
+  }
+}
+
+return processedItems;`;
+  }
+
+  private generateTransformationCode(): string {
+    return `// Dynamic data transformation
+const inputItems = $input.all();
+const transformedItems = [];
+
+for (const item of inputItems) {
+  try {
+    const data = item.json;
+    
+    // Transform data structure
+    const transformed = {
+      id: data.id || data._id || generateId(),
+      timestamp: new Date().toISOString(),
+      // Map fields dynamically
+      ...Object.entries(data).reduce((acc, [key, value]) => {
+        // Transform field names to snake_case
+        const transformedKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+        acc[transformedKey] = value;
+        return acc;
+      }, {}),
+      processed: true
+    };
+    
+    transformedItems.push({ json: transformed });
+  } catch (error) {
+    console.error('Transformation error:', error);
+    transformedItems.push({
+      json: {
+        ...item.json,
+        transformation_error: error.message
+      }
+    });
+  }
+}
+
+function generateId() {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
+
+return transformedItems;`;
+  }
+
+  private generateValidationCode(): string {
+    return `// Dynamic validation logic
+const inputItems = $input.all();
+const validatedItems = [];
+
+for (const item of inputItems) {
+  try {
+    const data = item.json;
+    const errors = [];
+    
+    // Validate required fields
+    const requiredFields = Object.keys(data).filter(key => 
+      !data[key] && data[key] !== 0 && data[key] !== false
+    );
+    
+    if (requiredFields.length > 0) {
+      errors.push(\`Missing required fields: \${requiredFields.join(', ')}\`);
+    }
+    
+    // Validate data types
+    Object.entries(data).forEach(([key, value]) => {
+      if (key.includes('email') && value && !isValidEmail(value)) {
+        errors.push(\`Invalid email format for \${key}\`);
+      }
+      if (key.includes('date') && value && !isValidDate(value)) {
+        errors.push(\`Invalid date format for \${key}\`);
+      }
+      if (key.includes('phone') && value && !isValidPhone(value)) {
+        errors.push(\`Invalid phone format for \${key}\`);
+      }
+    });
+    
+    validatedItems.push({
+      json: {
+        ...data,
+        is_valid: errors.length === 0,
+        validation_errors: errors,
+        validated_at: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Validation error:', error);
+    validatedItems.push({
+      json: {
+        ...item.json,
+        is_valid: false,
+        validation_error: error.message
+      }
+    });
+  }
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email));
+}
+
+function isValidDate(date) {
+  return !isNaN(Date.parse(String(date)));
+}
+
+function isValidPhone(phone) {
+  return /^[\d\s\-\+\(\)]+$/.test(String(phone));
+}
+
+return validatedItems;`;
+  }
+
+  private generateFilterCode(): string {
+    return `// Dynamic filtering logic
+const inputItems = $input.all();
+const filteredItems = [];
+
+for (const item of inputItems) {
+  try {
+    const data = item.json;
+    let shouldInclude = true;
+    
+    // Apply dynamic filters based on data properties
+    // Filter out items with null or undefined values
+    const hasValidData = Object.values(data).some(value => 
+      value !== null && value !== undefined && value !== ''
+    );
+    
+    // Filter based on common patterns
+    if (data.status && ['inactive', 'deleted', 'cancelled'].includes(data.status.toLowerCase())) {
+      shouldInclude = false;
+    }
+    
+    if (data.active === false || data.enabled === false) {
+      shouldInclude = false;
+    }
+    
+    // Include only items that pass filters
+    if (shouldInclude && hasValidData) {
+      filteredItems.push({
+        json: {
+          ...data,
+          filtered_at: new Date().toISOString()
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Filter error:', error);
+    // Include items that cause errors with error flag
+    filteredItems.push({
+      json: {
+        ...item.json,
+        filter_error: error.message
+      }
+    });
+  }
+}
+
+console.log(\`Filtered \${inputItems.length} items to \${filteredItems.length} items\`);
+return filteredItems;`;
+  }
+
+  private generateProcessingCode(): string {
+    return `// Dynamic data processing
+const inputItems = $input.all();
+const processedItems = [];
+
+for (const item of inputItems) {
+  try {
+    const data = item.json;
+    
+    // Process data based on content
+    const processed = {
+      ...data,
+      // Add processing metadata
+      processed_at: new Date().toISOString(),
+      processing_id: generateProcessingId(),
+      
+      // Normalize common fields
+      normalized_name: data.name?.trim().toLowerCase(),
+      normalized_email: data.email?.trim().toLowerCase(),
+      
+      // Extract additional insights
+      data_quality_score: calculateDataQuality(data),
+      field_count: Object.keys(data).length,
+      has_required_fields: checkRequiredFields(data)
+    };
+    
+    processedItems.push({ json: processed });
+  } catch (error) {
+    console.error('Processing error:', error);
+    processedItems.push({
+      json: {
+        ...item.json,
+        processing_error: error.message,
+        processing_failed: true
+      }
+    });
+  }
+}
+
+function generateProcessingId() {
+  return 'proc_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+function calculateDataQuality(data) {
+  const fields = Object.values(data);
+  const filledFields = fields.filter(f => f !== null && f !== undefined && f !== '').length;
+  return Math.round((filledFields / fields.length) * 100);
+}
+
+function checkRequiredFields(data) {
+  // Check for common required fields
+  const commonRequired = ['id', 'name', 'email', 'type'];
+  return commonRequired.every(field => 
+    data[field] !== null && data[field] !== undefined && data[field] !== ''
+  );
+}
+
+return processedItems;`;
+  }
+
+  private generateAggregationCode(): string {
+    return `// Dynamic aggregation logic
+const inputItems = $input.all();
+
+// Aggregate data
+const aggregation = {
+  total_items: inputItems.length,
+  numeric_sums: {},
+  counts_by_field: {},
+  unique_values: {},
+  date_range: { min: null, max: null }
+};
+
+// Process each item for aggregation
+inputItems.forEach(item => {
+  const data = item.json;
+  
+  Object.entries(data).forEach(([key, value]) => {
+    // Sum numeric values
+    if (typeof value === 'number') {
+      aggregation.numeric_sums[key] = (aggregation.numeric_sums[key] || 0) + value;
+    }
+    
+    // Count occurrences
+    if (value !== null && value !== undefined) {
+      const strValue = String(value);
+      if (!aggregation.counts_by_field[key]) {
+        aggregation.counts_by_field[key] = {};
+      }
+      aggregation.counts_by_field[key][strValue] = 
+        (aggregation.counts_by_field[key][strValue] || 0) + 1;
+      
+      // Track unique values
+      if (!aggregation.unique_values[key]) {
+        aggregation.unique_values[key] = new Set();
+      }
+      aggregation.unique_values[key].add(strValue);
+    }
+    
+    // Track date range
+    if (key.includes('date') || key.includes('time')) {
+      const dateValue = new Date(value);
+      if (!isNaN(dateValue)) {
+        if (!aggregation.date_range.min || dateValue < aggregation.date_range.min) {
+          aggregation.date_range.min = dateValue;
+        }
+        if (!aggregation.date_range.max || dateValue > aggregation.date_range.max) {
+          aggregation.date_range.max = dateValue;
+        }
+      }
+    }
+  });
+});
+
+// Convert sets to counts
+Object.keys(aggregation.unique_values).forEach(key => {
+  aggregation.unique_values[key] = aggregation.unique_values[key].size;
+});
+
+// Add averages for numeric fields
+const averages = {};
+Object.entries(aggregation.numeric_sums).forEach(([key, sum]) => {
+  averages[key + '_avg'] = sum / inputItems.length;
+});
+
+return [{
+  json: {
+    aggregation_timestamp: new Date().toISOString(),
+    ...aggregation,
+    averages,
+    summary: {
+      total_records: inputItems.length,
+      numeric_fields: Object.keys(aggregation.numeric_sums).length,
+      unique_fields: Object.keys(aggregation.unique_values).length
+    }
+  }
+}];`;
+  }
+
+  private generateParsingCode(): string {
+    return `// Dynamic parsing logic
+const inputItems = $input.all();
+const parsedItems = [];
+
+for (const item of inputItems) {
+  try {
+    const data = item.json;
+    const parsed = {};
+    
+    Object.entries(data).forEach(([key, value]) => {
+      // Parse JSON strings
+      if (typeof value === 'string' && (value.startsWith('{') || value.startsWith('['))) {
+        try {
+          parsed[key + '_parsed'] = JSON.parse(value);
+        } catch (e) {
+          parsed[key] = value;
+        }
+      }
+      // Parse dates
+      else if (typeof value === 'string' && !isNaN(Date.parse(value))) {
+        const date = new Date(value);
+        parsed[key + '_date'] = date.toISOString();
+        parsed[key + '_timestamp'] = date.getTime();
+      }
+      // Parse numbers from strings
+      else if (typeof value === 'string' && !isNaN(Number(value))) {
+        parsed[key + '_number'] = Number(value);
+        parsed[key + '_original'] = value;
+      }
+      // Extract URLs
+      else if (typeof value === 'string' && value.match(/https?:\/\/[^\s]+/)) {
+        const urls = value.match(/https?:\/\/[^\s]+/g);
+        parsed[key + '_urls'] = urls;
+        parsed[key] = value;
+      }
+      // Extract emails
+      else if (typeof value === 'string' && value.includes('@')) {
+        const emails = value.match(/[^\s@]+@[^\s@]+\.[^\s@]+/g);
+        if (emails) {
+          parsed[key + '_emails'] = emails;
+        }
+        parsed[key] = value;
+      }
+      else {
+        parsed[key] = value;
+      }
+    });
+    
+    parsedItems.push({
+      json: {
+        original: data,
+        parsed: parsed,
+        parsed_at: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Parsing error:', error);
+    parsedItems.push({
+      json: {
+        ...item.json,
+        parsing_error: error.message
+      }
+    });
+  }
+}
+
+return parsedItems;`;
+  }
+
+  private generateLoggingCode(): string {
+    return `// Dynamic logging and debugging
+const inputItems = $input.all();
+const timestamp = new Date().toISOString();
+
+console.log('=== Workflow Execution Log ===');
+console.log('Timestamp:', timestamp);
+console.log('Total items:', inputItems.length);
+
+// Log data structure of first item
+if (inputItems.length > 0) {
+  console.log('First item structure:', Object.keys(inputItems[0].json));
+  console.log('First item data:', JSON.stringify(inputItems[0].json, null, 2));
+}
+
+// Analyze and log data patterns
+const fieldAnalysis = {};
+const valueTypes = {};
+
+inputItems.forEach((item, index) => {
+  const data = item.json;
+  
+  Object.entries(data).forEach(([key, value]) => {
+    // Track field occurrences
+    fieldAnalysis[key] = (fieldAnalysis[key] || 0) + 1;
+    
+    // Track value types
+    const valueType = value === null ? 'null' : typeof value;
+    if (!valueTypes[key]) valueTypes[key] = {};
+    valueTypes[key][valueType] = (valueTypes[key][valueType] || 0) + 1;
+  });
+  
+  // Log any errors or anomalies
+  if (data.error || data.exception) {
+    console.error(\`Error in item \${index}:\`, data.error || data.exception);
+  }
+});
+
+console.log('Field occurrence analysis:', fieldAnalysis);
+console.log('Value type analysis:', valueTypes);
+
+// Return items with debug metadata
+return inputItems.map((item, index) => ({
+  json: {
+    ...item.json,
+    _debug: {
+      index,
+      timestamp,
+      item_size: JSON.stringify(item.json).length,
+      field_count: Object.keys(item.json).length,
+      has_errors: !!(item.json.error || item.json.exception)
+    }
+  }
+}));`;
+  }
+
+  private generateDefaultProcessingCode(): string {
+    return `// AI-Generated dynamic processing code
+const inputItems = $input.all();
+
+// Validate input
+if (!inputItems || inputItems.length === 0) {
+  console.log('No input items received');
+  return [];
+}
+
+const processedItems = [];
+
+// Process each item
+for (const item of inputItems) {
+  try {
+    const data = item.json;
+    
+    // Dynamic processing based on data structure
+    const result = {
+      ...data,
+      // Add processing metadata
+      processed: true,
+      processed_at: new Date().toISOString(),
+      processing_version: '1.0',
+      
+      // Preserve original data
+      _original: JSON.parse(JSON.stringify(data))
+    };
+    
+    // Add to results
+    processedItems.push({ json: result });
+    
+  } catch (error) {
+    console.error('Processing error for item:', item.json, error);
+    
+    // Return item with error information
+    processedItems.push({
+      json: {
+        ...item.json,
+        processing_error: error.message,
+        processing_failed: true,
+        failed_at: new Date().toISOString()
+      }
+    });
+  }
+}
+
+console.log(\`Processed \${processedItems.length} of \${inputItems.length} items\`);
+return processedItems;`;
   }
 }

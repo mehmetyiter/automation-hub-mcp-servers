@@ -87,10 +87,7 @@ router.post('/settings', requireAuth, async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Provider and API key are required' });
       return;
     }
-
-    // Skip API key validation in development
-    // TODO: Re-enable this in production
-    /*
+    
     const generator = new AIWorkflowGeneratorV2({
       provider,
       apiKey,
@@ -104,8 +101,7 @@ router.post('/settings', requireAuth, async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Invalid API key or connection failed' });
       return;
     }
-    */
-
+    
     // Save to auth service
     const response = await fetch('http://localhost:3005/api/ai-providers/settings', {
       method: 'POST',
