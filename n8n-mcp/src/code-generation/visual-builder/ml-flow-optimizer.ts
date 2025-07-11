@@ -1,5 +1,6 @@
-import { AIService } from '../../ai-service';
-import { VisualFlow, VisualBlock, BlockType, FlowConnection } from './visual-code-builder';
+import { AIService } from '../../ai-service.js';
+import { VisualFlow, VisualBlock, BlockType } from './visual-code-builder.js';
+import * as crypto from 'crypto';
 
 export interface FlowFeatures {
   nodeCount: number;
@@ -77,6 +78,65 @@ export interface AppliedOptimization {
   confidence: number;
 }
 
+export interface CachedModel {
+  signature: string;
+  version: number;
+  createdAt: Date;
+  lastUsed: Date;
+  features: FlowFeatures;
+  predictions: MLPredictions;
+  optimizations: AppliedOptimization[];
+  metadata: {
+    accuracy: number;
+    confidence: number;
+    usageCount: number;
+  };
+}
+
+export interface ModelVersion {
+  version: number;
+  createdAt: Date;
+  accuracy: number;
+  changesSince: string[];
+}
+
+export interface AntiPattern {
+  type: 'n_plus_one' | 'sync_async_mismatch' | 'memory_leak' | 'circular_dependency' | 'excessive_nesting';
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  location: string[];
+  description: string;
+  recommendation: string;
+  estimatedImpact: number;
+}
+
+export interface PatternAnalysis {
+  antiPatterns: AntiPattern[];
+  optimizationPatterns: OptimizationPattern[];
+  scalabilityPatterns: ScalabilityPattern[];
+  securityPatterns: SecurityPattern[];
+}
+
+export interface OptimizationPattern {
+  type: string;
+  confidence: number;
+  applicableBlocks: string[];
+  expectedGain: number;
+}
+
+export interface ScalabilityPattern {
+  pattern: 'horizontal' | 'vertical' | 'data_partitioning' | 'caching';
+  suitability: number;
+  requirements: string[];
+  limitations: string[];
+}
+
+export interface SecurityPattern {
+  pattern: 'input_validation' | 'output_sanitization' | 'access_control' | 'data_encryption';
+  required: boolean;
+  severity: 'low' | 'medium' | 'high';
+  recommendation: string;
+}
+
 export interface FlowAnalysis {
   dataProcessingComplexity: number;
   ioOperations: number;
@@ -99,16 +159,26 @@ export interface MemoryIntensiveOperation {
 
 export class MLFlowOptimizer {
   private aiService: AIService;
-  private modelCache: Map<string, any> = new Map();
+  private modelCache: Map<string, CachedModel> = new Map();
+  private modelVersions: Map<string, ModelVersion[]> = new Map();
   private optimizationHistory: Map<string, OptimizedFlow[]> = new Map();
+  private patternAnalyzer: DeepPatternAnalyzer;
 
   constructor(provider?: string) {
     this.aiService = new AIService(provider);
-    console.log('🤖 ML Flow Optimizer initialized');
+    this.patternAnalyzer = new DeepPatternAnalyzer(this.aiService);
+    console.log('🤖 ML Flow Optimizer initialized with model caching and deep pattern analysis');
   }
 
   async optimizeFlowWithML(flow: VisualFlow): Promise<OptimizedFlow> {
     console.log(`🧠 Starting ML-based optimization for flow: ${flow.name}`);
+    
+    // Check for cached model first
+    const cachedResult = await this.optimizeFlowWithCaching(flow);
+    if (cachedResult) {
+      console.log('🚀 Using cached ML model for optimization');
+      return cachedResult;
+    }
     
     // Extract flow features for ML analysis
     const features = this.extractFlowFeatures(flow);
@@ -118,8 +188,12 @@ export class MLFlowOptimizer {
       cyclomaticComplexity: features.cyclomaticComplexity
     });
     
+    // Perform deep pattern analysis
+    const patternAnalysis = await this.patternAnalyzer.analyzeComplexPatterns(flow);
+    console.log(`🔍 Pattern analysis completed. Anti-patterns found: ${patternAnalysis.antiPatterns.length}`);
+    
     // Get ML predictions for optimization opportunities
-    const predictions = await this.getModeoPredictions(features, flow);
+    const predictions = await this.getMLPredictions(features, flow, patternAnalysis);
     
     // Apply ML-guided optimizations
     const optimizations = await this.generateMLOptimizations(flow, predictions);
@@ -140,12 +214,129 @@ export class MLFlowOptimizer {
       appliedOptimizations: optimizations
     };
     
+    // Cache the model for future use
+    await this.cacheOptimizationModel(flow, features, predictions, optimizations, confidence);
+    
     // Store in history for learning
     this.addToOptimizationHistory(flow.id, result);
     
     console.log(`✅ ML optimization completed. Expected improvement: ${expectedImprovement}% (confidence: ${confidence}%)`);
     
     return result;
+  }
+
+  // Enhanced optimization with caching (from optimization suggestions)
+  async optimizeFlowWithCaching(flow: VisualFlow): Promise<OptimizedFlow | null> {
+    const flowSignature = this.generateFlowSignature(flow);
+    const cachedModel = this.modelCache.get(flowSignature);
+    
+    if (cachedModel && !this.isModelStale(cachedModel)) {
+      // Update usage stats
+      cachedModel.lastUsed = new Date();
+      cachedModel.metadata.usageCount++;
+      
+      // Apply cached optimizations
+      return this.applyCachedOptimizations(flow, cachedModel);
+    }
+    
+    return null;
+  }
+
+  private generateFlowSignature(flow: VisualFlow): string {
+    const features = this.extractFlowFeatures(flow);
+    const signatureData = {
+      nodeCount: features.nodeCount,
+      connectionCount: features.connectionCount,
+      blockTypes: features.blockTypes,
+      complexity: Math.floor(features.complexity / 5) * 5, // Round to nearest 5 for grouping
+      cyclomaticComplexity: features.cyclomaticComplexity
+    };
+    
+    return crypto.createHash('md5')
+      .update(JSON.stringify(signatureData))
+      .digest('hex');
+  }
+
+  private isModelStale(cachedModel: CachedModel): boolean {
+    const maxAge = 24 * 60 * 60 * 1000; // 24 hours
+    const age = Date.now() - cachedModel.lastUsed.getTime();
+    return age > maxAge || cachedModel.metadata.accuracy < 0.7;
+  }
+
+  private async applyCachedOptimizations(flow: VisualFlow, cachedModel: CachedModel): Promise<OptimizedFlow> {
+    // Apply cached optimizations to the flow
+    const optimizedFlow = await this.applyMLOptimizations(flow, cachedModel.optimizations);
+    
+    return {
+      original: flow,
+      optimized: optimizedFlow,
+      mlPredictions: cachedModel.predictions,
+      expectedImprovement: cachedModel.optimizations.reduce((sum, opt) => sum + opt.estimatedGain, 0) / cachedModel.optimizations.length,
+      confidence: cachedModel.metadata.confidence,
+      appliedOptimizations: cachedModel.optimizations
+    };
+  }
+
+  private async cacheOptimizationModel(
+    flow: VisualFlow,
+    features: FlowFeatures,
+    predictions: MLPredictions,
+    optimizations: AppliedOptimization[],
+    confidence: number
+  ): Promise<void> {
+    const signature = this.generateFlowSignature(flow);
+    const version = this.getNextModelVersion(signature);
+    
+    const cachedModel: CachedModel = {
+      signature,
+      version,
+      createdAt: new Date(),
+      lastUsed: new Date(),
+      features,
+      predictions,
+      optimizations,
+      metadata: {
+        accuracy: confidence / 100,
+        confidence,
+        usageCount: 1
+      }
+    };
+    
+    this.modelCache.set(signature, cachedModel);
+    this.addModelVersion(signature, version, confidence / 100);
+    
+    // Cleanup old models if cache gets too large
+    if (this.modelCache.size > 100) {
+      this.cleanupModelCache();
+    }
+  }
+
+  private getNextModelVersion(signature: string): number {
+    const versions = this.modelVersions.get(signature) || [];
+    return versions.length > 0 ? Math.max(...versions.map(v => v.version)) + 1 : 1;
+  }
+
+  private addModelVersion(signature: string, version: number, accuracy: number): void {
+    const versions = this.modelVersions.get(signature) || [];
+    versions.push({
+      version,
+      createdAt: new Date(),
+      accuracy,
+      changesSince: []
+    });
+    this.modelVersions.set(signature, versions);
+  }
+
+  private cleanupModelCache(): void {
+    // Remove least recently used models
+    const entries = Array.from(this.modelCache.entries());
+    entries.sort((a, b) => a[1].lastUsed.getTime() - b[1].lastUsed.getTime());
+    
+    // Remove bottom 20%
+    const toRemove = Math.floor(entries.length * 0.2);
+    for (let i = 0; i < toRemove; i++) {
+      this.modelCache.delete(entries[i][0]);
+    }
   }
 
   private extractFlowFeatures(flow: VisualFlow): FlowFeatures {
@@ -328,7 +519,7 @@ export class MLFlowOptimizer {
     return parallelGroups.reduce((sum, group) => sum + group.length, 0);
   }
 
-  private async getModeoPredictions(features: FlowFeatures, flow: VisualFlow): Promise<MLPredictions> {
+  private async getMLPredictions(features: FlowFeatures, flow: VisualFlow, patternAnalysis: PatternAnalysis): Promise<MLPredictions> {
     console.log('🤖 Getting ML predictions for flow optimization...');
     
     const prompt = `
@@ -917,10 +1108,417 @@ Consider:
     return 'F';
   }
 
+  // Public API methods for model caching
+  getCachedModels(): CachedModel[] {
+    return Array.from(this.modelCache.values());
+  }
+
+  getModelVersions(signature: string): ModelVersion[] {
+    return this.modelVersions.get(signature) || [];
+  }
+
+  clearModelCache(): void {
+    this.modelCache.clear();
+    this.modelVersions.clear();
+    console.log('🗑️ Model cache cleared');
+  }
+
+  getCacheStatistics(): any {
+    const models = Array.from(this.modelCache.values());
+    return {
+      totalModels: models.length,
+      totalUsage: models.reduce((sum, model) => sum + model.metadata.usageCount, 0),
+      averageAccuracy: models.reduce((sum, model) => sum + model.metadata.accuracy, 0) / models.length,
+      oldestModel: models.length > 0 ? Math.min(...models.map(m => m.createdAt.getTime())) : null,
+      newestModel: models.length > 0 ? Math.max(...models.map(m => m.createdAt.getTime())) : null
+    };
+  }
+
   cleanup(): void {
     console.log('🧹 Cleaning up ML Flow Optimizer...');
     this.modelCache.clear();
+    this.modelVersions.clear();
     this.optimizationHistory.clear();
+    this.patternAnalyzer.cleanup();
     console.log('✅ ML Flow Optimizer cleanup completed');
+  }
+}
+
+// Deep Pattern Analyzer class (from optimization suggestions)
+export class DeepPatternAnalyzer {
+  private aiService: AIService;
+  private knownAntiPatterns: Map<string, AntiPattern> = new Map();
+
+  constructor(aiService: AIService) {
+    this.aiService = aiService;
+    this.initializeKnownPatterns();
+  }
+
+  async analyzeComplexPatterns(flow: VisualFlow): Promise<PatternAnalysis> {
+    console.log('🔍 Performing deep pattern analysis...');
+    
+    return {
+      antiPatterns: await this.detectAntiPatterns(flow),
+      optimizationPatterns: await this.identifyOptimizationPatterns(flow),
+      scalabilityPatterns: await this.analyzeScalabilityPatterns(flow),
+      securityPatterns: await this.checkSecurityPatterns(flow)
+    };
+  }
+
+  private async detectAntiPatterns(flow: VisualFlow): Promise<AntiPattern[]> {
+    const antiPatterns: AntiPattern[] = [];
+    
+    // Detect N+1 query problems
+    const nPlusOnePatterns = this.detectNPlusOneProblems(flow);
+    antiPatterns.push(...nPlusOnePatterns);
+    
+    // Detect sync/async mismatches
+    const syncAsyncIssues = this.detectSyncAsyncMismatches(flow);
+    antiPatterns.push(...syncAsyncIssues);
+    
+    // Detect potential memory leaks
+    const memoryLeakPatterns = this.detectMemoryLeakPatterns(flow);
+    antiPatterns.push(...memoryLeakPatterns);
+    
+    // Detect circular dependencies
+    const circularDeps = this.detectCircularDependencies(flow);
+    antiPatterns.push(...circularDeps);
+    
+    // Detect excessive nesting
+    const nestingIssues = this.detectExcessiveNesting(flow);
+    antiPatterns.push(...nestingIssues);
+    
+    return antiPatterns;
+  }
+
+  private detectNPlusOneProblems(flow: VisualFlow): AntiPattern[] {
+    const patterns: AntiPattern[] = [];
+    
+    // Look for loops containing database operations
+    flow.blocks.forEach(block => {
+      if (block.type === BlockType.LOOP) {
+        const loopConnections = flow.connections.filter(conn => conn.from.blockId === block.id);
+        const hasDbOperations = loopConnections.some(conn => {
+          const targetBlock = flow.blocks.find(b => b.id === conn.to.blockId);
+          return targetBlock?.type === BlockType.DATABASE;
+        });
+        
+        if (hasDbOperations) {
+          patterns.push({
+            type: 'n_plus_one',
+            severity: 'high',
+            location: [block.id],
+            description: 'Potential N+1 query problem: Database operation inside loop',
+            recommendation: 'Consider batch loading or using JOINs to reduce database queries',
+            estimatedImpact: 70
+          });
+        }
+      }
+    });
+    
+    return patterns;
+  }
+
+  private detectSyncAsyncMismatches(flow: VisualFlow): AntiPattern[] {
+    const patterns: AntiPattern[] = [];
+    
+    // Look for synchronous operations that could benefit from async
+    flow.blocks.forEach(block => {
+      if ([BlockType.API_CALL, BlockType.DATABASE].includes(block.type)) {
+        const hasParallelOpportunities = this.hasParallelExecutionOpportunities(flow, block.id);
+        
+        if (hasParallelOpportunities) {
+          patterns.push({
+            type: 'sync_async_mismatch',
+            severity: 'medium',
+            location: [block.id],
+            description: 'Synchronous operation could be optimized with async execution',
+            recommendation: 'Consider using Promise.all() or async/await for parallel execution',
+            estimatedImpact: 40
+          });
+        }
+      }
+    });
+    
+    return patterns;
+  }
+
+  private detectMemoryLeakPatterns(flow: VisualFlow): AntiPattern[] {
+    const patterns: AntiPattern[] = [];
+    
+    // Look for unclosed resources or event listeners
+    flow.blocks.forEach(block => {
+      if (block.type === BlockType.CUSTOM) {
+        // Check if custom code might have memory leak patterns
+        const hasCleanupConcerns = block.parameters.some(param => 
+          param.name.toLowerCase().includes('event') || 
+          param.name.toLowerCase().includes('listener') ||
+          param.name.toLowerCase().includes('interval')
+        );
+        
+        if (hasCleanupConcerns) {
+          patterns.push({
+            type: 'memory_leak',
+            severity: 'medium',
+            location: [block.id],
+            description: 'Potential memory leak: Event listeners or intervals may not be cleaned up',
+            recommendation: 'Ensure proper cleanup of event listeners and intervals',
+            estimatedImpact: 30
+          });
+        }
+      }
+    });
+    
+    return patterns;
+  }
+
+  private detectCircularDependencies(flow: VisualFlow): AntiPattern[] {
+    const patterns: AntiPattern[] = [];
+    const visited = new Set<string>();
+    const recursionStack = new Set<string>();
+    
+    const dfs = (blockId: string, path: string[]): boolean => {
+      if (recursionStack.has(blockId)) {
+        patterns.push({
+          type: 'circular_dependency',
+          severity: 'critical',
+          location: [...path, blockId],
+          description: `Circular dependency detected in flow: ${path.join(' → ')} → ${blockId}`,
+          recommendation: 'Restructure flow to eliminate circular dependencies',
+          estimatedImpact: 90
+        });
+        return true;
+      }
+      
+      if (visited.has(blockId)) return false;
+      
+      visited.add(blockId);
+      recursionStack.add(blockId);
+      
+      const outgoingConnections = flow.connections.filter(conn => conn.from.blockId === blockId);
+      
+      for (const conn of outgoingConnections) {
+        if (dfs(conn.to.blockId, [...path, blockId])) {
+          return true;
+        }
+      }
+      
+      recursionStack.delete(blockId);
+      return false;
+    };
+    
+    flow.blocks.forEach(block => {
+      if (!visited.has(block.id)) {
+        dfs(block.id, []);
+      }
+    });
+    
+    return patterns;
+  }
+
+  private detectExcessiveNesting(flow: VisualFlow): AntiPattern[] {
+    const patterns: AntiPattern[] = [];
+    const maxDepth = this.calculateMaxNestingDepth(flow);
+    
+    if (maxDepth > 5) {
+      patterns.push({
+        type: 'excessive_nesting',
+        severity: maxDepth > 8 ? 'high' : 'medium',
+        location: [],
+        description: `Excessive nesting depth detected: ${maxDepth} levels`,
+        recommendation: 'Consider breaking complex flows into smaller, reusable components',
+        estimatedImpact: Math.min(60, maxDepth * 10)
+      });
+    }
+    
+    return patterns;
+  }
+
+  private async identifyOptimizationPatterns(flow: VisualFlow): Promise<OptimizationPattern[]> {
+    const patterns: OptimizationPattern[] = [];
+    
+    // Identify caching opportunities
+    const cachingOpportunities = this.identifyCachingOpportunities(flow);
+    patterns.push(...cachingOpportunities);
+    
+    // Identify parallelization opportunities
+    const parallelizationOpportunities = this.identifyParallelizationOpportunities(flow);
+    patterns.push(...parallelizationOpportunities);
+    
+    return patterns;
+  }
+
+  private async analyzeScalabilityPatterns(flow: VisualFlow): Promise<ScalabilityPattern[]> {
+    const patterns: ScalabilityPattern[] = [];
+    
+    // Analyze horizontal scaling potential
+    if (this.hasStatelessOperations(flow)) {
+      patterns.push({
+        pattern: 'horizontal',
+        suitability: 85,
+        requirements: ['Stateless operations', 'Load balancer'],
+        limitations: ['Shared state management']
+      });
+    }
+    
+    // Analyze caching potential
+    if (this.hasExpensiveOperations(flow)) {
+      patterns.push({
+        pattern: 'caching',
+        suitability: 90,
+        requirements: ['Cache layer', 'TTL management'],
+        limitations: ['Cache invalidation complexity']
+      });
+    }
+    
+    return patterns;
+  }
+
+  private async checkSecurityPatterns(flow: VisualFlow): Promise<SecurityPattern[]> {
+    const patterns: SecurityPattern[] = [];
+    
+    // Check for input validation needs
+    const hasInputBlocks = flow.blocks.some(b => b.type === BlockType.INPUT);
+    if (hasInputBlocks) {
+      patterns.push({
+        pattern: 'input_validation',
+        required: true,
+        severity: 'high',
+        recommendation: 'Implement comprehensive input validation for all input blocks'
+      });
+    }
+    
+    // Check for output sanitization needs
+    const hasOutputBlocks = flow.blocks.some(b => b.type === BlockType.OUTPUT);
+    if (hasOutputBlocks) {
+      patterns.push({
+        pattern: 'output_sanitization',
+        required: true,
+        severity: 'medium',
+        recommendation: 'Ensure output data is properly sanitized before transmission'
+      });
+    }
+    
+    return patterns;
+  }
+
+  // Helper methods
+  private hasParallelExecutionOpportunities(flow: VisualFlow, blockId: string): boolean {
+    const outgoingConnections = flow.connections.filter(conn => conn.from.blockId === blockId);
+    return outgoingConnections.length > 1;
+  }
+
+  private calculateMaxNestingDepth(flow: VisualFlow): number {
+    let maxDepth = 0;
+    
+    const inputBlocks = flow.blocks.filter(b => b.type === BlockType.INPUT);
+    inputBlocks.forEach(inputBlock => {
+      const depth = this.calculateDepthFromBlock(flow, inputBlock.id, new Set());
+      maxDepth = Math.max(maxDepth, depth);
+    });
+    
+    return maxDepth;
+  }
+
+  private calculateDepthFromBlock(flow: VisualFlow, blockId: string, visited: Set<string>): number {
+    if (visited.has(blockId)) return 0;
+    
+    visited.add(blockId);
+    
+    const outgoingConnections = flow.connections.filter(conn => conn.from.blockId === blockId);
+    
+    if (outgoingConnections.length === 0) return 1;
+    
+    let maxChildDepth = 0;
+    outgoingConnections.forEach(conn => {
+      const childDepth = this.calculateDepthFromBlock(flow, conn.to.blockId, new Set(visited));
+      maxChildDepth = Math.max(maxChildDepth, childDepth);
+    });
+    
+    return 1 + maxChildDepth;
+  }
+
+  private identifyCachingOpportunities(flow: VisualFlow): OptimizationPattern[] {
+    const patterns: OptimizationPattern[] = [];
+    
+    const expensiveBlocks = flow.blocks.filter(b => 
+      [BlockType.API_CALL, BlockType.DATABASE].includes(b.type)
+    );
+    
+    if (expensiveBlocks.length > 0) {
+      patterns.push({
+        type: 'caching',
+        confidence: 80,
+        applicableBlocks: expensiveBlocks.map(b => b.id),
+        expectedGain: 50
+      });
+    }
+    
+    return patterns;
+  }
+
+  private identifyParallelizationOpportunities(flow: VisualFlow): OptimizationPattern[] {
+    const patterns: OptimizationPattern[] = [];
+    
+    // Find independent blocks that can run in parallel
+    const independentGroups = this.findIndependentBlockGroups(flow);
+    
+    if (independentGroups.length > 0) {
+      patterns.push({
+        type: 'parallelization',
+        confidence: 70,
+        applicableBlocks: independentGroups.flat(),
+        expectedGain: 35
+      });
+    }
+    
+    return patterns;
+  }
+
+  private findIndependentBlockGroups(flow: VisualFlow): string[][] {
+    // Simplified implementation - find blocks with no dependencies
+    const groups: string[][] = [];
+    const processed = new Set<string>();
+    
+    flow.blocks.forEach(block => {
+      if (processed.has(block.id)) return;
+      
+      const incomingConnections = flow.connections.filter(conn => conn.to.blockId === block.id);
+      if (incomingConnections.length === 0) {
+        // This is a root block, find its independent siblings
+        const siblings = flow.blocks.filter(b => 
+          !processed.has(b.id) && 
+          flow.connections.filter(conn => conn.to.blockId === b.id).length === 0
+        );
+        
+        if (siblings.length > 1) {
+          const group = siblings.map(b => b.id);
+          groups.push(group);
+          group.forEach(id => processed.add(id));
+        }
+      }
+    });
+    
+    return groups;
+  }
+
+  private hasStatelessOperations(flow: VisualFlow): boolean {
+    // Check if most operations are stateless
+    const statelessTypes = [BlockType.TRANSFORM, BlockType.FILTER, BlockType.OUTPUT];
+    const statelessCount = flow.blocks.filter(b => statelessTypes.includes(b.type)).length;
+    return statelessCount / flow.blocks.length > 0.7;
+  }
+
+  private hasExpensiveOperations(flow: VisualFlow): boolean {
+    return flow.blocks.some(b => [BlockType.API_CALL, BlockType.DATABASE, BlockType.AGGREGATE].includes(b.type));
+  }
+
+  private initializeKnownPatterns(): void {
+    // Initialize with common anti-patterns
+    console.log('📚 Initializing known pattern library...');
+  }
+
+  cleanup(): void {
+    this.knownAntiPatterns.clear();
   }
 }

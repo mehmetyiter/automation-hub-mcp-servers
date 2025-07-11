@@ -12,6 +12,7 @@ import {
   SuggestionRequest,
   SuggestionContext 
 } from './intelligent-block-suggester.js';
+import { FlowPerformancePredictor, PerformancePrediction } from './flow-performance-predictor.js';
 
 export interface VisualBlock {
   id: string;
@@ -163,6 +164,7 @@ export class VisualCodeBuilder {
   private flowCache: Map<string, VisualFlow>;
   private mlOptimizer: MLFlowOptimizer;
   private intelligentSuggester: IntelligentBlockSuggester;
+  private performancePredictor: FlowPerformancePredictor;
   private readonly MAX_CACHE_SIZE = 100;
   private readonly CACHE_CLEANUP_THRESHOLD = 120;
 
@@ -173,6 +175,7 @@ export class VisualCodeBuilder {
     this.flowCache = new Map();
     this.mlOptimizer = new MLFlowOptimizer(provider);
     this.intelligentSuggester = new IntelligentBlockSuggester(provider);
+    this.performancePredictor = new FlowPerformancePredictor();
     this.initializeBlockTemplates();
   }
 
@@ -1893,6 +1896,17 @@ ${performance.scalabilityAnalysis.recommendations.map((r: string) => `- ${r}`).j
     console.log(`🧠 Getting intelligent block suggestions for flow: ${flow.name}`);
     
     return await this.intelligentSuggester.suggestIntelligentBlocks(flow, request);
+  }
+
+  // Performance prediction method
+  async predictFlowPerformance(flowId: string): Promise<PerformancePrediction> {
+    const flow = this.flowCache.get(flowId);
+    if (!flow) {
+      throw new WorkflowError('Flow not found', flowId);
+    }
+    
+    console.log(`📊 Predicting performance for flow: ${flow.name}`);
+    return await this.performancePredictor.predictFlowPerformance(flow);
   }
 
   async suggestBlocksWithContext(

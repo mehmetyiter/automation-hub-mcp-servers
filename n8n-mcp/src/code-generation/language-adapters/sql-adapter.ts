@@ -149,6 +149,24 @@ export interface ConnectionPoolConfig {
   acquireTimeoutMillis: number;
   ssl?: boolean;
   dialect: string;
+  
+  // Adaptive sizing configuration
+  adaptive?: {
+    enabled: boolean;
+    evaluationInterval: number;      // How often to evaluate metrics (ms)
+    scaleUpThreshold: {
+      waitingRatio: number;          // Ratio of waiting clients to pool size
+      activeRatio: number;           // Ratio of active connections to total
+      waitTimeP95: number;           // 95th percentile wait time (ms)
+    };
+    scaleDownThreshold: {
+      idleRatio: number;             // Ratio of idle connections to total
+      idleTimeMinutes: number;       // How long connections must be idle
+    };
+    scalingFactor: number;           // How many connections to add/remove at once
+    cooldownPeriod: number;          // Time to wait between scaling operations (ms)
+    maxScalingStep: number;          // Maximum connections to add/remove in one step
+  };
 }
 
 export interface DatabaseConnection {
@@ -1242,8 +1260,20 @@ Return validation result:
   private async createConnectionPool(connectionId: string, config: ConnectionPoolConfig): Promise<ConnectionPool> {
     console.log(`🔗 Creating connection pool for: ${connectionId}`);
     
-    const pool = new DatabaseConnectionPool(config);
+    // Use adaptive pool if enabled
+    const pool = config.adaptive?.enabled 
+      ? new AdaptiveConnectionPool(config)
+      : new DatabaseConnectionPool(config);
+      
     this.connectionPools.set(connectionId, pool);
+    
+    if (config.adaptive?.enabled) {
+      console.log(`🎯 Adaptive connection pooling enabled with:
+        - Evaluation interval: ${config.adaptive.evaluationInterval}ms
+        - Scale up threshold: ${JSON.stringify(config.adaptive.scaleUpThreshold)}
+        - Scale down threshold: ${JSON.stringify(config.adaptive.scaleDownThreshold)}
+        - Max scaling step: ${config.adaptive.maxScalingStep}`);
+    }
     
     return pool;
   }
@@ -1331,6 +1361,14 @@ Return validation result:
     const pool = this.connectionPools.get(connectionId);
     return pool ? pool.getStats() : null;
   }
+  
+  async getAdaptivePoolStats(connectionId: string): Promise<any | null> {
+    const pool = this.connectionPools.get(connectionId);
+    if (pool && pool instanceof AdaptiveConnectionPool) {
+      return pool.getAdaptiveStats();
+    }
+    return null;
+  }
 
   async closeAllConnections(): Promise<void> {
     console.log(`🔒 Closing all database connection pools`);
@@ -1345,11 +1383,11 @@ Return validation result:
 
 // Connection Pool Implementation
 class DatabaseConnectionPool implements ConnectionPool {
-  private config: ConnectionPoolConfig;
-  private connections: DatabaseConnection[] = [];
-  private activeConnections: Set<string> = new Set();
-  private waitingQueue: Array<{ resolve: (conn: DatabaseConnection) => void; reject: (error: Error) => void }> = [];
-  private destroyed = false;
+  protected config: ConnectionPoolConfig;
+  protected connections: DatabaseConnection[] = [];
+  protected activeConnections: Set<string> = new Set();
+  protected waitingQueue: Array<{ resolve: (conn: DatabaseConnection) => void; reject: (error: Error) => void }> = [];
+  protected destroyed = false;
 
   constructor(config: ConnectionPoolConfig) {
     this.config = config;
@@ -1364,7 +1402,7 @@ class DatabaseConnectionPool implements ConnectionPool {
     }
   }
 
-  private async createConnection(): Promise<DatabaseConnection> {
+  protected async createConnection(): Promise<DatabaseConnection> {
     const connectionId = `conn_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     
     // Mock connection - in production, this would create a real database connection
@@ -1474,6 +1512,259 @@ class DatabaseConnectionPool implements ConnectionPool {
   }
 }
 
+// Adaptive Connection Pool Implementation
+export class AdaptiveConnectionPool extends DatabaseConnectionPool {
+  private metricsHistory: {
+    timestamp: Date;
+    stats: PoolStats;
+    waitTimes: number[];
+  }[] = [];
+  
+  private lastScalingTime: Date = new Date();
+  private evaluationInterval?: NodeJS.Timer;
+  private adaptiveConfig: Required<ConnectionPoolConfig['adaptive']>;
+  
+  constructor(config: ConnectionPoolConfig) {
+    super(config);
+    
+    // Set default adaptive configuration if not provided
+    this.adaptiveConfig = {
+      enabled: config.adaptive?.enabled ?? false,
+      evaluationInterval: config.adaptive?.evaluationInterval ?? 30000, // 30 seconds
+      scaleUpThreshold: {
+        waitingRatio: config.adaptive?.scaleUpThreshold?.waitingRatio ?? 0.5,
+        activeRatio: config.adaptive?.scaleUpThreshold?.activeRatio ?? 0.9,
+        waitTimeP95: config.adaptive?.scaleUpThreshold?.waitTimeP95 ?? 1000
+      },
+      scaleDownThreshold: {
+        idleRatio: config.adaptive?.scaleDownThreshold?.idleRatio ?? 0.7,
+        idleTimeMinutes: config.adaptive?.scaleDownThreshold?.idleTimeMinutes ?? 5
+      },
+      scalingFactor: config.adaptive?.scalingFactor ?? 0.2,
+      cooldownPeriod: config.adaptive?.cooldownPeriod ?? 60000, // 1 minute
+      maxScalingStep: config.adaptive?.maxScalingStep ?? 5
+    };
+    
+    if (this.adaptiveConfig.enabled) {
+      this.startAdaptiveMonitoring();
+    }
+  }
+  
+  private startAdaptiveMonitoring(): void {
+    console.log('🔄 Starting adaptive connection pool monitoring');
+    
+    this.evaluationInterval = setInterval(() => {
+      this.evaluateAndScale();
+    }, this.adaptiveConfig.evaluationInterval);
+  }
+  
+  private async evaluateAndScale(): Promise<void> {
+    // Check cooldown period
+    const timeSinceLastScaling = Date.now() - this.lastScalingTime.getTime();
+    if (timeSinceLastScaling < this.adaptiveConfig.cooldownPeriod) {
+      return;
+    }
+    
+    const currentStats = this.getStats();
+    const metrics = this.calculateMetrics();
+    
+    // Store metrics history
+    this.metricsHistory.push({
+      timestamp: new Date(),
+      stats: currentStats,
+      waitTimes: [...this.currentWaitTimes]
+    });
+    
+    // Keep only last 10 minutes of history
+    const cutoffTime = new Date(Date.now() - 10 * 60 * 1000);
+    this.metricsHistory = this.metricsHistory.filter(m => m.timestamp > cutoffTime);
+    
+    // Make scaling decision
+    const scalingDecision = this.makeScalingDecision(currentStats, metrics);
+    
+    if (scalingDecision !== 0) {
+      await this.scale(scalingDecision);
+    }
+  }
+  
+  private calculateMetrics(): {
+    waitingRatio: number;
+    activeRatio: number;
+    idleRatio: number;
+    waitTimeP95: number;
+    avgIdleTime: number;
+  } {
+    const stats = this.getStats();
+    const totalConnections = stats.totalConnections || 1;
+    
+    return {
+      waitingRatio: stats.waitingClients / totalConnections,
+      activeRatio: stats.activeConnections / totalConnections,
+      idleRatio: stats.idleConnections / totalConnections,
+      waitTimeP95: this.calculatePercentile(this.currentWaitTimes, 95),
+      avgIdleTime: this.calculateAverageIdleTime()
+    };
+  }
+  
+  private currentWaitTimes: number[] = [];
+  private waitTimeStart: Map<any, number> = new Map();
+  
+  async connect(): Promise<DatabaseConnection> {
+    const startTime = Date.now();
+    const waitingObj = {};
+    this.waitTimeStart.set(waitingObj, startTime);
+    
+    try {
+      const connection = await super.connect();
+      
+      // Record wait time
+      const waitTime = Date.now() - startTime;
+      this.currentWaitTimes.push(waitTime);
+      
+      // Keep only last 100 wait times
+      if (this.currentWaitTimes.length > 100) {
+        this.currentWaitTimes.shift();
+      }
+      
+      this.waitTimeStart.delete(waitingObj);
+      return connection;
+      
+    } catch (error) {
+      this.waitTimeStart.delete(waitingObj);
+      throw error;
+    }
+  }
+  
+  private calculatePercentile(values: number[], percentile: number): number {
+    if (values.length === 0) return 0;
+    
+    const sorted = [...values].sort((a, b) => a - b);
+    const index = Math.ceil((percentile / 100) * sorted.length) - 1;
+    return sorted[Math.max(0, Math.min(index, sorted.length - 1))];
+  }
+  
+  private calculateAverageIdleTime(): number {
+    const idleConnections = this.connections.filter(conn => 
+      !this.activeConnections.has(conn.id)
+    );
+    
+    if (idleConnections.length === 0) return 0;
+    
+    const now = Date.now();
+    const totalIdleTime = idleConnections.reduce((sum, conn) => 
+      sum + (now - conn.lastUsed.getTime()), 0
+    );
+    
+    return totalIdleTime / idleConnections.length;
+  }
+  
+  private makeScalingDecision(stats: PoolStats, metrics: ReturnType<typeof this.calculateMetrics>): number {
+    const { scaleUpThreshold, scaleDownThreshold, scalingFactor, maxScalingStep } = this.adaptiveConfig;
+    
+    // Check for scale up conditions
+    if (
+      metrics.waitingRatio > scaleUpThreshold.waitingRatio ||
+      metrics.activeRatio > scaleUpThreshold.activeRatio ||
+      metrics.waitTimeP95 > scaleUpThreshold.waitTimeP95
+    ) {
+      // Calculate scale up amount
+      const currentSize = stats.totalConnections;
+      const targetIncrease = Math.ceil(currentSize * scalingFactor);
+      const actualIncrease = Math.min(targetIncrease, maxScalingStep);
+      const newSize = Math.min(currentSize + actualIncrease, this.config.max);
+      
+      return newSize - currentSize;
+    }
+    
+    // Check for scale down conditions
+    if (
+      metrics.idleRatio > scaleDownThreshold.idleRatio &&
+      metrics.avgIdleTime > scaleDownThreshold.idleTimeMinutes * 60 * 1000
+    ) {
+      // Calculate scale down amount
+      const currentSize = stats.totalConnections;
+      const targetDecrease = Math.ceil(currentSize * scalingFactor);
+      const actualDecrease = Math.min(targetDecrease, maxScalingStep);
+      const newSize = Math.max(currentSize - actualDecrease, this.config.min);
+      
+      return newSize - currentSize;
+    }
+    
+    return 0;
+  }
+  
+  private async scale(delta: number): Promise<void> {
+    console.log(`🔧 Scaling connection pool by ${delta > 0 ? '+' : ''}${delta} connections`);
+    
+    this.lastScalingTime = new Date();
+    
+    if (delta > 0) {
+      // Scale up - add connections
+      for (let i = 0; i < delta; i++) {
+        const connection = await this.createConnection();
+        this.connections.push(connection);
+      }
+      console.log(`✅ Added ${delta} connections. Total: ${this.connections.length}`);
+      
+    } else if (delta < 0) {
+      // Scale down - remove idle connections
+      const toRemove = Math.abs(delta);
+      let removed = 0;
+      
+      // Remove oldest idle connections first
+      const idleConnections = this.connections
+        .filter(conn => !this.activeConnections.has(conn.id))
+        .sort((a, b) => a.lastUsed.getTime() - b.lastUsed.getTime());
+      
+      for (let i = 0; i < Math.min(toRemove, idleConnections.length); i++) {
+        const conn = idleConnections[i];
+        const index = this.connections.indexOf(conn);
+        if (index !== -1) {
+          this.connections.splice(index, 1);
+          removed++;
+        }
+      }
+      
+      console.log(`✅ Removed ${removed} connections. Total: ${this.connections.length}`);
+    }
+  }
+  
+  getAdaptiveStats(): {
+    currentStats: PoolStats;
+    metrics: ReturnType<typeof this.calculateMetrics>;
+    scalingHistory: Array<{ timestamp: Date; action: 'scale_up' | 'scale_down'; delta: number }>;
+    recommendation: string;
+  } {
+    const currentStats = this.getStats();
+    const metrics = this.calculateMetrics();
+    
+    // Generate recommendation
+    let recommendation = 'Pool size is optimal';
+    
+    if (metrics.waitingRatio > 0.3) {
+      recommendation = 'Consider increasing pool size - high waiting ratio';
+    } else if (metrics.activeRatio > 0.8) {
+      recommendation = 'Consider increasing pool size - high utilization';
+    } else if (metrics.idleRatio > 0.6 && this.connections.length > this.config.min) {
+      recommendation = 'Consider decreasing pool size - many idle connections';
+    }
+    
+    return {
+      currentStats,
+      metrics,
+      scalingHistory: [], // Would be populated from actual scaling events
+      recommendation
+    };
+  }
+  
+  async destroy(): Promise<void> {
+    if (this.evaluationInterval) {
+      clearInterval(this.evaluationInterval);
+    }
+    await super.destroy();
+  }
+}
+
 // Query Result Streaming Implementation
 export class QueryResultStreamer {
   private connection: DatabaseConnection;
@@ -1542,6 +1833,451 @@ export class QueryResultStreamer {
       return `${sql} LIMIT ${limit} OFFSET ${offset}`;
     }
   }
+}
+
+// Smart Query Batching with Priority Queues
+export interface QueryBatchOptions {
+  priority: 'low' | 'normal' | 'high' | 'critical';
+  maxBatchSize: number;
+  maxWaitTime: number; // milliseconds
+  allowPartialBatch: boolean;
+  deduplicate: boolean;
+  retryPolicy?: {
+    maxRetries: number;
+    backoffMultiplier: number;
+    initialDelay: number;
+  };
+}
+
+export interface QueuedQuery {
+  id: string;
+  sql: string;
+  params: any[];
+  priority: number;
+  timestamp: Date;
+  options: QueryBatchOptions;
+  callback: {
+    resolve: (result: any) => void;
+    reject: (error: Error) => void;
+  };
+  retryCount?: number;
+}
+
+export class SmartQueryBatcher {
+  private queryQueues: Map<string, QueuedQuery[]> = new Map();
+  private batchTimers: Map<string, NodeJS.Timeout> = new Map();
+  private executingBatches: Set<string> = new Set();
+  private metrics: {
+    totalQueries: number;
+    batchedQueries: number;
+    deduplicatedQueries: number;
+    failedQueries: number;
+    avgBatchSize: number;
+    avgWaitTime: number;
+  } = {
+    totalQueries: 0,
+    batchedQueries: 0,
+    deduplicatedQueries: 0,
+    failedQueries: 0,
+    avgBatchSize: 0,
+    avgWaitTime: 0
+  };
+  
+  private priorityWeights = {
+    low: 1,
+    normal: 5,
+    high: 10,
+    critical: 100
+  };
+  
+  constructor(
+    private connectionManager: ConnectionPoolManager,
+    private config: {
+      defaultBatchSize: number;
+      defaultMaxWaitTime: number;
+      enableMetrics: boolean;
+    } = {
+      defaultBatchSize: 100,
+      defaultMaxWaitTime: 50,
+      enableMetrics: true
+    }
+  ) {}
+  
+  async addQuery(
+    connectionId: string,
+    sql: string,
+    params: any[] = [],
+    options: Partial<QueryBatchOptions> = {}
+  ): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const queryOptions: QueryBatchOptions = {
+        priority: options.priority || 'normal',
+        maxBatchSize: options.maxBatchSize || this.config.defaultBatchSize,
+        maxWaitTime: options.maxWaitTime || this.config.defaultMaxWaitTime,
+        allowPartialBatch: options.allowPartialBatch ?? true,
+        deduplicate: options.deduplicate ?? true,
+        retryPolicy: options.retryPolicy
+      };
+      
+      const queuedQuery: QueuedQuery = {
+        id: `query_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
+        sql,
+        params,
+        priority: this.priorityWeights[queryOptions.priority],
+        timestamp: new Date(),
+        options: queryOptions,
+        callback: { resolve, reject },
+        retryCount: 0
+      };
+      
+      this.enqueueQuery(connectionId, queuedQuery);
+      
+      if (this.config.enableMetrics) {
+        this.metrics.totalQueries++;
+      }
+    });
+  }
+  
+  private enqueueQuery(connectionId: string, query: QueuedQuery): void {
+    // Get or create queue for this connection
+    if (!this.queryQueues.has(connectionId)) {
+      this.queryQueues.set(connectionId, []);
+    }
+    
+    const queue = this.queryQueues.get(connectionId)!;
+    
+    // Check for deduplication
+    if (query.options.deduplicate) {
+      const duplicate = queue.find(q => 
+        q.sql === query.sql && 
+        JSON.stringify(q.params) === JSON.stringify(query.params)
+      );
+      
+      if (duplicate) {
+        // Share the result with the duplicate query
+        duplicate.callback.resolve = (result) => {
+          duplicate.callback.resolve(result);
+          query.callback.resolve(result);
+        };
+        duplicate.callback.reject = (error) => {
+          duplicate.callback.reject(error);
+          query.callback.reject(error);
+        };
+        
+        if (this.config.enableMetrics) {
+          this.metrics.deduplicatedQueries++;
+        }
+        return;
+      }
+    }
+    
+    // Insert query in priority order
+    const insertIndex = this.findInsertIndex(queue, query.priority);
+    queue.splice(insertIndex, 0, query);
+    
+    // Schedule batch execution
+    this.scheduleBatchExecution(connectionId, query.options.maxWaitTime);
+  }
+  
+  private findInsertIndex(queue: QueuedQuery[], priority: number): number {
+    // Binary search for insertion point
+    let left = 0;
+    let right = queue.length;
+    
+    while (left < right) {
+      const mid = Math.floor((left + right) / 2);
+      if (queue[mid].priority < priority) {
+        left = mid + 1;
+      } else {
+        right = mid;
+      }
+    }
+    
+    return left;
+  }
+  
+  private scheduleBatchExecution(connectionId: string, maxWaitTime: number): void {
+    // Clear existing timer if any
+    const existingTimer = this.batchTimers.get(connectionId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+    
+    // Check if we should execute immediately
+    const queue = this.queryQueues.get(connectionId)!;
+    const shouldExecuteNow = 
+      queue.some(q => q.priority >= this.priorityWeights.critical) ||
+      queue.length >= this.config.defaultBatchSize;
+    
+    if (shouldExecuteNow && !this.executingBatches.has(connectionId)) {
+      this.executeBatch(connectionId);
+    } else {
+      // Schedule for later
+      const timer = setTimeout(() => {
+        this.executeBatch(connectionId);
+      }, maxWaitTime);
+      
+      this.batchTimers.set(connectionId, timer);
+    }
+  }
+  
+  private async executeBatch(connectionId: string): Promise<void> {
+    const queue = this.queryQueues.get(connectionId);
+    if (!queue || queue.length === 0 || this.executingBatches.has(connectionId)) {
+      return;
+    }
+    
+    this.executingBatches.add(connectionId);
+    this.batchTimers.delete(connectionId);
+    
+    try {
+      // Determine batch size based on priority
+      const maxBatchSize = Math.max(...queue.slice(0, this.config.defaultBatchSize)
+        .map(q => q.options.maxBatchSize));
+      
+      // Extract batch
+      const batch = queue.splice(0, Math.min(maxBatchSize, queue.length));
+      
+      // Track metrics
+      if (this.config.enableMetrics) {
+        this.updateBatchMetrics(batch);
+      }
+      
+      // Group queries by type for optimal execution
+      const groupedQueries = this.groupQueriesByPattern(batch);
+      
+      // Execute each group
+      for (const group of groupedQueries) {
+        await this.executeQueryGroup(connectionId, group);
+      }
+      
+    } catch (error) {
+      console.error(`Batch execution failed for connection ${connectionId}:`, error);
+    } finally {
+      this.executingBatches.delete(connectionId);
+      
+      // Schedule next batch if queue is not empty
+      if (queue && queue.length > 0) {
+        const nextWaitTime = Math.min(...queue.map(q => q.options.maxWaitTime));
+        this.scheduleBatchExecution(connectionId, nextWaitTime);
+      }
+    }
+  }
+  
+  private groupQueriesByPattern(queries: QueuedQuery[]): QueuedQuery[][] {
+    const groups: Map<string, QueuedQuery[]> = new Map();
+    
+    for (const query of queries) {
+      // Extract query pattern (remove values, keep structure)
+      const pattern = this.extractQueryPattern(query.sql);
+      
+      if (!groups.has(pattern)) {
+        groups.set(pattern, []);
+      }
+      groups.get(pattern)!.push(query);
+    }
+    
+    return Array.from(groups.values());
+  }
+  
+  private extractQueryPattern(sql: string): string {
+    // Simple pattern extraction - in production, use a proper SQL parser
+    return sql
+      .replace(/\b\d+\b/g, '?')                    // Replace numbers
+      .replace(/'[^']*'/g, '?')                    // Replace string literals
+      .replace(/\s+/g, ' ')                        // Normalize whitespace
+      .trim()
+      .toLowerCase();
+  }
+  
+  private async executeQueryGroup(connectionId: string, queries: QueuedQuery[]): Promise<void> {
+    // For same-pattern queries, we can potentially optimize execution
+    if (queries.length === 1) {
+      // Single query - execute directly
+      await this.executeSingleQuery(connectionId, queries[0]);
+    } else if (this.canUseMultiStatement(queries)) {
+      // Multiple similar queries - use multi-statement or prepared statement
+      await this.executeMultiStatement(connectionId, queries);
+    } else {
+      // Different queries - execute in parallel when possible
+      await this.executeParallelQueries(connectionId, queries);
+    }
+  }
+  
+  private canUseMultiStatement(queries: QueuedQuery[]): boolean {
+    // Check if all queries are the same type and pattern
+    const firstPattern = this.extractQueryPattern(queries[0].sql);
+    return queries.every(q => this.extractQueryPattern(q.sql) === firstPattern);
+  }
+  
+  private async executeSingleQuery(connectionId: string, query: QueuedQuery): Promise<void> {
+    try {
+      const result = await this.connectionManager.executeBatch(
+        [{ id: query.id, sql: query.sql, params: query.params }],
+        connectionId
+      );
+      
+      query.callback.resolve(result[0]);
+    } catch (error) {
+      this.handleQueryError(connectionId, query, error as Error);
+    }
+  }
+  
+  private async executeMultiStatement(connectionId: string, queries: QueuedQuery[]): Promise<void> {
+    try {
+      const batchQueries = queries.map(q => ({
+        id: q.id,
+        sql: q.sql,
+        params: q.params
+      }));
+      
+      const results = await this.connectionManager.executeBatch(batchQueries, connectionId);
+      
+      // Map results back to queries
+      queries.forEach((query, index) => {
+        const result = results.find(r => r.queryId === query.id);
+        if (result?.success) {
+          query.callback.resolve(result.result);
+        } else {
+          query.callback.reject(new Error(result?.error || 'Unknown error'));
+        }
+      });
+      
+    } catch (error) {
+      // Handle batch failure
+      queries.forEach(query => this.handleQueryError(connectionId, query, error as Error));
+    }
+  }
+  
+  private async executeParallelQueries(connectionId: string, queries: QueuedQuery[]): Promise<void> {
+    const promises = queries.map(query => this.executeSingleQuery(connectionId, query));
+    await Promise.allSettled(promises);
+  }
+  
+  private handleQueryError(connectionId: string, query: QueuedQuery, error: Error): void {
+    if (query.options.retryPolicy && query.retryCount! < query.options.retryPolicy.maxRetries) {
+      // Retry with exponential backoff
+      query.retryCount!++;
+      const delay = query.options.retryPolicy.initialDelay * 
+        Math.pow(query.options.retryPolicy.backoffMultiplier, query.retryCount! - 1);
+      
+      setTimeout(() => {
+        this.enqueueQuery(connectionId, query);
+      }, delay);
+      
+    } else {
+      // Final failure
+      query.callback.reject(error);
+      
+      if (this.config.enableMetrics) {
+        this.metrics.failedQueries++;
+      }
+    }
+  }
+  
+  private updateBatchMetrics(batch: QueuedQuery[]): void {
+    const now = Date.now();
+    const waitTimes = batch.map(q => now - q.timestamp.getTime());
+    const avgWaitTime = waitTimes.reduce((a, b) => a + b, 0) / waitTimes.length;
+    
+    this.metrics.batchedQueries += batch.length;
+    this.metrics.avgBatchSize = 
+      (this.metrics.avgBatchSize * (this.metrics.batchedQueries - batch.length) + batch.length) / 
+      this.metrics.batchedQueries;
+    this.metrics.avgWaitTime = 
+      (this.metrics.avgWaitTime * (this.metrics.batchedQueries - batch.length) + avgWaitTime) / 
+      this.metrics.batchedQueries;
+  }
+  
+  getMetrics(): typeof this.metrics {
+    return { ...this.metrics };
+  }
+  
+  clearQueue(connectionId: string): void {
+    const queue = this.queryQueues.get(connectionId);
+    if (queue) {
+      queue.forEach(query => {
+        query.callback.reject(new Error('Queue cleared'));
+      });
+      this.queryQueues.delete(connectionId);
+    }
+    
+    const timer = this.batchTimers.get(connectionId);
+    if (timer) {
+      clearTimeout(timer);
+      this.batchTimers.delete(connectionId);
+    }
+  }
+  
+  destroy(): void {
+    // Clear all queues and timers
+    for (const [connectionId] of this.queryQueues) {
+      this.clearQueue(connectionId);
+    }
+    this.executingBatches.clear();
+  }
+}
+
+// Helper function to create adaptive pool configuration
+export function createAdaptivePoolConfig(
+  baseConfig: Omit<ConnectionPoolConfig, 'adaptive'>,
+  preset: 'conservative' | 'balanced' | 'aggressive' = 'balanced'
+): ConnectionPoolConfig {
+  const presets = {
+    conservative: {
+      enabled: true,
+      evaluationInterval: 60000, // 1 minute
+      scaleUpThreshold: {
+        waitingRatio: 0.7,
+        activeRatio: 0.95,
+        waitTimeP95: 2000
+      },
+      scaleDownThreshold: {
+        idleRatio: 0.8,
+        idleTimeMinutes: 10
+      },
+      scalingFactor: 0.1,
+      cooldownPeriod: 120000, // 2 minutes
+      maxScalingStep: 2
+    },
+    balanced: {
+      enabled: true,
+      evaluationInterval: 30000, // 30 seconds
+      scaleUpThreshold: {
+        waitingRatio: 0.5,
+        activeRatio: 0.9,
+        waitTimeP95: 1000
+      },
+      scaleDownThreshold: {
+        idleRatio: 0.7,
+        idleTimeMinutes: 5
+      },
+      scalingFactor: 0.2,
+      cooldownPeriod: 60000, // 1 minute
+      maxScalingStep: 5
+    },
+    aggressive: {
+      enabled: true,
+      evaluationInterval: 15000, // 15 seconds
+      scaleUpThreshold: {
+        waitingRatio: 0.3,
+        activeRatio: 0.8,
+        waitTimeP95: 500
+      },
+      scaleDownThreshold: {
+        idleRatio: 0.6,
+        idleTimeMinutes: 2
+      },
+      scalingFactor: 0.3,
+      cooldownPeriod: 30000, // 30 seconds
+      maxScalingStep: 10
+    }
+  };
+  
+  return {
+    ...baseConfig,
+    adaptive: presets[preset]
+  };
 }
 
 // Enhanced SQL Adapter with streaming support

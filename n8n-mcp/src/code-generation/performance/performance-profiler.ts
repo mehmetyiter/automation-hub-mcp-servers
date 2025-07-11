@@ -10,6 +10,12 @@ import {
 import { ExecutionContext } from '../types/common-types';
 import { EventEmitter } from 'events';
 import { RealTimePerformanceMonitor, MonitoringOptions } from './websocket-monitor';
+import { 
+  DistributedPerformanceProfiler, 
+  NodeConfig, 
+  DistributedProfilingOptions,
+  DistributedProfile 
+} from './distributed-profiler';
 
 export interface PerformanceProfile {
   id: string;
@@ -232,7 +238,7 @@ export interface ProfilingOptions {
   captureStackTraces?: boolean;
 }
 
-export class PerformanceProfiler {
+export class PerformanceProfiler extends EventEmitter {
   private aiService: AIService;
   private database: CodeGenerationDatabase;
   private performanceObserver?: PerformanceObserver;
@@ -242,8 +248,10 @@ export class PerformanceProfiler {
   private performanceStreams: Map<string, any>;
   private realTimeMetrics: Map<string, RealTimeMetrics[]>;
   private wsMonitor: RealTimePerformanceMonitor;
+  private distributedProfiler: DistributedPerformanceProfiler;
 
   constructor(provider?: string) {
+    super();
     this.aiService = new AIService(provider);
     this.database = new CodeGenerationDatabase();
     this.profileCache = new Map();
@@ -252,6 +260,7 @@ export class PerformanceProfiler {
     this.performanceStreams = new Map();
     this.realTimeMetrics = new Map();
     this.wsMonitor = new RealTimePerformanceMonitor();
+    this.distributedProfiler = new DistributedPerformanceProfiler();
   }
 
   async profileCodeExecution(
@@ -1323,31 +1332,82 @@ ${profile.optimizationSuggestions
     return this.wsMonitor;
   }
 
-  async generateDistributedReport(
+  async profileDistributed(
     codeId: string,
-    nodes: Array<{ id: string; endpoint: string }>
-  ): Promise<string> {
-    console.log(`📊 Generating distributed performance report for ${codeId}`);
+    code: string,
+    nodes: NodeConfig[],
+    executionContext: ExecutionContext,
+    options?: DistributedProfilingOptions
+  ): Promise<DistributedProfile> {
+    console.log(`🌐 Starting distributed profiling for ${codeId} across ${nodes.length} nodes`);
     
-    // This would be implemented with actual distributed profiling
-    return `
+    try {
+      const profile = await this.distributedProfiler.profileAcrossNodes(
+        codeId,
+        nodes,
+        code,
+        executionContext,
+        options
+      );
+      
+      // Cache the distributed profile
+      this.profileCache.set(profile.id, {
+        id: profile.id,
+        codeId: profile.codeId,
+        timestamp: profile.timestamp,
+        executionProfile: profile.aggregatedMetrics as any,
+        memoryProfile: {} as any,
+        cpuProfile: {} as any,
+        resourceUsage: {} as any,
+        bottlenecks: profile.bottlenecks,
+        optimizationSuggestions: profile.recommendations.map(r => ({
+          category: 'performance',
+          priority: 'high',
+          description: r,
+          implementation: '',
+          expectedImprovement: 10,
+          effort: 2
+        })),
+        overallScore: profile.overallScore
+      });
+      
+      // Emit distributed profiling events
+      this.emit('distributed-profile', profile);
+      
+      return profile;
+    } catch (error) {
+      console.error('Distributed profiling failed:', error);
+      throw new PerformanceError(
+        'Failed to perform distributed profiling',
+        'distributed',
+        0,
+        0
+      );
+    }
+  }
+
+  async generateDistributedReport(
+    profileOrId: string | DistributedProfile,
+    nodes?: Array<{ id: string; endpoint: string }>
+  ): Promise<string> {
+    if (typeof profileOrId === 'string') {
+      // Legacy compatibility - generate simple report
+      console.log(`📊 Generating distributed performance report for ${profileOrId}`);
+      
+      return `
 # Distributed Performance Report
-## Code ID: ${codeId}
-## Nodes: ${nodes.length}
+## Code ID: ${profileOrId}
+## Nodes: ${nodes?.length || 0}
 
 ### Node Performance Summary
-${nodes.map(node => `- Node ${node.id}: ${node.endpoint}`).join('\n')}
+${nodes?.map(node => `- Node ${node.id}: ${node.endpoint}`).join('\n') || 'No nodes specified'}
 
-### Distributed Metrics
-- Total execution time across nodes
-- Network latency analysis
-- Load distribution analysis
-- Cross-node bottleneck identification
-
-### Recommendations
-- Optimize inter-node communication
-- Balance load distribution
-- Reduce network overhead
+### Note
+For detailed distributed profiling, use the profileDistributed() method.
 `;
+    }
+    
+    // Generate detailed report from actual distributed profile
+    return await this.distributedProfiler.generateDistributedReport(profileOrId);
   }
 }
