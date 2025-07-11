@@ -269,7 +269,7 @@ export class RegulatoryComplianceEngine {
     regulations.push(...industryRegs);
     
     // Add cross-industry regulations
-    this.complianceDatabase.forEach((regs, key) => {
+    this.complianceDatabase.forEach((regs) => {
       regs.forEach(reg => {
         if (reg.applicableIndustries.includes(industry?.toLowerCase()) && 
             !regulations.some(r => r.regulation === reg.regulation)) {
@@ -446,7 +446,7 @@ Be specific about violations and provide actionable remediation steps.`;
   }
   
   getRegulationDetails(regulation: string): ComplianceRequirement | undefined {
-    for (const [industry, regulations] of this.complianceDatabase.entries()) {
+    for (const [, regulations] of this.complianceDatabase.entries()) {
       const found = regulations.find(reg => reg.regulation === regulation);
       if (found) return found;
     }

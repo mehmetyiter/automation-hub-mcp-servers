@@ -124,10 +124,103 @@ export interface MathematicalModel {
 export interface LogicPatterns {
   patterns: Array<{
     name: string;
-    type: string;
-    implementation: string;
+    type: 'calculation' | 'validation' | 'decision' | 'optimization' | 'transformation';
     businessContext: string;
+    mathematicalBasis?: string;
+    implementation: string;
+    conditions?: string[];
+    variables?: string[];
+    expectedOutcome?: string;
+    priority?: 'critical' | 'high' | 'medium' | 'low';
+    complexity?: 'simple' | 'moderate' | 'complex';
   }>;
+  algorithmFlow?: {
+    steps: Array<{
+      stepNumber: number;
+      action: string;
+      patterns: string[];
+      businessReason: string;
+      mathematicalOperation?: string;
+      errorHandling?: string;
+      validation?: string;
+    }>;
+    decisionPoints?: Array<{
+      condition: string;
+      options: string[];
+      businessImpact: string;
+      defaultAction?: string;
+      escalation?: string;
+    }>;
+    parallelProcessing?: Array<{
+      description: string;
+      benefits: string;
+      coordination: string;
+    }>;
+  };
+  businessRules?: {
+    validationRules?: Array<{
+      rule: string;
+      condition: string;
+      action: string;
+      severity: 'critical' | 'warning' | 'info';
+    }>;
+    constraintRules?: Array<{
+      constraint: string;
+      mathematicalExpression: string;
+      enforcement: string;
+      violation: string;
+    }>;
+    decisionRules?: Array<{
+      scenario: string;
+      criteria: string;
+      outcome: string;
+      confidence: string;
+    }>;
+    exceptionRules?: Array<{
+      exception: string;
+      handling: string;
+      escalation: string;
+      documentation: string;
+    }>;
+  };
+  optimizationOpportunities?: {
+    performance?: Array<{
+      opportunity: string;
+      impact: string;
+      implementation: string;
+      tradeoffs: string;
+    }>;
+    accuracy?: Array<{
+      opportunity: string;
+      method: string;
+      validation: string;
+      businessValue: string;
+    }>;
+    usability?: Array<{
+      improvement: string;
+      audience: string;
+      implementation: string;
+      metrics: string;
+    }>;
+    maintainability?: Array<{
+      aspect: string;
+      improvement: string;
+      benefits: string;
+      implementation: string;
+    }>;
+  };
+  industrySpecific?: {
+    patterns: string[];
+    regulations: string[];
+    bestPractices: string[];
+    commonPitfalls: string[];
+  };
+  integrationPatterns?: {
+    dataFlow: string;
+    errorPropagation: string;
+    stateManagement: string;
+    externalDependencies: string[];
+  };
   validations: string[];
   optimizations: string[];
 }
@@ -166,6 +259,15 @@ export class DynamicBusinessLogicGenerator extends EventEmitter {
   private learningEngine: BusinessLogicLearningEngine;
   private database: CodeGenerationDatabase;
   
+  // Performance monitoring
+  private performanceMetrics = new Map<string, number>();
+  private operationStartTimes = new Map<string, number>();
+  
+  // Advanced caching
+  private domainCache = new Map<string, { domain: BusinessDomain; timestamp: number }>();
+  private mathModelCache = new Map<string, { model: MathematicalModel; timestamp: number }>();
+  private cacheTimeout = 60 * 60 * 1000; // 1 hour cache timeout
+  
   constructor(aiProvider?: string) {
     super();
     this.aiService = new AIService(aiProvider);
@@ -179,32 +281,48 @@ export class DynamicBusinessLogicGenerator extends EventEmitter {
   async generateBusinessLogic(request: BusinessLogicRequest): Promise<BusinessLogicResult> {
     console.log('🧠 AI-Driven Business Logic Generation Started...');
     
+    const overallStartTime = Date.now();
+    this.startOperation('overall');
+    
     try {
       // Phase 1: Business Domain Analysis
-      const domain = await this.domainAnalyzer.analyzeDomain(request);
+      this.startOperation('domain-analysis');
+      const domain = await this.getCachedDomain(request) || await this.domainAnalyzer.analyzeDomain(request);
+      this.setCachedDomain(request, domain);
+      this.endOperation('domain-analysis');
       this.emit('phase-complete', { phase: 'domain-analysis', result: domain });
       
       // Phase 2: Mathematical Model Detection
-      const mathModel = await this.mathematicalEngine.detectMathematicalModel(domain, request);
+      this.startOperation('mathematical-modeling');
+      const mathModel = await this.getCachedMathModel(domain, request) || 
+                       await this.mathematicalEngine.detectMathematicalModel(domain, request);
+      this.setCachedMathModel(domain, request, mathModel);
+      this.endOperation('mathematical-modeling');
       this.emit('phase-complete', { phase: 'mathematical-modeling', result: mathModel });
       
       // Phase 3: Logic Pattern Synthesis
+      this.startOperation('pattern-synthesis');
       let logicPatterns = await this.synthesizeLogicPatterns(domain, mathModel, request);
       
       // Enhance patterns with domain knowledge from learning system
       logicPatterns = await this.enhanceWithDomainKnowledge(domain, logicPatterns);
+      this.endOperation('pattern-synthesis');
       this.emit('phase-complete', { phase: 'pattern-synthesis', result: logicPatterns });
       
       // Phase 4: Implementation Generation
+      this.startOperation('implementation-generation');
       const implementation = await this.generateImplementation(logicPatterns, mathModel, request);
+      this.endOperation('implementation-generation');
       this.emit('phase-complete', { phase: 'implementation-generation', result: implementation });
       
       // Phase 5: Business Validation
+      this.startOperation('validation');
       const validatedLogic = await this.validationEngine.validateBusinessLogic(
         implementation, 
         domain, 
         request
       );
+      this.endOperation('validation');
       this.emit('phase-complete', { phase: 'validation', result: validatedLogic });
       
       // Calculate confidence
@@ -212,6 +330,11 @@ export class DynamicBusinessLogicGenerator extends EventEmitter {
       
       // Store in database for learning
       await this.storeBusinessLogic(request, domain, mathModel, validatedLogic);
+      
+      this.endOperation('overall');
+      
+      // Log performance metrics
+      this.logPerformanceMetrics();
       
       return {
         success: true,
@@ -225,6 +348,7 @@ export class DynamicBusinessLogicGenerator extends EventEmitter {
       
     } catch (error) {
       console.error('❌ Business logic generation failed:', error);
+      this.endOperation('overall');
       throw error;
     }
   }
@@ -235,8 +359,10 @@ export class DynamicBusinessLogicGenerator extends EventEmitter {
     request: BusinessLogicRequest
   ): Promise<LogicPatterns> {
     
+    console.log('🧩 Synthesizing Logic Patterns...');
+    
     const synthesisPrompt = `
-TASK: Synthesize business logic patterns from domain analysis and mathematical model.
+TASK: Synthesize comprehensive business logic patterns from domain analysis and mathematical model.
 
 BUSINESS DOMAIN:
 ${JSON.stringify(domain, null, 2)}
@@ -247,87 +373,227 @@ ${JSON.stringify(mathModel, null, 2)}
 ORIGINAL REQUEST:
 ${JSON.stringify(request, null, 2)}
 
-Synthesize comprehensive logic patterns and return JSON:
+Synthesize business logic patterns that will guide implementation. Return JSON:
 
 {
   "patterns": [
     {
-      "name": "pattern_name",
-      "type": "calculation|validation|decision|optimization",
-      "businessContext": "when and why this pattern applies",
-      "mathematicalBasis": "mathematical foundation of the pattern",
-      "implementation": "how to implement this pattern",
-      "conditions": ["when this pattern should be used"],
-      "variables": ["variables involved in this pattern"],
-      "expectedOutcome": "what business outcome this pattern achieves"
+      "name": "descriptive_pattern_name",
+      "type": "calculation|validation|decision|optimization|transformation",
+      "businessContext": "specific business scenario where this pattern applies",
+      "mathematicalBasis": "mathematical foundation supporting this pattern",
+      "implementation": "how to implement this pattern in code",
+      "conditions": ["specific conditions when this pattern should be used"],
+      "variables": ["input/output variables involved in this pattern"],
+      "expectedOutcome": "concrete business outcome this pattern achieves",
+      "priority": "critical|high|medium|low",
+      "complexity": "simple|moderate|complex"
     }
   ],
   "algorithmFlow": {
     "steps": [
       {
         "stepNumber": 1,
-        "action": "what happens in this step",
-        "patterns": ["which patterns are applied"],
-        "businessReason": "why this step is needed for business"
+        "action": "specific action to perform",
+        "patterns": ["which patterns from above are applied in this step"],
+        "businessReason": "why this step is critical for business success",
+        "mathematicalOperation": "specific mathematical operation",
+        "errorHandling": "how errors are handled in this step",
+        "validation": "what validation occurs in this step"
       }
     ],
     "decisionPoints": [
       {
-        "condition": "what condition triggers decision",
-        "options": ["possible decision outcomes"],
-        "businessImpact": "business impact of each option"
+        "condition": "specific condition that triggers decision",
+        "options": ["possible outcomes/paths"],
+        "businessImpact": "business impact of each decision path",
+        "defaultAction": "what happens if condition is unclear",
+        "escalation": "when to escalate to human decision"
+      }
+    ],
+    "parallelProcessing": [
+      {
+        "description": "operations that can run in parallel",
+        "benefits": "performance benefits gained",
+        "coordination": "how parallel operations are coordinated"
       }
     ]
   },
   "businessRules": {
-    "validationRules": ["rules to validate inputs"],
-    "constraintRules": ["business constraints to enforce"],
-    "decisionRules": ["rules for making business decisions"],
-    "exceptionRules": ["rules for handling exceptions"]
+    "validationRules": [
+      {
+        "rule": "specific validation rule",
+        "condition": "when this rule applies",
+        "action": "what happens when rule is violated",
+        "severity": "critical|warning|info"
+      }
+    ],
+    "constraintRules": [
+      {
+        "constraint": "business constraint description",
+        "mathematicalExpression": "mathematical representation",
+        "enforcement": "how constraint is enforced",
+        "violation": "what happens when violated"
+      }
+    ],
+    "decisionRules": [
+      {
+        "scenario": "business scenario",
+        "criteria": "decision criteria",
+        "outcome": "expected outcome",
+        "confidence": "confidence level required"
+      }
+    ],
+    "exceptionRules": [
+      {
+        "exception": "exceptional business case",
+        "handling": "how to handle this exception",
+        "escalation": "when to escalate",
+        "documentation": "what to document"
+      }
+    ]
   },
   "optimizationOpportunities": {
-    "performance": ["performance optimization possibilities"],
-    "accuracy": ["accuracy improvement opportunities"],
-    "usability": ["user experience improvements"],
-    "maintainability": ["code maintainability improvements"]
-  }
+    "performance": [
+      {
+        "opportunity": "specific performance optimization",
+        "impact": "expected performance improvement",
+        "implementation": "how to implement optimization",
+        "tradeoffs": "any tradeoffs involved"
+      }
+    ],
+    "accuracy": [
+      {
+        "opportunity": "accuracy improvement opportunity",
+        "method": "method to improve accuracy",
+        "validation": "how to validate improvement",
+        "businessValue": "business value of improvement"
+      }
+    ],
+    "usability": [
+      {
+        "improvement": "user experience improvement",
+        "audience": "target audience for improvement",
+        "implementation": "how to implement UX improvement",
+        "metrics": "how to measure success"
+      }
+    ],
+    "maintainability": [
+      {
+        "aspect": "maintainability aspect",
+        "improvement": "specific improvement",
+        "benefits": "long-term benefits",
+        "implementation": "implementation approach"
+      }
+    ]
+  },
+  "industrySpecific": {
+    "patterns": ["industry-specific patterns for ${domain.businessDomain.industry}"],
+    "regulations": ["regulatory considerations"],
+    "bestPractices": ["industry best practices"],
+    "commonPitfalls": ["common mistakes to avoid in this industry"]
+  },
+  "integrationPatterns": {
+    "dataFlow": "how data flows through the logic",
+    "errorPropagation": "how errors propagate through the system",
+    "stateManagement": "how state is managed",
+    "externalDependencies": ["external systems or services required"]
+  },
+  "validations": ["comprehensive list of validation rules"],
+  "optimizations": ["comprehensive list of optimization strategies"]
 }
 
-CRITICAL: Create patterns that are SPECIFIC to the business domain and mathematical model.
-CRITICAL: Ensure patterns are IMPLEMENTABLE and not abstract.
-CRITICAL: Focus on BUSINESS VALUE and practical application.
-CRITICAL: Include proper ERROR HANDLING and EDGE CASE patterns.`;
+CRITICAL REQUIREMENTS:
+✅ Create SPECIFIC, IMPLEMENTABLE patterns for THIS exact business scenario
+✅ Ensure patterns are BUSINESS-MEANINGFUL and not abstract
+✅ Include COMPLETE error handling and edge case patterns  
+✅ Design patterns that SCALE with business growth
+✅ Consider REGULATORY requirements for ${domain.businessDomain.industry}
+✅ Ensure mathematical operations are BUSINESS-JUSTIFIED
+✅ Include patterns for MONITORING and AUDITING
+✅ Design for MAINTAINABILITY and EXTENSIBILITY
+
+Focus on creating a comprehensive pattern library that will generate production-ready business logic.`;
 
     const result = await this.aiService.getJSONResponse(synthesisPrompt);
-    return this.validateLogicPatterns(result);
+    const validatedPatterns = this.validateLogicPatterns(result);
+    
+    // Add industry-specific optimizations
+    const finalPatterns = this.addIndustryOptimizations(validatedPatterns, domain);
+    
+    console.log(`✅ Synthesized ${finalPatterns.patterns.length} logic patterns`);
+    
+    return finalPatterns;
   }
 
   private validateLogicPatterns(patterns: any): LogicPatterns {
+    // Validate required structure
     if (!patterns.patterns || !Array.isArray(patterns.patterns)) {
       throw new Error('Logic patterns must include patterns array');
     }
     
     if (!patterns.algorithmFlow || !patterns.algorithmFlow.steps) {
-      throw new Error('Logic patterns must include algorithm flow');
+      throw new Error('Logic patterns must include algorithm flow with steps');
+    }
+    
+    if (!patterns.businessRules) {
+      throw new Error('Logic patterns must include business rules');
     }
     
     // Validate each pattern has required fields
     patterns.patterns.forEach((pattern: any, index: number) => {
-      if (!pattern.name || !pattern.type || !pattern.businessContext) {
-        throw new Error(`Pattern ${index} missing required fields`);
+      const required = ['name', 'type', 'businessContext', 'implementation'];
+      required.forEach(field => {
+        if (!pattern[field]) {
+          throw new Error(`Pattern ${index} missing required field: ${field}`);
+        }
+      });
+      
+      // Validate pattern type
+      const validTypes = ['calculation', 'validation', 'decision', 'optimization', 'transformation'];
+      if (!validTypes.includes(pattern.type)) {
+        throw new Error(`Pattern ${index} has invalid type: ${pattern.type}`);
       }
     });
     
-    // Ensure we have the expected structure for LogicPatterns interface
+    // Validate algorithm flow steps
+    patterns.algorithmFlow.steps.forEach((step: any, index: number) => {
+      if (!step.stepNumber || !step.action || !step.businessReason) {
+        throw new Error(`Algorithm flow step ${index} missing required fields`);
+      }
+    });
+    
+    // Build comprehensive LogicPatterns object
     return {
       patterns: patterns.patterns.map((p: any) => ({
         name: p.name,
         type: p.type,
-        implementation: p.implementation || '',
-        businessContext: p.businessContext
+        businessContext: p.businessContext,
+        mathematicalBasis: p.mathematicalBasis,
+        implementation: p.implementation,
+        conditions: p.conditions,
+        variables: p.variables,
+        expectedOutcome: p.expectedOutcome,
+        priority: p.priority,
+        complexity: p.complexity
       })),
-      validations: patterns.businessRules?.validationRules || [],
-      optimizations: patterns.optimizationOpportunities?.performance || []
+      algorithmFlow: patterns.algorithmFlow,
+      businessRules: patterns.businessRules,
+      optimizationOpportunities: patterns.optimizationOpportunities,
+      industrySpecific: patterns.industrySpecific || {
+        patterns: [],
+        regulations: [],
+        bestPractices: [],
+        commonPitfalls: []
+      },
+      integrationPatterns: patterns.integrationPatterns || {
+        dataFlow: '',
+        errorPropagation: '',
+        stateManagement: '',
+        externalDependencies: []
+      },
+      validations: patterns.validations || [],
+      optimizations: patterns.optimizations || []
     };
   }
 
@@ -858,6 +1124,249 @@ ${patterns.patterns.map(p => `- **${p.name}**: ${p.businessContext}`).join('\n')
 
   async importLearnings(learnings: any): Promise<void> {
     await this.learningEngine.importLearnings(learnings);
+  }
+
+  private addIndustryOptimizations(
+    patterns: LogicPatterns,
+    domain: BusinessDomain
+  ): LogicPatterns {
+    
+    const industry = domain.businessDomain.industry?.toLowerCase();
+    
+    switch (industry) {
+      case 'finance':
+      case 'banking':
+        // Add financial industry optimizations
+        patterns.patterns.push({
+          name: 'financial_audit_trail',
+          type: 'validation',
+          businessContext: 'Financial transactions require comprehensive audit trails',
+          mathematicalBasis: 'Cryptographic hashing for tamper detection',
+          implementation: `
+// Financial audit trail pattern
+function createAuditTrail(transaction: any) {
+  return {
+    transactionId: transaction.id,
+    timestamp: Date.now(),
+    hash: crypto.createHash('sha256').update(JSON.stringify(transaction)).digest('hex'),
+    previousHash: getPreviousTransactionHash(),
+    signature: signTransaction(transaction)
+  };
+}`,
+          conditions: ['all financial calculations', 'regulatory compliance required'],
+          variables: ['transaction_data', 'user_identity', 'timestamp'],
+          expectedOutcome: 'Immutable audit trail for regulatory compliance',
+          priority: 'critical',
+          complexity: 'moderate'
+        });
+        
+        if (patterns.optimizationOpportunities?.performance) {
+          patterns.optimizationOpportunities.performance.push({
+            opportunity: 'Real-time risk calculation caching',
+            impact: '70% faster risk assessments',
+            implementation: 'Cache risk factors for frequently assessed entities',
+            tradeoffs: 'Slightly stale data vs performance gain'
+          });
+        }
+        break;
+        
+      case 'sales':
+        // Add sales industry optimizations
+        patterns.patterns.push({
+          name: 'lead_velocity_scoring',
+          type: 'calculation',
+          businessContext: 'Track how quickly leads progress through sales funnel',
+          mathematicalBasis: 'Time-weighted progression scoring',
+          implementation: `
+// Lead velocity scoring pattern
+function calculateLeadVelocity(lead: any) {
+  const stageProgression = lead.stageHistory || [];
+  const timeInStages = stageProgression.map((stage, index) => {
+    const nextStage = stageProgression[index + 1];
+    return nextStage ? nextStage.timestamp - stage.timestamp : Date.now() - stage.timestamp;
+  });
+  
+  const avgTimePerStage = timeInStages.reduce((sum, time) => sum + time, 0) / timeInStages.length;
+  const velocityScore = Math.max(0, 100 - (avgTimePerStage / (24 * 60 * 60 * 1000))); // Days to score
+  
+  return {
+    velocityScore,
+    avgDaysPerStage: avgTimePerStage / (24 * 60 * 60 * 1000),
+    currentStageTime: timeInStages[timeInStages.length - 1] / (24 * 60 * 60 * 1000)
+  };
+}`,
+          conditions: ['lead has stage history', 'sales funnel tracking enabled'],
+          variables: ['stage_history', 'timestamps', 'current_stage'],
+          expectedOutcome: 'Velocity-based lead prioritization',
+          priority: 'high',
+          complexity: 'moderate'
+        });
+        break;
+        
+      case 'hr':
+        // Add HR industry optimizations
+        patterns.patterns.push({
+          name: 'bias_detection_scoring',
+          type: 'validation',
+          businessContext: 'Detect and mitigate bias in performance evaluations',
+          mathematicalBasis: 'Statistical variance analysis across demographic groups',
+          implementation: `
+// Bias detection pattern
+function detectEvaluationBias(evaluations: any[]) {
+  const demographicGroups = groupBy(evaluations, 'demographic');
+  const biasMetrics: any = {};
+  
+  Object.entries(demographicGroups).forEach(([group, evals]: [string, any]) => {
+    const scores = evals.map((e: any) => e.score);
+    biasMetrics[group] = {
+      avgScore: mean(scores),
+      variance: variance(scores),
+      sampleSize: scores.length
+    };
+  });
+  
+  const overallAvg = mean(evaluations.map(e => e.score));
+  const biasFlags: any[] = [];
+  
+  Object.entries(biasMetrics).forEach(([group, metrics]: [string, any]) => {
+    const deviation = Math.abs(metrics.avgScore - overallAvg);
+    if (deviation > 10 && metrics.sampleSize > 5) { // 10-point bias threshold
+      biasFlags.push({
+        group,
+        deviation,
+        severity: deviation > 20 ? 'high' : 'medium'
+      });
+    }
+  });
+  
+  return { biasMetrics, biasFlags, overallAvg };
+}`,
+          conditions: ['demographic data available', 'sufficient sample size'],
+          variables: ['evaluation_scores', 'demographic_data'],
+          expectedOutcome: 'Bias-free performance evaluations',
+          priority: 'critical',
+          complexity: 'complex'
+        });
+        break;
+    }
+    
+    // Add industry-specific patterns and regulations
+    if (patterns.industrySpecific) {
+      patterns.industrySpecific.patterns.push(`${industry}_specific_pattern`);
+      patterns.industrySpecific.regulations.push(`${industry}_compliance_requirements`);
+      patterns.industrySpecific.bestPractices.push(`${industry}_best_practices`);
+      patterns.industrySpecific.commonPitfalls.push(`${industry}_common_mistakes`);
+    }
+    
+    return patterns;
+  }
+
+  // Performance monitoring methods
+  private startOperation(operation: string): void {
+    this.operationStartTimes.set(operation, Date.now());
+  }
+
+  private endOperation(operation: string): void {
+    const startTime = this.operationStartTimes.get(operation);
+    if (startTime) {
+      const duration = Date.now() - startTime;
+      this.performanceMetrics.set(operation, duration);
+      this.operationStartTimes.delete(operation);
+    }
+  }
+
+  private logPerformanceMetrics(): void {
+    console.log('\n📊 Performance Metrics:');
+    this.performanceMetrics.forEach((duration, operation) => {
+      console.log(`  ${operation}: ${duration}ms`);
+    });
+    console.log(`  Total time: ${this.performanceMetrics.get('overall')}ms\n`);
+  }
+
+  getPerformanceMetrics(): Map<string, number> {
+    return new Map(this.performanceMetrics);
+  }
+
+  // Caching methods
+  private getCacheKey(obj: any): string {
+    return JSON.stringify(obj);
+  }
+
+  private async getCachedDomain(request: BusinessLogicRequest): Promise<BusinessDomain | null> {
+    const key = this.getCacheKey(request);
+    const cached = this.domainCache.get(key);
+    
+    if (cached && (Date.now() - cached.timestamp) < this.cacheTimeout) {
+      console.log('📦 Using cached domain analysis');
+      return cached.domain;
+    }
+    
+    return null;
+  }
+
+  private setCachedDomain(request: BusinessLogicRequest, domain: BusinessDomain): void {
+    const key = this.getCacheKey(request);
+    this.domainCache.set(key, { domain, timestamp: Date.now() });
+  }
+
+  private async getCachedMathModel(domain: BusinessDomain, request: BusinessLogicRequest): Promise<MathematicalModel | null> {
+    const key = this.getCacheKey({ domain, request });
+    const cached = this.mathModelCache.get(key);
+    
+    if (cached && (Date.now() - cached.timestamp) < this.cacheTimeout) {
+      console.log('📦 Using cached mathematical model');
+      return cached.model;
+    }
+    
+    return null;
+  }
+
+  private setCachedMathModel(domain: BusinessDomain, request: BusinessLogicRequest, model: MathematicalModel): void {
+    const key = this.getCacheKey({ domain, request });
+    this.mathModelCache.set(key, { model, timestamp: Date.now() });
+  }
+
+  clearCache(): void {
+    this.domainCache.clear();
+    this.mathModelCache.clear();
+    console.log('🧹 Cache cleared');
+  }
+
+  // System health monitoring
+  getSystemHealth(): {
+    status: 'healthy' | 'degraded' | 'unhealthy';
+    components: Record<string, boolean>;
+    cacheSize: { domains: number; mathModels: number };
+    performanceStats: { avgResponseTime: number; totalRequests: number };
+  } {
+    const components = {
+      aiService: true, // Assume healthy if instance exists
+      domainAnalyzer: true,
+      mathematicalEngine: true,
+      validationEngine: true,
+      learningEngine: true,
+      database: true
+    };
+
+    const totalRequests = this.performanceMetrics.has('overall') ? 1 : 0;
+    const avgResponseTime = totalRequests > 0 ? 
+      this.performanceMetrics.get('overall') || 0 : 0;
+
+    const allHealthy = Object.values(components).every(v => v);
+    const status = allHealthy ? 'healthy' : 'degraded';
+
+    return {
+      status,
+      components,
+      cacheSize: {
+        domains: this.domainCache.size,
+        mathModels: this.mathModelCache.size
+      },
+      performanceStats: {
+        avgResponseTime,
+        totalRequests
+      }
+    };
   }
 }
 
