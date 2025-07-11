@@ -5,6 +5,13 @@ import {
   ValidationError,
   WorkflowError 
 } from '../errors/custom-errors.js';
+import { MLFlowOptimizer } from './ml-flow-optimizer.js';
+import { 
+  IntelligentBlockSuggester, 
+  IntelligentSuggestion,
+  SuggestionRequest,
+  SuggestionContext 
+} from './intelligent-block-suggester.js';
 
 export interface VisualBlock {
   id: string;
@@ -154,6 +161,8 @@ export class VisualCodeBuilder {
   private aiService: AIService;
   private blockTemplates: Map<BlockType, BlockTemplate[]>;
   private flowCache: Map<string, VisualFlow>;
+  private mlOptimizer: MLFlowOptimizer;
+  private intelligentSuggester: IntelligentBlockSuggester;
   private readonly MAX_CACHE_SIZE = 100;
   private readonly CACHE_CLEANUP_THRESHOLD = 120;
 
@@ -162,6 +171,8 @@ export class VisualCodeBuilder {
     this.aiService = new AIService(provider);
     this.blockTemplates = new Map();
     this.flowCache = new Map();
+    this.mlOptimizer = new MLFlowOptimizer(provider);
+    this.intelligentSuggester = new IntelligentBlockSuggester(provider);
     this.initializeBlockTemplates();
   }
 
@@ -436,6 +447,11 @@ export class VisualCodeBuilder {
       nodeType: 'code',
       requirements: {
         language: flow.metadata.language as 'javascript' | 'python'
+      },
+      workflowContext: {
+        previousNodes: [],
+        nextNodes: [],
+        workflowPurpose: flow.description
       }
     };
 
@@ -1496,7 +1512,7 @@ Return suggestions as JSON:
     };
   }
 
-  private async optimizeBlockOrder(flow: VisualFlow): Promise<FlowOptimization> {
+  private async optimizeBlockOrder(_flow: VisualFlow): Promise<FlowOptimization> {
     // Simple optimization: ensure execution order is optimal
     // In a real implementation, this would reorder blocks for better cache locality
     return {
@@ -1586,8 +1602,8 @@ Return suggestions as JSON:
     };
   }
 
-  private async parallelizeIndependentBlocks(optimizedFlow: VisualFlow): Promise<FlowOptimization> {
-    const parallelizableBranches = this.findParallelizableBranches(optimizedFlow);
+  private async parallelizeIndependentBlocks(flow: VisualFlow): Promise<FlowOptimization> {
+    const parallelizableBranches = this.findParallelizableBranches(flow);
     
     if (parallelizableBranches.length > 1) {
       // Mark branches for parallel execution
@@ -1615,5 +1631,445 @@ Return suggestions as JSON:
       if (block) return block;
     }
     return undefined;
+  }
+
+  // ML-based Flow Optimization
+  async optimizeFlowWithML(flowId: string): Promise<OptimizedFlow> {
+    const flow = this.flowCache.get(flowId);
+    if (!flow) {
+      throw new WorkflowError(
+        'Flow not found for ML optimization',
+        flowId
+      );
+    }
+    
+    console.log(`🤖 Starting ML-based optimization for flow: ${flow.name}`);
+    
+    const mlOptimizedFlow = await this.mlOptimizer.optimizeFlowWithML(flow);
+    
+    // Convert ML OptimizedFlow to local OptimizedFlow interface
+    const optimizedFlow: OptimizedFlow = {
+      original: mlOptimizedFlow.original,
+      optimized: mlOptimizedFlow.optimized,
+      improvements: {
+        executionTimeReduction: mlOptimizedFlow.expectedImprovement,
+        memoryReduction: mlOptimizedFlow.expectedImprovement * 0.8, // Approximation
+        complexityReduction: mlOptimizedFlow.appliedOptimizations.length * 5
+      },
+      changesApplied: mlOptimizedFlow.appliedOptimizations.map(opt => ({
+        type: opt.type,
+        description: opt.description,
+        applied: true,
+        impact: opt.estimatedGain,
+        effort: opt.confidence / 10
+      }))
+    };
+    
+    // Cache the optimized flow
+    this.flowCache.set(optimizedFlow.optimized.id, optimizedFlow.optimized);
+    this.cleanCache();
+    
+    return optimizedFlow;
+  }
+
+  async predictFlowPerformance(flowId: string): Promise<any> {
+    const flow = this.flowCache.get(flowId);
+    if (!flow) {
+      throw new WorkflowError(
+        'Flow not found for performance prediction',
+        flowId
+      );
+    }
+    
+    console.log(`🔮 Predicting performance for flow: ${flow.name}`);
+    
+    return await this.mlOptimizer.predictFlowPerformance(flow);
+  }
+
+  getOptimizationHistory(flowId: string): OptimizedFlow[] {
+    const mlHistory = this.mlOptimizer.getOptimizationHistory(flowId);
+    
+    // Convert ML OptimizedFlow array to local OptimizedFlow array
+    return mlHistory.map(mlOptimizedFlow => ({
+      original: mlOptimizedFlow.original,
+      optimized: mlOptimizedFlow.optimized,
+      improvements: {
+        executionTimeReduction: mlOptimizedFlow.expectedImprovement,
+        memoryReduction: mlOptimizedFlow.expectedImprovement * 0.8,
+        complexityReduction: mlOptimizedFlow.appliedOptimizations.length * 5
+      },
+      changesApplied: mlOptimizedFlow.appliedOptimizations.map(opt => ({
+        type: opt.type,
+        description: opt.description,
+        applied: true,
+        impact: opt.estimatedGain,
+        effort: opt.confidence / 10
+      }))
+    }));
+  }
+
+  // Enhanced block suggestion with ML
+  async suggestNextBlocksWithML(
+    flowId: string,
+    currentBlockId: string
+  ): Promise<BlockTemplate[]> {
+    const flow = this.flowCache.get(flowId);
+    if (!flow) {
+      throw new WorkflowError(
+        'Flow not found',
+        flowId
+      );
+    }
+    
+    const currentBlock = flow.blocks.find(b => b.id === currentBlockId);
+    if (!currentBlock) {
+      throw new Error('Current block not found');
+    }
+    
+    // Get ML-enhanced suggestions
+    const prompt = `
+Given a visual code flow analysis and the current block context:
+
+Current Block Type: ${currentBlock.type}
+Current Block Label: ${currentBlock.label}
+Flow Complexity: ${flow.blocks.length} blocks, ${flow.connections.length} connections
+
+Block Distribution:
+${this.getBlockDistributionSummary(flow)}
+
+Based on machine learning analysis of similar flows, suggest the most optimal next blocks:
+
+{
+  "suggestions": [
+    {
+      "type": "block_type",
+      "templateName": "specific template name",
+      "relevanceScore": <0-100>,
+      "reasoning": "why this block is optimal",
+      "expectedImpact": "performance|functionality|maintainability improvement"
+    }
+  ]
+}`;
+    
+    try {
+      const response = await this.aiService.getJSONResponse(prompt);
+      const suggestions = response.suggestions || [];
+      
+      // Map AI suggestions to available templates
+      const templates: BlockTemplate[] = [];
+      suggestions.forEach((suggestion: any) => {
+        const blockType = this.parseBlockType(suggestion.type);
+        if (blockType) {
+          const typeTemplates = this.blockTemplates.get(blockType) || [];
+          const template = typeTemplates.find(t => 
+            t.name === suggestion.templateName || 
+            t.supportedLanguages.includes(flow.metadata.language)
+          );
+          
+          if (template) {
+            // Enhance template with ML insights
+            const enhancedTemplate = {
+              ...template,
+              relevanceScore: suggestion.relevanceScore,
+              reasoning: suggestion.reasoning,
+              expectedImpact: suggestion.expectedImpact
+            };
+            templates.push(enhancedTemplate as BlockTemplate);
+          }
+        }
+      });
+      
+      // Sort by relevance score and return top suggestions
+      return templates
+        .sort((a: any, b: any) => (b.relevanceScore || 0) - (a.relevanceScore || 0))
+        .slice(0, 5);
+        
+    } catch (error) {
+      console.warn('ML block suggestion failed, falling back to heuristic:', error);
+      return this.suggestNextBlock(flowId, currentBlockId);
+    }
+  }
+
+  private getBlockDistributionSummary(flow: VisualFlow): string {
+    const distribution: Record<string, number> = {};
+    flow.blocks.forEach(block => {
+      distribution[block.type] = (distribution[block.type] || 0) + 1;
+    });
+    
+    return Object.entries(distribution)
+      .map(([type, count]) => `- ${type}: ${count}`)
+      .join('\n');
+  }
+
+  private parseBlockType(typeString: string): BlockType | null {
+    const typeMap: Record<string, BlockType> = {
+      'input': BlockType.INPUT,
+      'output': BlockType.OUTPUT,
+      'transform': BlockType.TRANSFORM,
+      'filter': BlockType.FILTER,
+      'aggregate': BlockType.AGGREGATE,
+      'condition': BlockType.CONDITION,
+      'loop': BlockType.LOOP,
+      'api_call': BlockType.API_CALL,
+      'database': BlockType.DATABASE,
+      'custom': BlockType.CUSTOM
+    };
+    
+    return typeMap[typeString.toLowerCase()] || null;
+  }
+
+  // Advanced flow analytics
+  async generateFlowAnalyticsReport(flowId: string): Promise<string> {
+    const flow = this.flowCache.get(flowId);
+    if (!flow) {
+      throw new WorkflowError('Flow not found', flowId);
+    }
+    
+    const validation = await this.validateFlow(flowId);
+    const performance = await this.predictFlowPerformance(flowId);
+    
+    return `
+# Flow Analytics Report
+## Flow: ${flow.name}
+## Generated: ${new Date().toISOString()}
+
+### Flow Overview
+- **Blocks**: ${flow.blocks.length}
+- **Connections**: ${flow.connections.length}
+- **Language**: ${flow.metadata.language}
+- **Complexity Score**: ${performance.performanceGrade}
+
+### Validation Results
+- **Status**: ${validation.isValid ? '✅ Valid' : '❌ Invalid'}
+- **Errors**: ${validation.errors.length}
+- **Warnings**: ${validation.warnings.length}
+- **Suggestions**: ${validation.suggestions.length}
+
+### Performance Predictions
+- **Estimated Execution Time**: ${performance.estimatedExecutionTime}ms
+- **Estimated Memory Usage**: ${(performance.estimatedMemoryUsage / 1024 / 1024).toFixed(2)}MB
+- **Performance Grade**: ${performance.performanceGrade}
+- **Bottlenecks**: ${performance.bottleneckPredictions.length}
+
+### Resource Requirements
+- **CPU**: ${performance.resourceRequirements.cpu}
+- **Memory**: ${performance.resourceRequirements.memory}
+- **Network**: ${performance.resourceRequirements.network}
+- **Storage**: ${performance.resourceRequirements.storage}
+
+### Scalability Analysis
+- **Horizontal Scaling**: ${performance.scalabilityAnalysis.horizontalScaling}
+- **Vertical Scaling**: ${performance.scalabilityAnalysis.verticalScaling}
+
+### Optimization Opportunities
+${validation.suggestions.map(s => 
+  `- **${s.type}**: ${s.description} (Impact: ${s.impact}, Effort: ${s.effort})`
+).join('\n')}
+
+### Recommendations
+${performance.scalabilityAnalysis.recommendations.map((r: string) => `- ${r}`).join('\n')}
+
+### Next Steps
+1. Address any validation errors
+2. Implement high-impact optimizations
+3. Consider ML-based optimization for complex flows
+4. Monitor performance in production
+`;
+  }
+
+  // Intelligent Block Suggestion Methods
+  async getIntelligentBlockSuggestions(
+    flowId: string,
+    request: SuggestionRequest
+  ): Promise<IntelligentSuggestion[]> {
+    const flow = this.flowCache.get(flowId);
+    if (!flow) {
+      throw new WorkflowError(
+        'Flow not found for intelligent suggestions',
+        flowId
+      );
+    }
+    
+    console.log(`🧠 Getting intelligent block suggestions for flow: ${flow.name}`);
+    
+    return await this.intelligentSuggester.suggestIntelligentBlocks(flow, request);
+  }
+
+  async suggestBlocksWithContext(
+    flowId: string,
+    context: {
+      userInput?: string;
+      currentBlockId?: string;
+      expectedOutput?: string;
+      domain?: string;
+      performance?: {
+        latencyRequirements?: 'low' | 'medium' | 'high';
+        throughputRequirements?: 'low' | 'medium' | 'high';
+        resourceConstraints?: 'memory' | 'cpu' | 'bandwidth';
+      };
+    }
+  ): Promise<IntelligentSuggestion[]> {
+    const flow = this.flowCache.get(flowId);
+    if (!flow) {
+      throw new WorkflowError(
+        'Flow not found for context-aware suggestions',
+        flowId
+      );
+    }
+
+    const suggestionContext: SuggestionContext = {
+      userInput: context.userInput,
+      previousBlocks: flow.blocks.map(b => b.id),
+      expectedOutput: context.expectedOutput,
+      performance: context.performance,
+      domain: context.domain
+    };
+
+    const request: SuggestionRequest = {
+      flowId,
+      currentBlockId: context.currentBlockId,
+      context: suggestionContext,
+      maxSuggestions: 6,
+      includeAdvanced: true
+    };
+
+    return await this.getIntelligentBlockSuggestions(flowId, request);
+  }
+
+  async suggestOptimalNextBlocks(
+    flowId: string,
+    currentBlockId: string,
+    options?: {
+      prioritizePerformance?: boolean;
+      includeErrorHandling?: boolean;
+      maxSuggestions?: number;
+    }
+  ): Promise<IntelligentSuggestion[]> {
+    const flow = this.flowCache.get(flowId);
+    if (!flow) {
+      throw new WorkflowError(
+        'Flow not found for optimal suggestions',
+        flowId
+      );
+    }
+
+    const currentBlock = flow.blocks.find(b => b.id === currentBlockId);
+    if (!currentBlock) {
+      throw new Error('Current block not found');
+    }
+
+    // Build context based on current block and options
+    const suggestionContext: SuggestionContext = {
+      previousBlocks: flow.blocks.map(b => b.id),
+      dataTypes: this.inferDataTypesFromBlock(currentBlock),
+      performance: options?.prioritizePerformance ? {
+        latencyRequirements: 'low',
+        throughputRequirements: 'high'
+      } : undefined
+    };
+
+    const request: SuggestionRequest = {
+      flowId,
+      currentBlockId,
+      context: suggestionContext,
+      maxSuggestions: options?.maxSuggestions || 5,
+      includeAdvanced: false
+    };
+
+    const suggestions = await this.getIntelligentBlockSuggestions(flowId, request);
+
+    // Filter for error handling if requested
+    if (options?.includeErrorHandling) {
+      const errorHandlingSuggestions = suggestions.filter(s => 
+        s.category === 'debugging' || 
+        s.template.name.toLowerCase().includes('error') ||
+        s.template.name.toLowerCase().includes('try') ||
+        s.template.name.toLowerCase().includes('catch')
+      );
+      
+      // Ensure we have at least one error handling suggestion
+      if (errorHandlingSuggestions.length === 0) {
+        // Add a generic error handling suggestion
+        const conditionTemplate = this.findTemplate(BlockType.CONDITION, 'Error Handler');
+        if (conditionTemplate) {
+          suggestions.unshift({
+            template: conditionTemplate,
+            relevanceScore: 85,
+            confidence: 90,
+            reasoning: 'Error handling is recommended for robust workflows',
+            category: 'debugging' as any,
+            priority: 'high',
+            estimatedSetupTime: 5,
+            requiredSkillLevel: 'beginner',
+            useCaseExamples: ['Handle API failures', 'Catch validation errors'],
+            potentialIssues: ['May add complexity to flow'],
+            optimizationTips: ['Use specific error types for better handling']
+          });
+        }
+      }
+    }
+
+    return suggestions;
+  }
+
+  private inferDataTypesFromBlock(block: VisualBlock): string[] {
+    const dataTypes: string[] = [];
+    
+    switch (block.type) {
+      case BlockType.INPUT:
+        dataTypes.push('any', 'object', 'array');
+        break;
+      case BlockType.API_CALL:
+        dataTypes.push('json', 'object', 'string');
+        break;
+      case BlockType.DATABASE:
+        dataTypes.push('recordset', 'object', 'array');
+        break;
+      case BlockType.TRANSFORM:
+        dataTypes.push('object', 'array', 'string', 'number');
+        break;
+      case BlockType.FILTER:
+        dataTypes.push('array', 'object');
+        break;
+      case BlockType.AGGREGATE:
+        dataTypes.push('number', 'object', 'summary');
+        break;
+      default:
+        dataTypes.push('any');
+    }
+    
+    return dataTypes;
+  }
+
+  private findTemplate(blockType: BlockType, templateName: string): BlockTemplate | null {
+    const templates = this.blockTemplates.get(blockType) || [];
+    return templates.find(t => t.name === templateName) || templates[0] || null;
+  }
+
+  async provideFeedbackOnSuggestion(
+    flowId: string,
+    suggestionId: string,
+    feedback: 'positive' | 'negative' | 'neutral',
+    details?: string
+  ): Promise<void> {
+    await this.intelligentSuggester.learnFromUserFeedback(
+      flowId,
+      suggestionId,
+      feedback,
+      details
+    );
+  }
+
+  async getSuggestionUsageStatistics(): Promise<any> {
+    return await this.intelligentSuggester.getUsageStatistics();
+  }
+
+  // Cleanup
+  cleanup(): void {
+    console.log('🧹 Cleaning up Visual Code Builder...');
+    this.flowCache.clear();
+    this.mlOptimizer.cleanup();
+    this.intelligentSuggester.cleanup();
+    console.log('✅ Visual Code Builder cleanup completed');
   }
 }

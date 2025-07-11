@@ -6,6 +6,8 @@ import {
   SecurityError 
 } from '../errors/custom-errors';
 import * as crypto from 'crypto';
+import { EventEmitter } from 'events';
+import { QueryOptimizationEngine } from './query-optimization-engine';
 import { SQLQueryParams, SQLDialectInfo } from '../types/common-types';
 
 export interface SQLCodeGenerationOptions {
@@ -133,12 +135,90 @@ export interface AutoCompleteSuggestion {
   insertText?: string;
 }
 
+// Connection Pool Management interfaces
+export interface ConnectionPoolConfig {
+  host: string;
+  port: number;
+  database: string;
+  user: string;
+  password: string;
+  min: number;          // Minimum connections
+  max: number;          // Maximum connections
+  idleTimeoutMillis: number;
+  connectionTimeoutMillis: number;
+  acquireTimeoutMillis: number;
+  ssl?: boolean;
+  dialect: string;
+}
+
+export interface DatabaseConnection {
+  id: string;
+  query: (sql: string, params?: any[]) => Promise<any>;
+  beginTransaction: () => Promise<DatabaseTransaction>;
+  release: () => void;
+  isValid: () => boolean;
+  createdAt: Date;
+  lastUsed: Date;
+}
+
+export interface DatabaseTransaction {
+  commit: () => Promise<void>;
+  rollback: () => Promise<void>;
+  query: (sql: string, params?: any[]) => Promise<any>;
+}
+
+export interface ConnectionPool {
+  connect: () => Promise<DatabaseConnection>;
+  getStats: () => PoolStats;
+  destroy: () => Promise<void>;
+}
+
+export interface PoolStats {
+  totalConnections: number;
+  activeConnections: number;
+  idleConnections: number;
+  waitingClients: number;
+}
+
+export interface BatchQuery {
+  sql: string;
+  params?: any[];
+  id?: string;
+}
+
+export interface BatchResult {
+  queryId?: string;
+  success: boolean;
+  result?: any;
+  error?: string;
+  executionTime: number;
+}
+
+export interface OptimizedQuery {
+  originalSQL: string;
+  optimizedSQL: string;
+  estimatedImprovement: number;
+  indexSuggestions: IndexSuggestion[];
+  warnings: string[];
+  executionPlan?: string;
+}
+
+export interface IndexSuggestion {
+  table: string;
+  columns: string[];
+  type: 'btree' | 'hash' | 'gin' | 'gist';
+  estimated_improvement: number;
+  sql: string;
+}
+
 export class SQLCodeAdapter {
   private aiService: AIService;
   private dialectPatterns: Map<string, SQLDialectInfo>;
   private queryCache: Map<string, { result: any; timestamp: number; ttl: number }>;
   private queryPlanCache: Map<string, string>;
   private schemaCache: Map<string, DatabaseSchema>;
+  private connectionPools: Map<string, ConnectionPool>;
+  private queryOptimizer: QueryOptimizationEngine;
   private readonly DEFAULT_CACHE_TTL = 300000; // 5 minutes
   private readonly MAX_CACHE_SIZE = 100;
   private cacheHitCount = 0;
@@ -159,6 +239,8 @@ export class SQLCodeAdapter {
     this.queryCache = new Map();
     this.queryPlanCache = new Map();
     this.schemaCache = new Map();
+    this.connectionPools = new Map();
+    this.queryOptimizer = new QueryOptimizationEngine(provider);
     this.startCacheCleanup();
   }
 
@@ -586,6 +668,17 @@ Return validation result:
     });
     
     return optimizedSQL;
+  }
+
+  async optimizeQueryAdvanced(
+    sql: string,
+    connectionId: string,
+    dialect: string
+  ): Promise<OptimizedQuery> {
+    console.log('🚀 Starting advanced query optimization...');
+    
+    const schema = await this.loadDatabaseSchema(connectionId, dialect);
+    return await this.queryOptimizer.optimizeQuery(sql, schema, dialect);
   }
 
   private startCacheCleanup(): void {
@@ -1127,6 +1220,386 @@ Return validation result:
     this.schemaCache.delete(connectionId);
     console.log(`🔄 Schema cache cleared for connection: ${connectionId}`);
   }
+
+  // Connection Pool Management Implementation
+  async getConnection(connectionId: string, config?: ConnectionPoolConfig): Promise<DatabaseConnection> {
+    let pool = this.connectionPools.get(connectionId);
+    
+    if (!pool && config) {
+      pool = await this.createConnectionPool(connectionId, config);
+    }
+    
+    if (!pool) {
+      throw new SecurityError(
+        'Connection pool not found and no configuration provided',
+        { connectionId }
+      );
+    }
+    
+    return await pool.connect();
+  }
+
+  private async createConnectionPool(connectionId: string, config: ConnectionPoolConfig): Promise<ConnectionPool> {
+    console.log(`🔗 Creating connection pool for: ${connectionId}`);
+    
+    const pool = new DatabaseConnectionPool(config);
+    this.connectionPools.set(connectionId, pool);
+    
+    return pool;
+  }
+
+  async executeBatch(
+    queries: BatchQuery[],
+    connectionId: string,
+    config?: ConnectionPoolConfig
+  ): Promise<BatchResult[]> {
+    console.log(`📦 Executing batch of ${queries.length} queries`);
+    
+    const connection = await this.getConnection(connectionId, config);
+    let transaction: DatabaseTransaction | null = null;
+    
+    try {
+      transaction = await connection.beginTransaction();
+      const results: BatchResult[] = [];
+      
+      for (const query of queries) {
+        const startTime = Date.now();
+        
+        try {
+          const result = await transaction.query(query.sql, query.params);
+          const executionTime = Date.now() - startTime;
+          
+          results.push({
+            queryId: query.id,
+            success: true,
+            result,
+            executionTime
+          });
+          
+        } catch (error) {
+          const executionTime = Date.now() - startTime;
+          
+          results.push({
+            queryId: query.id,
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+            executionTime
+          });
+          
+          // Decide whether to continue or rollback based on error severity
+          if (this.isCriticalError(error)) {
+            throw error;
+          }
+        }
+      }
+      
+      await transaction.commit();
+      console.log(`✅ Batch execution completed successfully`);
+      
+      return results;
+      
+    } catch (error) {
+      if (transaction) {
+        await transaction.rollback();
+        console.log(`🔄 Transaction rolled back due to error`);
+      }
+      throw new LanguageAdapterError(
+        'Batch execution failed',
+        'sql',
+        { connectionId, queryCount: queries.length, originalError: error }
+      );
+    } finally {
+      connection.release();
+    }
+  }
+
+  private isCriticalError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+    
+    const criticalErrors = [
+      'connection lost',
+      'deadlock',
+      'constraint violation',
+      'permission denied'
+    ];
+    
+    const errorMessage = error.message.toLowerCase();
+    return criticalErrors.some(critical => errorMessage.includes(critical));
+  }
+
+  async getPoolStats(connectionId: string): Promise<PoolStats | null> {
+    const pool = this.connectionPools.get(connectionId);
+    return pool ? pool.getStats() : null;
+  }
+
+  async closeAllConnections(): Promise<void> {
+    console.log(`🔒 Closing all database connection pools`);
+    
+    const closePromises = Array.from(this.connectionPools.values()).map(pool => pool.destroy());
+    await Promise.all(closePromises);
+    
+    this.connectionPools.clear();
+    console.log(`✅ All connection pools closed`);
+  }
+}
+
+// Connection Pool Implementation
+class DatabaseConnectionPool implements ConnectionPool {
+  private config: ConnectionPoolConfig;
+  private connections: DatabaseConnection[] = [];
+  private activeConnections: Set<string> = new Set();
+  private waitingQueue: Array<{ resolve: (conn: DatabaseConnection) => void; reject: (error: Error) => void }> = [];
+  private destroyed = false;
+
+  constructor(config: ConnectionPoolConfig) {
+    this.config = config;
+    this.initializePool();
+  }
+
+  private async initializePool(): Promise<void> {
+    // Create minimum number of connections
+    for (let i = 0; i < this.config.min; i++) {
+      const connection = await this.createConnection();
+      this.connections.push(connection);
+    }
+  }
+
+  private async createConnection(): Promise<DatabaseConnection> {
+    const connectionId = `conn_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+    
+    // Mock connection - in production, this would create a real database connection
+    const connection: DatabaseConnection = {
+      id: connectionId,
+      query: async (sql: string, params?: any[]) => {
+        // Simulate query execution
+        await new Promise(resolve => setTimeout(resolve, Math.random() * 10));
+        return { rows: [], rowCount: 0 };
+      },
+      beginTransaction: async () => ({
+        commit: async () => {},
+        rollback: async () => {},
+        query: async (sql: string, params?: any[]) => ({ rows: [], rowCount: 0 })
+      }),
+      release: () => {
+        this.releaseConnection(connection);
+      },
+      isValid: () => !this.destroyed,
+      createdAt: new Date(),
+      lastUsed: new Date()
+    };
+    
+    return connection;
+  }
+
+  async connect(): Promise<DatabaseConnection> {
+    if (this.destroyed) {
+      throw new Error('Connection pool has been destroyed');
+    }
+
+    // Try to get an idle connection
+    const idleConnection = this.connections.find(conn => 
+      !this.activeConnections.has(conn.id) && conn.isValid()
+    );
+
+    if (idleConnection) {
+      this.activeConnections.add(idleConnection.id);
+      idleConnection.lastUsed = new Date();
+      return idleConnection;
+    }
+
+    // Create new connection if under max limit
+    if (this.connections.length < this.config.max) {
+      const newConnection = await this.createConnection();
+      this.connections.push(newConnection);
+      this.activeConnections.add(newConnection.id);
+      return newConnection;
+    }
+
+    // Wait for a connection to become available
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        const index = this.waitingQueue.findIndex(item => item.resolve === resolve);
+        if (index !== -1) {
+          this.waitingQueue.splice(index, 1);
+        }
+        reject(new Error('Connection acquisition timeout'));
+      }, this.config.acquireTimeoutMillis);
+
+      this.waitingQueue.push({
+        resolve: (conn) => {
+          clearTimeout(timeout);
+          resolve(conn);
+        },
+        reject: (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        }
+      });
+    });
+  }
+
+  private releaseConnection(connection: DatabaseConnection): void {
+    this.activeConnections.delete(connection.id);
+    connection.lastUsed = new Date();
+
+    // Serve waiting clients
+    if (this.waitingQueue.length > 0) {
+      const waiting = this.waitingQueue.shift()!;
+      this.activeConnections.add(connection.id);
+      waiting.resolve(connection);
+    }
+  }
+
+  getStats(): PoolStats {
+    return {
+      totalConnections: this.connections.length,
+      activeConnections: this.activeConnections.size,
+      idleConnections: this.connections.length - this.activeConnections.size,
+      waitingClients: this.waitingQueue.length
+    };
+  }
+
+  async destroy(): Promise<void> {
+    this.destroyed = true;
+    
+    // Reject all waiting clients
+    this.waitingQueue.forEach(waiting => {
+      waiting.reject(new Error('Connection pool destroyed'));
+    });
+    this.waitingQueue.length = 0;
+
+    // Close all connections
+    this.connections.length = 0;
+    this.activeConnections.clear();
+  }
+}
+
+// Query Result Streaming Implementation
+export class QueryResultStreamer {
+  private connection: DatabaseConnection;
+  
+  constructor(connection: DatabaseConnection) {
+    this.connection = connection;
+  }
+
+  async *executeStreamingQuery(
+    sql: string,
+    params: any[] = [],
+    options: {
+      batchSize?: number;
+      onBatch?: (batch: any[]) => void;
+    } = {}
+  ): AsyncIterable<any[]> {
+    const batchSize = options.batchSize || 1000;
+    
+    console.log(`📊 Starting streaming query execution (batch size: ${batchSize})`);
+    
+    // Simulate cursor-based streaming
+    // In production, this would use database-specific cursor/streaming APIs
+    try {
+      let offset = 0;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const batchSQL = this.addPagination(sql, offset, batchSize);
+        const result = await this.connection.query(batchSQL, params);
+        
+        if (result.rows && result.rows.length > 0) {
+          const batch = result.rows;
+          
+          // Call batch callback if provided
+          options.onBatch?.(batch);
+          
+          yield batch;
+          
+          // Check if we got fewer rows than requested (end of data)
+          hasMore = batch.length === batchSize;
+          offset += batchSize;
+        } else {
+          hasMore = false;
+        }
+        
+        // Add small delay to prevent overwhelming the database
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      
+      console.log(`✅ Streaming query completed. Total batches processed: ${Math.ceil(offset / batchSize)}`);
+      
+    } catch (error) {
+      console.error('❌ Streaming query failed:', error);
+      throw error;
+    }
+  }
+
+  private addPagination(sql: string, offset: number, limit: number): string {
+    // Add LIMIT and OFFSET to the query
+    // This is a simplified approach - production would handle various SQL dialects
+    if (sql.toLowerCase().includes('limit')) {
+      // Query already has LIMIT, modify it
+      return sql.replace(/LIMIT\s+\d+/i, `LIMIT ${limit} OFFSET ${offset}`);
+    } else {
+      // Add LIMIT and OFFSET
+      return `${sql} LIMIT ${limit} OFFSET ${offset}`;
+    }
+  }
+}
+
+// Enhanced SQL Adapter with streaming support
+export class EnhancedSQLAdapter extends SQLCodeAdapter {
+  async executeStreamingQuery(
+    sql: string,
+    params: any[],
+    connectionId: string,
+    options: {
+      batchSize?: number;
+      onBatch?: (batch: any[]) => void;
+      connectionConfig?: ConnectionPoolConfig;
+    } = {}
+  ): Promise<AsyncIterable<any[]>> {
+    console.log('🌊 Setting up streaming query execution...');
+    
+    const connection = await this.getConnection(connectionId, options.connectionConfig);
+    const streamer = new QueryResultStreamer(connection);
+    
+    return streamer.executeStreamingQuery(sql, params, {
+      batchSize: options.batchSize,
+      onBatch: options.onBatch
+    });
+  }
+
+  async *processLargeResultSet(
+    sql: string,
+    params: any[],
+    connectionId: string,
+    processor: (batch: any[]) => Promise<any[]>,
+    options: {
+      batchSize?: number;
+      connectionConfig?: ConnectionPoolConfig;
+    } = {}
+  ): AsyncIterable<any[]> {
+    console.log('⚙️ Processing large result set with custom processor...');
+    
+    const streamingQuery = await this.executeStreamingQuery(
+      sql, 
+      params, 
+      connectionId, 
+      options
+    );
+    
+    for await (const batch of streamingQuery) {
+      try {
+        const processedBatch = await processor(batch);
+        yield processedBatch;
+      } catch (error) {
+        console.error('Error processing batch:', error);
+        throw error;
+      }
+    }
+    
+    console.log('✅ Large result set processing completed');
+  }
+}
+
 }
 
 // Fluent Query Builder Implementation

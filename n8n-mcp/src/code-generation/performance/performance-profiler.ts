@@ -9,6 +9,7 @@ import {
 } from '../errors/custom-errors';
 import { ExecutionContext } from '../types/common-types';
 import { EventEmitter } from 'events';
+import { RealTimePerformanceMonitor, MonitoringOptions } from './websocket-monitor';
 
 export interface PerformanceProfile {
   id: string;
@@ -164,7 +165,7 @@ export interface OptimizationSuggestion {
   effort: number; // hours
 }
 
-// Real-time monitoring interfaces
+// Real-time monitoring interfaces (some moved to websocket-monitor.ts)
 export interface RealTimeMetrics {
   timestamp: number;
   codeId: string;
@@ -240,6 +241,7 @@ export class PerformanceProfiler {
   private monitoringIntervals: Map<string, NodeJS.Timeout>;
   private performanceStreams: Map<string, any>;
   private realTimeMetrics: Map<string, RealTimeMetrics[]>;
+  private wsMonitor: RealTimePerformanceMonitor;
 
   constructor(provider?: string) {
     this.aiService = new AIService(provider);
@@ -249,6 +251,7 @@ export class PerformanceProfiler {
     this.monitoringIntervals = new Map();
     this.performanceStreams = new Map();
     this.realTimeMetrics = new Map();
+    this.wsMonitor = new RealTimePerformanceMonitor();
   }
 
   async profileCodeExecution(
@@ -1272,10 +1275,79 @@ ${profile.optimizationSuggestions
       this.stopRealTimeMonitoring(monitoringId);
     }
     
+    // Shutdown WebSocket monitor
+    this.wsMonitor.shutdown();
+    
     // Clear all data
     this.realTimeMetrics.clear();
     this.performanceStreams.clear();
     
     console.log('🧹 Performance monitoring cleanup completed');
+  }
+
+  // WebSocket-based monitoring methods
+  async startWebSocketMonitoring(
+    codeId: string,
+    options: MonitoringOptions = {}
+  ): Promise<string> {
+    console.log(`🌐 Starting WebSocket-based monitoring for ${codeId}`);
+    return await this.wsMonitor.startWebSocketMonitoring(codeId, options);
+  }
+
+  async stopWebSocketMonitoring(sessionId: string): Promise<void> {
+    console.log(`🛑 Stopping WebSocket monitoring session: ${sessionId}`);
+    await this.wsMonitor.stopWebSocketMonitoring(sessionId);
+  }
+
+  async detectMemoryLeaks(codeId: string, timeWindow: string = '1h'): Promise<any> {
+    console.log(`🔍 Detecting memory leaks for ${codeId}`);
+    return await this.wsMonitor.detectMemoryLeaks(codeId, timeWindow);
+  }
+
+  initializeWebSocketServer(port: number): void {
+    console.log(`🚀 Initializing WebSocket server on port ${port}`);
+    this.wsMonitor = new RealTimePerformanceMonitor(port);
+    
+    // Set up event listeners for alerts and metrics
+    this.wsMonitor.on('alert', (alert: PerformanceAlert) => {
+      console.warn(`⚠️ Performance Alert: ${alert.message}`);
+    });
+    
+    this.wsMonitor.on('metrics', (metrics: RealTimeMetrics) => {
+      // Process real-time metrics if needed
+      this.emit('metrics', metrics);
+    });
+  }
+
+  getWebSocketMonitor(): RealTimePerformanceMonitor {
+    return this.wsMonitor;
+  }
+
+  async generateDistributedReport(
+    codeId: string,
+    nodes: Array<{ id: string; endpoint: string }>
+  ): Promise<string> {
+    console.log(`📊 Generating distributed performance report for ${codeId}`);
+    
+    // This would be implemented with actual distributed profiling
+    return `
+# Distributed Performance Report
+## Code ID: ${codeId}
+## Nodes: ${nodes.length}
+
+### Node Performance Summary
+${nodes.map(node => `- Node ${node.id}: ${node.endpoint}`).join('\n')}
+
+### Distributed Metrics
+- Total execution time across nodes
+- Network latency analysis
+- Load distribution analysis
+- Cross-node bottleneck identification
+
+### Recommendations
+- Optimize inter-node communication
+- Balance load distribution
+- Reduce network overhead
+`;
   }
 }
