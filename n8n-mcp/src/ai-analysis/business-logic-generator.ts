@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { AIService } from '../ai-service.js';
 import { CodeGenerationDatabase } from '../code-generation/database/code-generation-db.js';
+import { BusinessLogicLearningEngine } from './business-logic-learning.js';
 
 // Interfaces
 export interface BusinessLogicRequest {
@@ -162,6 +163,7 @@ export class DynamicBusinessLogicGenerator extends EventEmitter {
   private domainAnalyzer: BusinessDomainAnalyzer;
   private mathematicalEngine: MathematicalReasoningEngine;
   private validationEngine: BusinessLogicValidationEngine;
+  private learningEngine: BusinessLogicLearningEngine;
   private database: CodeGenerationDatabase;
   
   constructor(aiProvider?: string) {
@@ -170,6 +172,7 @@ export class DynamicBusinessLogicGenerator extends EventEmitter {
     this.domainAnalyzer = new BusinessDomainAnalyzer(this.aiService);
     this.mathematicalEngine = new MathematicalReasoningEngine(this.aiService);
     this.validationEngine = new BusinessLogicValidationEngine(this.aiService);
+    this.learningEngine = new BusinessLogicLearningEngine(aiProvider);
     this.database = new CodeGenerationDatabase();
   }
 
@@ -186,7 +189,10 @@ export class DynamicBusinessLogicGenerator extends EventEmitter {
       this.emit('phase-complete', { phase: 'mathematical-modeling', result: mathModel });
       
       // Phase 3: Logic Pattern Synthesis
-      const logicPatterns = await this.synthesizeLogicPatterns(domain, mathModel, request);
+      let logicPatterns = await this.synthesizeLogicPatterns(domain, mathModel, request);
+      
+      // Enhance patterns with domain knowledge from learning system
+      logicPatterns = await this.enhanceWithDomainKnowledge(domain, logicPatterns);
       this.emit('phase-complete', { phase: 'pattern-synthesis', result: logicPatterns });
       
       // Phase 4: Implementation Generation
@@ -228,6 +234,7 @@ export class DynamicBusinessLogicGenerator extends EventEmitter {
     mathModel: MathematicalModel,
     request: BusinessLogicRequest
   ): Promise<LogicPatterns> {
+    
     const synthesisPrompt = `
 TASK: Synthesize business logic patterns from domain analysis and mathematical model.
 
@@ -237,7 +244,7 @@ ${JSON.stringify(domain, null, 2)}
 MATHEMATICAL MODEL:
 ${JSON.stringify(mathModel, null, 2)}
 
-REQUEST DETAILS:
+ORIGINAL REQUEST:
 ${JSON.stringify(request, null, 2)}
 
 Synthesize comprehensive logic patterns and return JSON:
@@ -245,26 +252,83 @@ Synthesize comprehensive logic patterns and return JSON:
 {
   "patterns": [
     {
-      "name": "descriptive pattern name",
-      "type": "calculation|validation|decision|transformation|aggregation",
-      "implementation": "detailed implementation approach",
-      "businessContext": "why this pattern is needed for the business"
+      "name": "pattern_name",
+      "type": "calculation|validation|decision|optimization",
+      "businessContext": "when and why this pattern applies",
+      "mathematicalBasis": "mathematical foundation of the pattern",
+      "implementation": "how to implement this pattern",
+      "conditions": ["when this pattern should be used"],
+      "variables": ["variables involved in this pattern"],
+      "expectedOutcome": "what business outcome this pattern achieves"
     }
   ],
-  "validations": [
-    "specific validation rules based on business requirements"
-  ],
-  "optimizations": [
-    "performance and accuracy optimizations to apply"
-  ]
+  "algorithmFlow": {
+    "steps": [
+      {
+        "stepNumber": 1,
+        "action": "what happens in this step",
+        "patterns": ["which patterns are applied"],
+        "businessReason": "why this step is needed for business"
+      }
+    ],
+    "decisionPoints": [
+      {
+        "condition": "what condition triggers decision",
+        "options": ["possible decision outcomes"],
+        "businessImpact": "business impact of each option"
+      }
+    ]
+  },
+  "businessRules": {
+    "validationRules": ["rules to validate inputs"],
+    "constraintRules": ["business constraints to enforce"],
+    "decisionRules": ["rules for making business decisions"],
+    "exceptionRules": ["rules for handling exceptions"]
+  },
+  "optimizationOpportunities": {
+    "performance": ["performance optimization possibilities"],
+    "accuracy": ["accuracy improvement opportunities"],
+    "usability": ["user experience improvements"],
+    "maintainability": ["code maintainability improvements"]
+  }
 }
 
-CRITICAL: Create SPECIFIC patterns for THIS business logic, not generic templates.
-CRITICAL: Ensure patterns align with the mathematical model.
-CRITICAL: Include business-specific edge case handling.`;
+CRITICAL: Create patterns that are SPECIFIC to the business domain and mathematical model.
+CRITICAL: Ensure patterns are IMPLEMENTABLE and not abstract.
+CRITICAL: Focus on BUSINESS VALUE and practical application.
+CRITICAL: Include proper ERROR HANDLING and EDGE CASE patterns.`;
 
     const result = await this.aiService.getJSONResponse(synthesisPrompt);
-    return result as LogicPatterns;
+    return this.validateLogicPatterns(result);
+  }
+
+  private validateLogicPatterns(patterns: any): LogicPatterns {
+    if (!patterns.patterns || !Array.isArray(patterns.patterns)) {
+      throw new Error('Logic patterns must include patterns array');
+    }
+    
+    if (!patterns.algorithmFlow || !patterns.algorithmFlow.steps) {
+      throw new Error('Logic patterns must include algorithm flow');
+    }
+    
+    // Validate each pattern has required fields
+    patterns.patterns.forEach((pattern: any, index: number) => {
+      if (!pattern.name || !pattern.type || !pattern.businessContext) {
+        throw new Error(`Pattern ${index} missing required fields`);
+      }
+    });
+    
+    // Ensure we have the expected structure for LogicPatterns interface
+    return {
+      patterns: patterns.patterns.map((p: any) => ({
+        name: p.name,
+        type: p.type,
+        implementation: p.implementation || '',
+        businessContext: p.businessContext
+      })),
+      validations: patterns.businessRules?.validationRules || [],
+      optimizations: patterns.optimizationOpportunities?.performance || []
+    };
   }
 
   private async generateImplementation(
@@ -330,52 +394,210 @@ Generate the TypeScript/JavaScript implementation:`;
   private calculateConfidence(
     domain: BusinessDomain,
     mathModel: MathematicalModel,
-    validatedLogic: BusinessLogicImplementation
+    implementation?: BusinessLogicImplementation
   ): number {
-    let confidence = 0.5; // Base confidence
     
-    // Domain complexity factor
-    const complexityFactors = {
-      simple: 0.9,
-      moderate: 0.8,
-      complex: 0.7,
-      enterprise: 0.6
+    let confidence = 0;
+    const weights = {
+      domainClarity: 0.25,
+      mathematicalSoundness: 0.25,
+      businessRuleCompleteness: 0.20,
+      implementationQuality: 0.15,
+      validationCoverage: 0.15
     };
-    confidence *= complexityFactors[domain.domainComplexity.level];
     
-    // Mathematical model clarity
-    if (mathModel.mathematicalOperations.primaryFormula) {
-      confidence += 0.1;
+    // 1. Domain Clarity Score (0-100)
+    const domainClarity = this.calculateDomainClarity(domain);
+    confidence += domainClarity * weights.domainClarity;
+    
+    // 2. Mathematical Soundness Score (0-100)
+    const mathSoundness = this.calculateMathematicalSoundness(mathModel);
+    confidence += mathSoundness * weights.mathematicalSoundness;
+    
+    // 3. Business Rule Completeness Score (0-100)
+    const ruleCompleteness = this.calculateBusinessRuleCompleteness(domain);
+    confidence += ruleCompleteness * weights.businessRuleCompleteness;
+    
+    // 4. Implementation Quality Score (0-100)
+    if (implementation) {
+      const implQuality = this.calculateImplementationQuality(implementation);
+      confidence += implQuality * weights.implementationQuality;
     }
     
-    // Validation completeness
-    if (validatedLogic.tests && validatedLogic.tests.length > 0) {
-      confidence += 0.1;
+    // 5. Validation Coverage Score (0-100)
+    if (implementation && (implementation as any).validation) {
+      const validationCoverage = this.calculateValidationCoverage((implementation as any).validation);
+      confidence += validationCoverage * weights.validationCoverage;
     }
     
-    // Business rules coverage
-    const totalRules = domain.businessRules.explicitRules.length + 
-                      domain.businessRules.implicitRules.length;
-    if (totalRules > 0) {
-      confidence += 0.1;
+    return Math.round(Math.min(100, Math.max(0, confidence))) / 100;
+  }
+
+  private calculateDomainClarity(domain: BusinessDomain): number {
+    let score = 0;
+    
+    // Industry specificity
+    if (domain.businessDomain.industry && domain.businessDomain.industry !== 'general') {
+      score += 25;
     }
     
-    return Math.min(confidence, 0.95);
+    // Function clarity
+    if (domain.businessDomain.function && domain.businessDomain.function !== 'general') {
+      score += 25;
+    }
+    
+    // Business objectives defined
+    if (domain.businessDomain.businessObjectives && domain.businessDomain.businessObjectives.length > 0) {
+      score += 25;
+    }
+    
+    // Business rules defined
+    if (domain.businessRules && domain.businessRules.explicitRules && domain.businessRules.explicitRules.length > 0) {
+      score += 25;
+    }
+    
+    return score;
+  }
+
+  private calculateMathematicalSoundness(mathModel: MathematicalModel): number {
+    let score = 0;
+    
+    // Model type appropriateness
+    if (mathModel.modelType && mathModel.modelType !== 'custom') {
+      score += 30;
+    }
+    
+    // Variable definition completeness
+    if (mathModel.variables?.inputVariables?.length > 0) {
+      score += 25;
+    }
+    
+    if (mathModel.variables?.outputVariables?.length > 0) {
+      score += 25;
+    }
+    
+    // Mathematical operations defined
+    if (mathModel.mathematicalOperations?.primaryFormula) {
+      score += 20;
+    }
+    
+    return score;
+  }
+
+  private calculateBusinessRuleCompleteness(domain: BusinessDomain): number {
+    let score = 0;
+    
+    if (domain.businessRules?.explicitRules?.length > 0) {
+      score += 40;
+    }
+    
+    if (domain.businessRules?.implicitRules?.length > 0) {
+      score += 30;
+    }
+    
+    if (domain.businessRules?.regulatoryRequirements?.length > 0) {
+      score += 30;
+    }
+    
+    return score;
+  }
+
+  private calculateImplementationQuality(implementation: BusinessLogicImplementation): number {
+    let score = 0;
+    const code = implementation.implementation;
+    
+    // Error handling presence
+    if (code.includes('try') && code.includes('catch')) {
+      score += 25;
+    }
+    
+    // Input validation
+    if (code.includes('validate') || code.includes('check') || code.includes('throw')) {
+      score += 25;
+    }
+    
+    // Business logic complexity (not just simple assignments)
+    if (code.includes('calculate') || code.includes('if') || code.includes('for')) {
+      score += 25;
+    }
+    
+    // Documentation/comments
+    if (code.includes('//') || code.includes('/*')) {
+      score += 25;
+    }
+    
+    return score;
+  }
+
+  private calculateValidationCoverage(validation: any): number {
+    if (!validation) return 0;
+    
+    let score = 0;
+    
+    if (validation.score >= 80) {
+      score += 40;
+    } else if (validation.score >= 60) {
+      score += 25;
+    } else if (validation.score >= 40) {
+      score += 10;
+    }
+    
+    if (validation.testCases && validation.testCases.length > 0) {
+      score += 30;
+    }
+    
+    if (validation.issues && validation.issues.filter((i: any) => i.severity === 'critical').length === 0) {
+      score += 30;
+    }
+    
+    return score;
   }
 
   private generateWarnings(domain: BusinessDomain, mathModel: MathematicalModel): string[] {
     const warnings: string[] = [];
     
+    // Domain-specific warnings
+    if (!domain.businessDomain.industry || domain.businessDomain.industry === 'general') {
+      warnings.push('⚠️ Generic industry detected - consider specifying industry for better accuracy');
+    }
+    
+    if (!domain.businessRules?.explicitRules?.length) {
+      warnings.push('⚠️ No explicit business rules defined - generated logic may not capture all requirements');
+    }
+    
+    if (!domain.businessRules?.regulatoryRequirements?.length && 
+        ['finance', 'healthcare', 'insurance'].includes(domain.businessDomain.industry.toLowerCase())) {
+      warnings.push('⚠️ Regulated industry detected but no regulatory requirements specified');
+    }
+    
+    // Mathematical model warnings
+    if (!mathModel.variables?.inputVariables?.length) {
+      warnings.push('⚠️ No input variables defined - logic may be incomplete');
+    }
+    
+    if (mathModel.modelType === 'custom') {
+      warnings.push('⚠️ Custom mathematical model - ensure thorough testing');
+    }
+    
+    // Complexity warnings
+    const inputCount = mathModel.variables?.inputVariables?.length || 0;
+    if (inputCount > 15) {
+      warnings.push('⚠️ High complexity with 15+ input variables - consider simplification');
+    }
+    
+    // Performance warnings
+    if (domain.successCriteria?.scalabilityNeeds === 'enterprise' && 
+        mathModel.businessConstraints?.performanceConstraints?.some(c => c.includes('complexity'))) {
+      warnings.push('⚠️ High scalability needs with complex computations - performance optimization required');
+    }
+    
+    // Domain complexity warnings
     if (domain.domainComplexity.level === 'enterprise') {
-      warnings.push('Complex enterprise logic - thorough testing recommended');
+      warnings.push('⚠️ Complex enterprise logic - thorough testing and validation recommended');
     }
     
-    if (domain.businessRules.regulatoryRequirements.length > 0) {
-      warnings.push('Regulatory requirements detected - ensure compliance testing');
-    }
-    
-    if (mathModel.businessConstraints.performanceConstraints.length > 0) {
-      warnings.push('Performance constraints identified - monitor execution time');
+    if (domain.domainComplexity.integrationComplexity === 'high') {
+      warnings.push('⚠️ High integration complexity - ensure proper error handling for external systems');
     }
     
     return warnings;
@@ -384,16 +606,85 @@ Generate the TypeScript/JavaScript implementation:`;
   private generateSuggestions(domain: BusinessDomain, mathModel: MathematicalModel): string[] {
     const suggestions: string[] = [];
     
+    // Domain enhancement suggestions
+    if (!domain.businessDomain.stakeholders?.length) {
+      suggestions.push('💡 Consider defining key stakeholders for better business alignment');
+    }
+    
+    if (!domain.successCriteria?.performanceMetrics?.length) {
+      suggestions.push('💡 Define success metrics to measure business logic effectiveness');
+    }
+    
+    // Mathematical model suggestions
+    if (!mathModel.algorithmDesign?.optimizationOpportunities?.length) {
+      suggestions.push('💡 Explore optimization opportunities for better performance');
+    }
+    
+    if (!mathModel.algorithmDesign?.errorHandlingMath?.length) {
+      suggestions.push('💡 Define mathematical error handling strategies');
+    }
+    
+    // Industry-specific suggestions
+    switch (domain.businessDomain.industry?.toLowerCase()) {
+      case 'finance':
+        suggestions.push('💡 Consider implementing risk assessment thresholds');
+        suggestions.push('💡 Add regulatory compliance checks (e.g., Basel III, GDPR)');
+        break;
+      case 'sales':
+        suggestions.push('💡 Implement lead velocity scoring for better prioritization');
+        suggestions.push('💡 Add seasonal adjustment factors');
+        break;
+      case 'hr':
+        suggestions.push('💡 Include bias detection and fairness metrics');
+        suggestions.push('💡 Add performance trend analysis');
+        break;
+      case 'healthcare':
+        suggestions.push('💡 Implement HIPAA compliance validation');
+        suggestions.push('💡 Add patient safety protocols');
+        break;
+      case 'retail':
+        suggestions.push('💡 Include demand forecasting algorithms');
+        suggestions.push('💡 Add inventory optimization logic');
+        break;
+    }
+    
+    // Process improvement suggestions
+    if (domain.businessDomain.processType === 'prediction') {
+      suggestions.push('💡 Implement confidence intervals for predictions');
+      suggestions.push('💡 Add model drift detection mechanisms');
+    }
+    
+    if (domain.businessDomain.processType === 'optimization') {
+      suggestions.push('💡 Implement multi-objective optimization capabilities');
+      suggestions.push('💡 Add constraint relaxation mechanisms');
+    }
+    
+    if (domain.businessDomain.processType === 'calculation') {
+      suggestions.push('💡 Add calculation audit trail for transparency');
+      suggestions.push('💡 Implement sensitivity analysis features');
+    }
+    
+    // Complexity management suggestions
     if (domain.domainComplexity.variablesCount > 10) {
-      suggestions.push('Consider breaking down complex logic into smaller functions');
+      suggestions.push('💡 Consider breaking down complex logic into smaller, testable functions');
+      suggestions.push('💡 Implement modular design patterns for maintainability');
     }
     
-    if (mathModel.algorithmDesign.optimizationOpportunities.length > 0) {
-      suggestions.push('Optimization opportunities available - review for performance gains');
+    // Performance suggestions
+    if (domain.successCriteria?.scalabilityNeeds === 'enterprise') {
+      suggestions.push('💡 Implement caching for frequently used calculations');
+      suggestions.push('💡 Consider parallel processing for independent calculations');
     }
     
-    if (domain.successCriteria.scalabilityNeeds === 'enterprise') {
-      suggestions.push('Consider implementing caching for frequently used calculations');
+    // Business rule suggestions
+    if (domain.businessRules?.implicitRules?.length > domain.businessRules?.explicitRules?.length) {
+      suggestions.push('💡 Document implicit rules as explicit requirements');
+    }
+    
+    // Integration suggestions
+    if (domain.domainComplexity.integrationComplexity === 'high') {
+      suggestions.push('💡 Implement circuit breaker pattern for external service calls');
+      suggestions.push('💡 Add retry logic with exponential backoff');
     }
     
     return suggestions;
@@ -477,6 +768,96 @@ ${patterns.patterns.map(p => `- **${p.name}**: ${p.businessContext}`).join('\n')
       },
       feedback: null
     });
+  }
+
+  // Learning integration methods
+  async learnFromOutcome(
+    request: BusinessLogicRequest,
+    result: BusinessLogicResult,
+    outcome: BusinessOutcome
+  ): Promise<void> {
+    console.log('🧠 Learning from business outcome...');
+    
+    try {
+      await this.learningEngine.learnFromBusinessOutcome(
+        request,
+        result.businessLogic,
+        outcome,
+        result.domain
+      );
+      
+      console.log('✅ Learning completed successfully');
+      this.emit('learning-complete', { success: outcome.success });
+    } catch (error) {
+      console.error('❌ Learning failed:', error);
+    }
+  }
+
+  private async enhanceWithDomainKnowledge(
+    domain: BusinessDomain,
+    patterns: LogicPatterns
+  ): Promise<LogicPatterns> {
+    
+    const domainKnowledge = await this.learningEngine.getDomainInsights(
+      domain.businessDomain.function
+    );
+    
+    if (!domainKnowledge) {
+      return patterns;
+    }
+    
+    // Apply learned patterns
+    const enhancedPatterns = { ...patterns };
+    
+    // Add successful calculation patterns
+    domainKnowledge.patterns.calculationPatterns.forEach((pattern) => {
+      if (pattern.successRate > 0.8) {
+        enhancedPatterns.patterns.push({
+          name: pattern.name,
+          type: 'calculation',
+          businessContext: `Proven pattern with ${Math.round(pattern.successRate * 100)}% success rate`,
+          implementation: pattern.formula
+        });
+      }
+    });
+    
+    // Add validation patterns
+    domainKnowledge.patterns.validationPatterns.forEach((pattern) => {
+      if (pattern.successRate > 0.8) {
+        enhancedPatterns.validations.push(...pattern.rules);
+      }
+    });
+    
+    // Add optimization opportunities from successful implementations
+    if (domainKnowledge.bestPractices.length > 0) {
+      enhancedPatterns.optimizations.push(
+        ...domainKnowledge.bestPractices.filter(bp => 
+          bp.includes('optimization') || bp.includes('performance')
+        )
+      );
+    }
+    
+    return enhancedPatterns;
+  }
+
+  async getRecommendations(domain: string): Promise<{
+    bestPractices: string[];
+    avoidPatterns: string[];
+    successFactors: string[];
+  }> {
+    return await this.learningEngine.getRecommendationsForDomain(domain);
+  }
+
+  async generateLearningReport(): Promise<string> {
+    return await this.learningEngine.generateLearningReport();
+  }
+
+  async exportLearnings(): Promise<any> {
+    return await this.learningEngine.exportLearnings();
+  }
+
+  async importLearnings(learnings: any): Promise<void> {
+    await this.learningEngine.importLearnings(learnings);
   }
 }
 
