@@ -1,0 +1,130 @@
+version: '3.8'
+
+services:
+  # Main application
+  n8n-mcp-api:
+    build:
+      context: ../../
+      dockerfile: Dockerfile.production
+    container_name: n8n-mcp-api
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+    ports:
+      - "3001:3001"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - n8n-mcp-network
+    volumes:
+      - app-logs:/app/logs
+      - ./health-check.sh:/health-check.sh
+    healthcheck:
+      test: ["CMD", "sh", "/health-check.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    labels:
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=3001"
+      - "prometheus.io/path=/metrics"
+
+  # Web interface
+  n8n-mcp-web:
+    build:
+      context: ../../web-interface
+      dockerfile: Dockerfile.production
+    container_name: n8n-mcp-web
+    restart: unless-stopped
+    environment:
+      - REACT_APP_API_URL=${API_URL}
+      - REACT_APP_WS_URL=${WS_URL}
+    ports:
+      - "3000:80"
+    networks:
+      - n8n-mcp-network
+    depends_on:
+      - n8n-mcp-api
+
+  # Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: n8n-mcp-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    ports:
+      - "5432:5432"
+    networks:
+      - n8n-mcp-network
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis cache
+  redis:
+    image: redis:7-alpine
+    container_name: n8n-mcp-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - n8n-mcp-network
+    volumes:
+      - redis-data:/data
+      - ./redis/redis.conf:/etc/redis/redis.conf:ro
+    command: redis-server /etc/redis/redis.conf
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: n8n-mcp-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - n8n-mcp-network
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - nginx-logs:/var/log/nginx
+    depends_on:
+      - n8n-mcp-api
+      - n8n-mcp-web
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+networks:
+  n8n-mcp-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  app-logs:
+  nginx-logs:

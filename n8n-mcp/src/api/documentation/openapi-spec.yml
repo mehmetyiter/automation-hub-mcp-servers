@@ -1,0 +1,653 @@
+openapi: 3.0.0
+info:
+  title: N8N MCP Credential Management API
+  description: Comprehensive API for managing AI provider credentials, usage tracking, and cost optimization
+  version: 2.0.0
+  contact:
+    name: API Support
+    email: api-support@company.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:3001/api
+    description: Development server
+  - url: https://api.n8n-mcp.com/api
+    description: Production server
+
+security:
+  - BearerAuth: []
+  - ApiKeyAuth: []
+
+paths:
+  /credentials:
+    get:
+      summary: Get user credentials
+      description: Retrieve paginated list of user's credentials with optional filtering
+      tags: [Credentials]
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: provider
+          in: query
+          schema:
+            type: string
+            enum: [openai, anthropic, google, cohere, replicate]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, expired, error]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Credential'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      summary: Create new credential
+      description: Create a new AI provider credential
+      tags: [Credentials]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCredentialRequest'
+      responses:
+        '201':
+          description: Credential created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Credential'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /credentials/{credentialId}:
+    get:
+      summary: Get credential by ID
+      description: Retrieve a specific credential by its ID
+      tags: [Credentials]
+      parameters:
+        - name: credentialId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Credential'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    put:
+      summary: Update credential
+      description: Update an existing credential
+      tags: [Credentials]
+      parameters:
+        - name: credentialId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCredentialRequest'
+      responses:
+        '200':
+          description: Credential updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Credential'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete credential
+      description: Delete a credential (soft delete)
+      tags: [Credentials]
+      parameters:
+        - name: credentialId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Credential deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Credential deleted successfully"
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /credentials/{credentialId}/test:
+    post:
+      summary: Test credential
+      description: Test if credential is valid and working
+      tags: [Credentials]
+      parameters:
+        - name: credentialId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Test completed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/CredentialTestResult'
+
+  /usage/stats:
+    get:
+      summary: Get usage statistics
+      description: Retrieve detailed usage statistics with filtering options
+      tags: [Usage]
+      parameters:
+        - name: timeframe
+          in: query
+          schema:
+            type: string
+            enum: [1h, 24h, 7d, 30d, 90d]
+            default: 7d
+        - name: provider
+          in: query
+          schema:
+            type: string
+        - name: granularity
+          in: query
+          schema:
+            type: string
+            enum: [hour, day, week, month]
+            default: day
+      responses:
+        '200':
+          description: Usage statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/UsageStats'
+
+  /api-keys:
+    get:
+      summary: Get API keys
+      description: Retrieve user's API keys
+      tags: [API Keys]
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/APIKey'
+
+    post:
+      summary: Create API key
+      description: Create a new API key
+      tags: [API Keys]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAPIKeyRequest'
+      responses:
+        '201':
+          description: API key created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    allOf:
+                      - $ref: '#/components/schemas/APIKey'
+                      - type: object
+                        properties:
+                          key:
+                            type: string
+                            description: The actual API key (only shown once)
+                            example: "mcp_live_1234567890abcdef..."
+
+  /webhooks:
+    get:
+      summary: Get webhooks
+      description: Retrieve user's webhook configurations
+      tags: [Webhooks]
+      responses:
+        '200':
+          description: List of webhooks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/WebhookConfig'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    Credential:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider:
+          type: string
+          enum: [openai, anthropic, google, cohere, replicate]
+        name:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, expired, error]
+        isDefault:
+          type: boolean
+        lastValidated:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        metadata:
+          type: object
+          additionalProperties: true
+
+    CreateCredentialRequest:
+      type: object
+      required: [provider, name, credentials]
+      properties:
+        provider:
+          type: string
+          enum: [openai, anthropic, google, cohere, replicate]
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        credentials:
+          type: object
+          description: Provider-specific credential data
+          additionalProperties: true
+        isDefault:
+          type: boolean
+          default: false
+        metadata:
+          type: object
+          additionalProperties: true
+
+    UpdateCredentialRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        credentials:
+          type: object
+          additionalProperties: true
+        isDefault:
+          type: boolean
+        metadata:
+          type: object
+          additionalProperties: true
+
+    CredentialTestResult:
+      type: object
+      properties:
+        isValid:
+          type: boolean
+        responseTime:
+          type: number
+          description: Response time in milliseconds
+        model:
+          type: string
+          description: Model used for testing
+        tokensUsed:
+          type: integer
+        cost:
+          type: number
+        error:
+          type: string
+          nullable: true
+        testedAt:
+          type: string
+          format: date-time
+
+    APIKey:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        keyName:
+          type: string
+        keyPrefix:
+          type: string
+          description: First few characters of the key for identification
+        scopes:
+          type: array
+          items:
+            type: string
+        rateLimit:
+          type: integer
+        dailyLimit:
+          type: integer
+        isActive:
+          type: boolean
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+        usageCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateAPIKeyRequest:
+      type: object
+      required: [name, scopes]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        scopes:
+          type: array
+          items:
+            type: string
+            enum: [read, write, admin]
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        rateLimit:
+          type: integer
+          minimum: 1
+          maximum: 10000
+          default: 1000
+        dailyLimit:
+          type: integer
+          minimum: 1
+          maximum: 1000000
+          default: 50000
+
+    WebhookConfig:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+        events:
+          type: array
+          items:
+            type: string
+        isActive:
+          type: boolean
+        retryCount:
+          type: integer
+        timeoutMs:
+          type: integer
+        lastTriggeredAt:
+          type: string
+          format: date-time
+          nullable: true
+        successCount:
+          type: integer
+        failureCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    UsageStats:
+      type: object
+      properties:
+        totalRequests:
+          type: integer
+        totalTokens:
+          type: integer
+        totalCost:
+          type: number
+        averageResponseTime:
+          type: number
+        byProvider:
+          type: object
+          additionalProperties:
+            type: object
+            properties:
+              requests:
+                type: integer
+              tokens:
+                type: integer
+              cost:
+                type: number
+        timeline:
+          type: array
+          items:
+            type: object
+            properties:
+              timestamp:
+                type: string
+                format: date-time
+              requests:
+                type: integer
+              tokens:
+                type: integer
+              cost:
+                type: number
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
+        totalPages:
+          type: integer
+          minimum: 0
+
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: "VALIDATION_ERROR"
+              message: "Invalid request data"
+
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: "UNAUTHORIZED"
+              message: "Authentication required"
+
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: "NOT_FOUND"
+              message: "Resource not found"
+
+    InternalServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            success: false
+            error:
+              code: "INTERNAL_ERROR"
+              message: "Internal server error"
+
+tags:
+  - name: Credentials
+    description: AI provider credential management
+  - name: Usage
+    description: Usage statistics and analytics
+  - name: API Keys
+    description: API key management
+  - name: Webhooks
+    description: Webhook configuration and management

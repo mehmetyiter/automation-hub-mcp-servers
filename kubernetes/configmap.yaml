@@ -1,0 +1,231 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: n8n-mcp-config
+  namespace: n8n-mcp
+  labels:
+    app: n8n-mcp
+    component: config
+data:
+  # Application configuration
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  PORT: "3001"
+  
+  # Database configuration
+  DB_HOST: "postgres-service"
+  DB_PORT: "5432"
+  DB_NAME: "n8n_mcp"
+  DB_SSL_MODE: "require"
+  DB_POOL_MIN: "5"
+  DB_POOL_MAX: "20"
+  DB_POOL_IDLE_TIMEOUT: "30000"
+  
+  # Redis configuration
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  REDIS_RETRY_DELAY: "1000"
+  REDIS_MAX_RETRIES: "3"
+  
+  # Security configuration
+  BCRYPT_ROUNDS: "12"
+  JWT_EXPIRY: "1h"
+  REFRESH_TOKEN_EXPIRY: "7d"
+  SESSION_TIMEOUT: "3600000"
+  
+  # Rate limiting
+  RATE_LIMIT_WINDOW: "900000"
+  RATE_LIMIT_MAX_REQUESTS: "100"
+  RATE_LIMIT_SKIP_SUCCESSFUL: "false"
+  
+  # CORS configuration
+  CORS_ORIGIN: "https://app.n8n-mcp.com"
+  CORS_CREDENTIALS: "true"
+  
+  # Monitoring configuration
+  METRICS_ENABLED: "true"
+  METRICS_PORT: "9090"
+  HEALTH_CHECK_PATH: "/health"
+  
+  # Feature flags
+  FEATURE_ENCRYPTION_HSM: "false"
+  FEATURE_AUDIT_LOGGING: "true"
+  FEATURE_ADVANCED_ANALYTICS: "true"
+  FEATURE_WEBHOOK_NOTIFICATIONS: "true"
+  
+  # Provider configurations
+  OPENAI_TIMEOUT: "30000"
+  ANTHROPIC_TIMEOUT: "30000"
+  GOOGLE_TIMEOUT: "30000"
+  
+  # Backup configuration
+  BACKUP_ENABLED: "true"
+  BACKUP_SCHEDULE: "0 2 * * *"
+  BACKUP_RETENTION_DAYS: "30"
+  
+  # Cache configuration
+  CACHE_TTL_DEFAULT: "3600"
+  CACHE_TTL_ANALYTICS: "300"
+  CACHE_TTL_CREDENTIALS: "1800"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: n8n-mcp-nginx-config
+  namespace: n8n-mcp
+  labels:
+    app: n8n-mcp
+    component: nginx
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    error_log /var/log/nginx/error.log warn;
+    pid /var/run/nginx.pid;
+
+    events {
+        worker_connections 1024;
+        use epoll;
+        multi_accept on;
+    }
+
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+
+        # Logging
+        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+                        '$status $body_bytes_sent "$http_referer" '
+                        '"$http_user_agent" "$http_x_forwarded_for" '
+                        'rt=$request_time uct="$upstream_connect_time" '
+                        'uht="$upstream_header_time" urt="$upstream_response_time"';
+
+        access_log /var/log/nginx/access.log main;
+
+        # Basic settings
+        sendfile on;
+        tcp_nopush on;
+        tcp_nodelay on;
+        keepalive_timeout 65;
+        types_hash_max_size 2048;
+        client_max_body_size 10M;
+
+        # Gzip compression
+        gzip on;
+        gzip_vary on;
+        gzip_min_length 1024;
+        gzip_types
+            application/atom+xml
+            application/javascript
+            application/json
+            application/ld+json
+            application/manifest+json
+            application/rss+xml
+            application/vnd.geo+json
+            application/vnd.ms-fontobject
+            application/x-font-ttf
+            application/x-web-app-manifest+json
+            application/xhtml+xml
+            application/xml
+            font/opentype
+            image/bmp
+            image/svg+xml
+            image/x-icon
+            text/cache-manifest
+            text/css
+            text/plain
+            text/vcard
+            text/vnd.rim.location.xloc
+            text/vtt
+            text/x-component
+            text/x-cross-domain-policy;
+
+        # Security headers
+        add_header X-Frame-Options DENY;
+        add_header X-Content-Type-Options nosniff;
+        add_header X-XSS-Protection "1; mode=block";
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin";
+
+        # Rate limiting
+        limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+        limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/s;
+
+        upstream api_backend {
+            least_conn;
+            server n8n-mcp-api-service:3001 max_fails=3 fail_timeout=30s;
+            keepalive 32;
+        }
+
+        server {
+            listen 80;
+            listen [::]:80;
+            server_name _;
+            return 301 https://$host$request_uri;
+        }
+
+        server {
+            listen 443 ssl http2;
+            listen [::]:443 ssl http2;
+            server_name api.n8n-mcp.com;
+
+            # SSL configuration
+            ssl_certificate /etc/nginx/ssl/tls.crt;
+            ssl_certificate_key /etc/nginx/ssl/tls.key;
+            ssl_protocols TLSv1.2 TLSv1.3;
+            ssl_ciphers ECDHE-RSA-AES256-GCM-SHA512:DHE-RSA-AES256-GCM-SHA512:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES256-GCM-SHA384;
+            ssl_prefer_server_ciphers off;
+            ssl_session_cache shared:SSL:10m;
+            ssl_session_timeout 10m;
+
+            # API routes
+            location /api/ {
+                limit_req zone=api burst=20 nodelay;
+                
+                proxy_pass http://api_backend;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection 'upgrade';
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+                proxy_cache_bypass $http_upgrade;
+                
+                proxy_connect_timeout 30s;
+                proxy_send_timeout 30s;
+                proxy_read_timeout 30s;
+            }
+
+            # Authentication routes with stricter rate limiting
+            location ~ ^/api/v1/(auth|login|register) {
+                limit_req zone=auth burst=10 nodelay;
+                
+                proxy_pass http://api_backend;
+                proxy_http_version 1.1;
+                proxy_set_header Host $host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            # Health check endpoint
+            location /health {
+                proxy_pass http://api_backend/health;
+                access_log off;
+            }
+
+            # Metrics endpoint (internal only)
+            location /metrics {
+                allow 10.0.0.0/8;
+                allow 172.16.0.0/12;
+                allow 192.168.0.0/16;
+                deny all;
+                
+                proxy_pass http://api_backend/metrics;
+                access_log off;
+            }
+        }
+    }

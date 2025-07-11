@@ -1,0 +1,78 @@
+# Multi-stage build for production optimization
+FROM node:18-alpine AS builder
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
+
+# Install dependencies (including dev dependencies for build)
+RUN npm ci --include=dev
+
+# Copy source code
+COPY src/ ./src/
+COPY tests/ ./tests/
+
+# Build the application
+RUN npm run build
+
+# Remove dev dependencies
+RUN npm prune --production
+
+# Production stage
+FROM node:18-alpine AS production
+
+# Install security updates and required packages
+RUN apk update && apk upgrade && \
+    apk add --no-cache \
+    curl \
+    dumb-init \
+    postgresql-client \
+    && rm -rf /var/cache/apk/*
+
+# Create non-root user
+RUN addgroup -g 1001 -S n8nmcp && \
+    adduser -S n8nmcp -u 1001 -G n8nmcp
+
+# Set working directory
+WORKDIR /app
+
+# Copy built application from builder stage
+COPY --from=builder --chown=n8nmcp:n8nmcp /app/dist ./dist
+COPY --from=builder --chown=n8nmcp:n8nmcp /app/node_modules ./node_modules
+COPY --from=builder --chown=n8nmcp:n8nmcp /app/package*.json ./
+
+# Copy additional files
+COPY --chown=n8nmcp:n8nmcp infrastructure/scripts/health-check.sh ./health-check.sh
+RUN chmod +x ./health-check.sh
+
+# Create necessary directories
+RUN mkdir -p logs tmp && \
+    chown -R n8nmcp:n8nmcp logs tmp
+
+# Switch to non-root user
+USER n8nmcp
+
+# Expose port
+EXPOSE 3001
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD ./health-check.sh || exit 1
+
+# Use dumb-init to handle signals properly
+ENTRYPOINT ["dumb-init", "--"]
+
+# Start the application
+CMD ["node", "dist/index.js"]
+
+# Labels for metadata
+LABEL maintainer="N8N MCP Team" \
+      version="1.0.0" \
+      description="N8N MCP Automation Hub - Production Build" \
+      org.opencontainers.image.source="https://github.com/your-org/n8n-mcp" \
+      org.opencontainers.image.documentation="https://docs.n8n-mcp.com" \
+      org.opencontainers.image.vendor="N8N MCP" \
+      org.opencontainers.image.licenses="MIT"
