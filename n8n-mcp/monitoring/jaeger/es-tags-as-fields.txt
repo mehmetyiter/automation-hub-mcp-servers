@@ -1,0 +1,26 @@
+# Tags to store as Elasticsearch fields for better performance
+# One tag per line
+
+http.method
+http.status_code
+http.url
+error
+error.type
+user.id
+user.email
+workspace.id
+ai.provider
+ai.model
+ai.operation
+db.operation
+db.table
+db.system
+cache.operation
+cache.hit
+security.event_type
+business.event_type
+custom.request_id
+service.name
+service.version
+service.environment
+span.kind

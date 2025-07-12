@@ -1,128 +1,243 @@
+import React, { useState } from 'react';
+import { Dashboard as DashboardComponent } from '../components/features/Dashboard';
+import { Card, CardHeader, CardBody } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { MetricCard, SimpleLineChart, SimpleBarChart } from '../components/ui/Charts';
 import { 
-  Workflow, 
-  Zap, 
-  CheckCircle, 
-  AlertCircle,
+  DollarSign,
+  Activity,
+  Shield,
   TrendingUp,
+  Users,
   Clock,
-  Activity
-} from 'lucide-react'
+  Settings,
+  RefreshCw,
+  Calendar,
+  Filter
+} from 'lucide-react';
 
-const stats = [
-  { name: 'Total Automations', value: '127', icon: Workflow, change: '+12%', changeType: 'positive' },
-  { name: 'Active Workflows', value: '89', icon: Activity, change: '+8%', changeType: 'positive' },
-  { name: 'Executions Today', value: '3,426', icon: Zap, change: '+23%', changeType: 'positive' },
-  { name: 'Success Rate', value: '98.2%', icon: CheckCircle, change: '-0.3%', changeType: 'negative' },
-]
+// Mock data for demonstration
+const quickStats = [
+  {
+    title: 'Total Workflows',
+    value: '127',
+    change: { value: 12, type: 'increase' as const, period: 'last month' },
+    icon: <Activity className="w-6 h-6" />,
+    color: 'blue' as const
+  },
+  {
+    title: 'Monthly Cost',
+    value: '$234.50',
+    change: { value: 8, type: 'decrease' as const, period: 'last month' },
+    icon: <DollarSign className="w-6 h-6" />,
+    color: 'green' as const
+  },
+  {
+    title: 'Security Score',
+    value: '98%',
+    change: { value: 2, type: 'increase' as const, period: 'last week' },
+    icon: <Shield className="w-6 h-6" />,
+    color: 'purple' as const
+  },
+  {
+    title: 'Active Users',
+    value: '45',
+    change: { value: 15, type: 'increase' as const, period: 'last month' },
+    icon: <Users className="w-6 h-6" />,
+    color: 'yellow' as const
+  }
+];
 
-const recentActivity = [
-  { id: 1, name: 'Customer Welcome Email', platform: 'n8n', status: 'success', time: '2 minutes ago' },
-  { id: 2, name: 'CRM Data Sync', platform: 'Make', status: 'success', time: '5 minutes ago' },
-  { id: 3, name: 'Sales Call Scheduler', platform: 'Vapi', status: 'running', time: '10 minutes ago' },
-  { id: 4, name: 'Invoice Processing', platform: 'n8n', status: 'failed', time: '15 minutes ago' },
-  { id: 5, name: 'Slack Notifications', platform: 'Zapier', status: 'success', time: '20 minutes ago' },
-]
+const mockTimeSeriesData = [
+  { timestamp: '2024-01-01T00:00:00Z', value: 120 },
+  { timestamp: '2024-01-02T00:00:00Z', value: 135 },
+  { timestamp: '2024-01-03T00:00:00Z', value: 148 },
+  { timestamp: '2024-01-04T00:00:00Z', value: 142 },
+  { timestamp: '2024-01-05T00:00:00Z', value: 155 },
+  { timestamp: '2024-01-06T00:00:00Z', value: 168 },
+  { timestamp: '2024-01-07T00:00:00Z', value: 171 }
+];
+
+const mockProviderData = [
+  { label: 'OpenAI', value: 45, color: '#10B981' },
+  { label: 'Anthropic', value: 32, color: '#3B82F6' },
+  { label: 'Google', value: 28, color: '#F59E0B' },
+  { label: 'Azure', value: 22, color: '#8B5CF6' }
+];
 
 export default function Dashboard() {
+  const [timeRange, setTimeRange] = useState<'realtime' | '24h' | '7d' | '30d'>('24h');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    // Simulate refresh delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    setRefreshing(false);
+  };
+
+  const handleTimeRangeChange = (range: '24h' | '7d' | '30d') => {
+    setTimeRange(range);
+  };
+
   return (
-    <div>
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-foreground">Dashboard</h1>
-        <p className="mt-2 text-gray-600 dark:text-gray-400">Monitor your automation performance across all platforms</p>
+    <div className="space-y-6">
+      {/* Header with controls */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+            Dashboard Overview
+          </h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+            Real-time insights and system monitoring
+          </p>
+        </div>
+        
+        <div className="mt-4 sm:mt-0 flex items-center space-x-3">
+          {/* Time Range Selector */}
+          <div className="flex items-center space-x-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+            {(['24h', '7d', '30d'] as const).map((range) => (
+              <button
+                key={range}
+                onClick={() => handleTimeRangeChange(range)}
+                className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
+                  timeRange === range
+                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                {range}
+              </button>
+            ))}
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            leftIcon={RefreshCw}
+            className={refreshing ? 'animate-spin' : ''}
+          >
+            Refresh
+          </Button>
+
+          <Button
+            variant="outline" 
+            size="sm"
+            leftIcon={Settings}
+          >
+            Configure
+          </Button>
+        </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <div
-            key={stat.name}
-            className="overflow-hidden rounded-lg bg-white dark:bg-card shadow dark:shadow-none dark:border dark:border-border hover:shadow-md dark:hover:shadow-none transition-shadow"
-          >
-            <div className="p-6">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <stat.icon className="h-8 w-8 text-primary-600 dark:text-primary" />
-                </div>
-                <div className="ml-4 flex-1">
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">{stat.name}</p>
-                  <p className="text-2xl font-semibold text-gray-900 dark:text-foreground">{stat.value}</p>
-                </div>
-              </div>
-              <div className="mt-4">
-                <div className="flex items-center text-sm">
-                  <TrendingUp className={`h-4 w-4 ${
-                    stat.changeType === 'positive' ? 'text-green-500' : 'text-red-500'
-                  }`} />
-                  <span className={`ml-1 ${
-                    stat.changeType === 'positive' ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {stat.change}
-                  </span>
-                  <span className="ml-2 text-gray-500 dark:text-gray-400">from last week</span>
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* Quick Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {quickStats.map((stat, index) => (
+          <MetricCard
+            key={index}
+            title={stat.title}
+            value={stat.value}
+            change={stat.change}
+            icon={stat.icon}
+            color={stat.color}
+          />
         ))}
       </div>
 
-      {/* Recent Activity */}
-      <div className="mt-8">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-foreground mb-4">Recent Activity</h2>
-        <div className="overflow-hidden bg-white dark:bg-card shadow dark:shadow-none dark:border dark:border-border rounded-lg">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200 dark:divide-border">
-              <thead className="bg-gray-50 dark:bg-gray-800/50">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Automation
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Platform
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Time
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-white dark:bg-card divide-y divide-gray-200 dark:divide-border">
-                {recentActivity.map((activity) => (
-                  <tr key={activity.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900 dark:text-foreground">
-                      {activity.name}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200">
-                        {activity.platform}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        activity.status === 'success' 
-                          ? 'bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-400'
-                          : activity.status === 'running'
-                          ? 'bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-400'
-                          : 'bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-400'
-                      }`}>
-                        {activity.status === 'running' && <Clock className="mr-1 h-3 w-3" />}
-                        {activity.status === 'failed' && <AlertCircle className="mr-1 h-3 w-3" />}
-                        {activity.status === 'success' && <CheckCircle className="mr-1 h-3 w-3" />}
-                        {activity.status}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                      {activity.time}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      {/* Main Dashboard Component */}
+      <DashboardComponent
+        userId="user-123"
+        timeRange={timeRange}
+      />
+
+      {/* Additional Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Trend Analysis */}
+        <Card>
+          <CardHeader
+            title="Usage Trends"
+            subtitle="API calls over time"
+            actions={
+              <Button variant="ghost" size="sm" leftIcon={Filter}>
+                Filter
+              </Button>
+            }
+          />
+          <CardBody>
+            <SimpleLineChart
+              data={mockTimeSeriesData}
+              height={200}
+              color="#3B82F6"
+              showGrid
+              showPoints
+            />
+          </CardBody>
+        </Card>
+
+        {/* Provider Distribution */}
+        <Card>
+          <CardHeader
+            title="Provider Usage"
+            subtitle="Distribution by AI provider"
+          />
+          <CardBody>
+            <SimpleBarChart
+              data={mockProviderData}
+              height={200}
+              showValues
+            />
+          </CardBody>
+        </Card>
       </div>
+
+      {/* System Status */}
+      <Card>
+        <CardHeader
+          title="System Status"
+          subtitle="Current operational status"
+        />
+        <CardBody>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="flex items-center space-x-3">
+              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+              <div>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  API Services
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  All systems operational
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-3">
+              <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+              <div>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  Database
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Response time: 45ms
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center space-x-3">
+              <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
+              <div>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">
+                  Background Jobs
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Processing queue: 12 items
+                </p>
+              </div>
+            </div>
+          </div>
+        </CardBody>
+      </Card>
     </div>
-  )
+  );
 }

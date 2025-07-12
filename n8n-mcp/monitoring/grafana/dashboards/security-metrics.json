@@ -1,0 +1,541 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "security-metrics",
+    "title": "Security Metrics Dashboard",
+    "tags": ["n8n-mcp", "security", "monitoring"],
+    "timezone": "browser",
+    "schemaVersion": 30,
+    "version": 1,
+    "refresh": "30s",
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+        "type": "stat",
+        "title": "Active Security Incidents",
+        "targets": [
+          {
+            "expr": "sum(ALERTS{alertname=~\".*Security.*\",alertstate=\"firing\"})",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": ["lastNotNull"]
+          },
+          "textMode": "value",
+          "graphMode": "none",
+          "colorMode": "background"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": 0 },
+                { "color": "yellow", "value": 1 },
+                { "color": "red", "value": 5 }
+              ]
+            },
+            "unit": "none"
+          }
+        }
+      },
+      {
+        "id": 2,
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+        "type": "stat",
+        "title": "Failed Auth Attempts (24h)",
+        "targets": [
+          {
+            "expr": "sum(increase(auth_failures_total[24h]))",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": ["lastNotNull"]
+          },
+          "textMode": "value",
+          "graphMode": "area",
+          "colorMode": "value"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 100 },
+                { "color": "red", "value": 500 }
+              ]
+            },
+            "unit": "none"
+          }
+        }
+      },
+      {
+        "id": 3,
+        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+        "type": "stat",
+        "title": "Blocked Requests (24h)",
+        "targets": [
+          {
+            "expr": "sum(increase(blocked_requests_total[24h]))",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": ["lastNotNull"]
+          },
+          "textMode": "value",
+          "graphMode": "area"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 50 },
+                { "color": "red", "value": 200 }
+              ]
+            },
+            "unit": "none"
+          }
+        }
+      },
+      {
+        "id": 4,
+        "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+        "type": "gauge",
+        "title": "Security Score",
+        "targets": [
+          {
+            "expr": "100 - (sum(rate(security_violations_total[24h])) * 100)",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "showThresholdLabels": true,
+          "showThresholdMarkers": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 100,
+            "unit": "percent",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "red", "value": null },
+                { "color": "yellow", "value": 70 },
+                { "color": "green", "value": 90 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "gridPos": { "h": 10, "w": 12, "x": 0, "y": 4 },
+        "type": "timeseries",
+        "title": "Security Events Timeline",
+        "targets": [
+          {
+            "expr": "sum(rate(auth_failures_total[5m])) * 60",
+            "legendFormat": "Auth Failures",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(rate(suspicious_activities_total[5m])) * 60",
+            "legendFormat": "Suspicious Activities",
+            "refId": "B"
+          },
+          {
+            "expr": "sum(rate(blocked_requests_total[5m])) * 60",
+            "legendFormat": "Blocked Requests",
+            "refId": "C"
+          },
+          {
+            "expr": "sum(rate(security_violations_total[5m])) * 60",
+            "legendFormat": "Security Violations",
+            "refId": "D"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "events/min",
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 2,
+              "fillOpacity": 20,
+              "gradientMode": "opacity",
+              "spanNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "none",
+                "group": "A"
+              }
+            },
+            "color": {
+              "mode": "palette-classic"
+            }
+          },
+          "overrides": [
+            {
+              "matcher": { "id": "byName", "options": "Security Violations" },
+              "properties": [
+                { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+              ]
+            },
+            {
+              "matcher": { "id": "byName", "options": "Suspicious Activities" },
+              "properties": [
+                { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          },
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "calcs": []
+          }
+        }
+      },
+      {
+        "id": 6,
+        "gridPos": { "h": 10, "w": 12, "x": 12, "y": 4 },
+        "type": "geomap",
+        "title": "Attack Origins",
+        "targets": [
+          {
+            "expr": "sum(increase(suspicious_activities_total[$__range])) by (geo_country)",
+            "format": "table",
+            "instant": true,
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "view": {
+            "id": "coords",
+            "lat": 0,
+            "lon": 0,
+            "zoom": 2
+          },
+          "layers": [
+            {
+              "type": "markers",
+              "name": "Attack Origins",
+              "config": {
+                "size": {
+                  "field": "Value",
+                  "fixed": 5,
+                  "max": 20,
+                  "min": 5
+                },
+                "color": {
+                  "field": "Value",
+                  "fixed": "red"
+                },
+                "fillOpacity": 0.7,
+                "shape": "circle",
+                "showLegend": true
+              },
+              "location": {
+                "mode": "lookup",
+                "lookup": "geo_country"
+              }
+            }
+          ],
+          "controls": {
+            "showZoom": true,
+            "mouseWheelZoom": true,
+            "showAttribution": true,
+            "showScale": false,
+            "showDebug": false
+          }
+        }
+      },
+      {
+        "id": 7,
+        "gridPos": { "h": 8, "w": 8, "x": 0, "y": 14 },
+        "type": "piechart",
+        "title": "Auth Failure Reasons",
+        "targets": [
+          {
+            "expr": "sum(increase(auth_failures_total[$__range])) by (reason)",
+            "legendFormat": "{{ reason }}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "pieType": "donut",
+          "tooltip": {
+            "displayMode": "single"
+          },
+          "displayLabels": ["name", "percent"],
+          "legendDisplayMode": "table",
+          "legendPlacement": "right",
+          "legendValues": ["value", "percent"]
+        }
+      },
+      {
+        "id": 8,
+        "gridPos": { "h": 8, "w": 8, "x": 8, "y": 14 },
+        "type": "table",
+        "title": "Top Blocked IPs",
+        "targets": [
+          {
+            "expr": "topk(10, sum(increase(blocked_requests_total[$__range])) by (ip_address))",
+            "format": "table",
+            "instant": true,
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "left",
+              "displayMode": "color-background"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 10 },
+                { "color": "red", "value": 50 }
+              ]
+            }
+          },
+          "overrides": [
+            {
+              "matcher": { "id": "byName", "options": "ip_address" },
+              "properties": [
+                { "id": "custom.width", "value": 200 },
+                { "id": "displayName", "value": "IP Address" }
+              ]
+            },
+            {
+              "matcher": { "id": "byName", "options": "Value" },
+              "properties": [
+                { "id": "displayName", "value": "Blocked Requests" }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 9,
+        "gridPos": { "h": 8, "w": 8, "x": 16, "y": 14 },
+        "type": "stat",
+        "title": "Threat Detection Stats",
+        "targets": [
+          {
+            "expr": "sum(increase(threat_detected_total{severity=\"critical\"}[$__range]))",
+            "legendFormat": "Critical Threats",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(increase(threat_detected_total{severity=\"high\"}[$__range]))",
+            "legendFormat": "High Threats",
+            "refId": "B"
+          },
+          {
+            "expr": "sum(increase(threat_detected_total{severity=\"medium\"}[$__range]))",
+            "legendFormat": "Medium Threats",
+            "refId": "C"
+          },
+          {
+            "expr": "sum(increase(threat_detected_total{severity=\"low\"}[$__range]))",
+            "legendFormat": "Low Threats",
+            "refId": "D"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "values": false,
+            "calcs": ["lastNotNull"]
+          },
+          "textMode": "value_and_name",
+          "graphMode": "none",
+          "orientation": "horizontal"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "none",
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null }
+              ]
+            }
+          },
+          "overrides": [
+            {
+              "matcher": { "id": "byName", "options": "Critical Threats" },
+              "properties": [
+                { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }
+              ]
+            },
+            {
+              "matcher": { "id": "byName", "options": "High Threats" },
+              "properties": [
+                { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }
+              ]
+            },
+            {
+              "matcher": { "id": "byName", "options": "Medium Threats" },
+              "properties": [
+                { "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 10,
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 22 },
+        "type": "logs",
+        "title": "Recent Security Events",
+        "targets": [
+          {
+            "expr": "{job=\"n8n-mcp-api\"} |= \"security\" |= \"event\"",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "showTime": true,
+          "showLabels": true,
+          "showCommonLabels": false,
+          "wrapLogMessage": true,
+          "prettifyLogMessage": false,
+          "enableLogDetails": true,
+          "sortOrder": "Descending",
+          "dedupStrategy": "none"
+        }
+      },
+      {
+        "id": 11,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+        "type": "timeseries",
+        "title": "Rate Limiting Metrics",
+        "targets": [
+          {
+            "expr": "sum(rate(rate_limit_exceeded_total[5m])) by (endpoint) * 60",
+            "legendFormat": "{{ endpoint }}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "exceeded/min",
+            "custom": {
+              "drawStyle": "bars",
+              "lineWidth": 1,
+              "fillOpacity": 70,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "normal",
+                "group": "A"
+              },
+              "barAlignment": -1
+            }
+          }
+        }
+      },
+      {
+        "id": 12,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
+        "type": "heatmap",
+        "title": "Auth Attempt Patterns",
+        "targets": [
+          {
+            "expr": "sum(increase(auth_attempts_total[1m])) by (hour)",
+            "format": "heatmap",
+            "legendFormat": "{{ hour }}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "calculate": false,
+          "cellGap": 1,
+          "color": {
+            "scheme": "RdYlGn",
+            "mode": "scheme",
+            "reverse": true
+          },
+          "exemplar": {
+            "color": "rgba(255,0,255,0.7)"
+          },
+          "tooltip": {
+            "show": true,
+            "yHistogram": false
+          },
+          "yAxis": {
+            "axisLabel": "Hour of Day"
+          }
+        }
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "datasource",
+          "type": "datasource",
+          "query": "prometheus"
+        },
+        {
+          "name": "time_range",
+          "type": "interval",
+          "current": {
+            "text": "24h",
+            "value": "24h"
+          },
+          "options": [
+            { "text": "1h", "value": "1h" },
+            { "text": "6h", "value": "6h" },
+            { "text": "24h", "value": "24h" },
+            { "text": "7d", "value": "7d" },
+            { "text": "30d", "value": "30d" }
+          ]
+        }
+      ]
+    },
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    },
+    "annotations": {
+      "list": [
+        {
+          "datasource": "$datasource",
+          "enable": true,
+          "name": "Security Alerts",
+          "iconColor": "red",
+          "query": "ALERTS{alertname=~\".*Security.*|.*Suspicious.*\",alertstate=\"firing\"}"
+        },
+        {
+          "datasource": "$datasource",
+          "enable": true,
+          "name": "Incidents",
+          "iconColor": "orange",
+          "query": "security_incident_created"
+        }
+      ]
+    }
+  }
+}

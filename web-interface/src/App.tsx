@@ -12,6 +12,7 @@ import PromptLibrary from './pages/PromptLibrary'
 import PersonalSettings from './pages/PersonalSettings'
 import Login from './pages/Login'
 import ProtectedRoute from './components/ProtectedRoute'
+import { UITestPage } from './components/ui/test-page'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -80,6 +81,10 @@ const router = createBrowserRouter([
         element: <Dashboard />,
       },
       {
+        path: 'dashboard',
+        element: <Dashboard />,
+      },
+      {
         path: 'automations',
         element: <Automations />,
       },
@@ -98,6 +103,10 @@ const router = createBrowserRouter([
       {
         path: 'settings',
         element: <PersonalSettings />,
+      },
+      {
+        path: 'ui-test',
+        element: <UITestPage />,
       },
       {
         path: '*',

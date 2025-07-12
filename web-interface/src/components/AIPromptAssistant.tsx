@@ -395,6 +395,8 @@ Always aim for production-ready, enterprise-grade workflows.`
           <div className="relative">
             <button
               onClick={() => setShowProviderDropdown(!showProviderDropdown)}
+              title="Toggle provider dropdown"
+              aria-label="Toggle provider dropdown"
               className="flex items-center gap-2 px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
             >
               <span>{selectedProvider.icon}</span>
@@ -466,6 +468,7 @@ Always aim for production-ready, enterprise-grade workflows.`
                   <div className="flex gap-2 mt-2">
                     <button
                       onClick={() => copyPrompt(message.prompt!)}
+                      title="Copy the generated prompt to clipboard"
                       className="flex items-center gap-1 px-3 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
                     >
                       <Copy className="h-3 w-3" />
@@ -522,6 +525,7 @@ Always aim for production-ready, enterprise-grade workflows.`
           <button
             onClick={handleSend}
             disabled={!input.trim() || isLoading}
+            title="Send message"
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
           >
             <Send className="h-4 w-4" />

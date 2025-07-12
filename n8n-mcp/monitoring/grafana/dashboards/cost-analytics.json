@@ -1,0 +1,488 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "cost-analytics",
+    "title": "AI Cost Analytics Dashboard",
+    "tags": ["n8n-mcp", "cost", "ai", "analytics"],
+    "timezone": "browser",
+    "schemaVersion": 30,
+    "version": 1,
+    "refresh": "1m",
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+        "type": "stat",
+        "title": "Total AI Cost (Today)",
+        "targets": [
+          {
+            "expr": "sum(increase(ai_provider_cost_usd[1d:1m]))",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": ["lastNotNull"]
+          },
+          "textMode": "value",
+          "graphMode": "none",
+          "colorMode": "value"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "decimals": 2,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 50 },
+                { "color": "red", "value": 100 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+        "type": "stat",
+        "title": "Projected Monthly Cost",
+        "targets": [
+          {
+            "expr": "sum(rate(ai_provider_cost_usd[24h])) * 86400 * 30",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": ["lastNotNull"]
+          },
+          "textMode": "value",
+          "graphMode": "none",
+          "colorMode": "background"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "decimals": 0,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 1000 },
+                { "color": "red", "value": 5000 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 3,
+        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+        "type": "stat",
+        "title": "Cost per User (30d avg)",
+        "targets": [
+          {
+            "expr": "sum(increase(ai_provider_cost_usd[30d])) / avg(active_users_total)",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": ["lastNotNull"]
+          },
+          "textMode": "value",
+          "graphMode": "none"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 4,
+        "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+        "type": "stat",
+        "title": "Cache Hit Rate",
+        "targets": [
+          {
+            "expr": "sum(rate(ai_provider_cached_requests_total[5m])) / sum(rate(ai_provider_requests_total[5m])) * 100",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": ["lastNotNull"]
+          },
+          "textMode": "value",
+          "graphMode": "area",
+          "colorMode": "value"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 1,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "red", "value": null },
+                { "color": "yellow", "value": 20 },
+                { "color": "green", "value": 40 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 5,
+        "gridPos": { "h": 10, "w": 12, "x": 0, "y": 4 },
+        "type": "timeseries",
+        "title": "Cost Trend by Provider",
+        "targets": [
+          {
+            "expr": "sum(increase(ai_provider_cost_usd[1h])) by (provider)",
+            "legendFormat": "{{ provider }}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "decimals": 2,
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 2,
+              "fillOpacity": 20,
+              "gradientMode": "opacity",
+              "spanNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "normal",
+                "group": "A"
+              }
+            }
+          }
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          },
+          "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "calcs": ["sum", "mean"]
+          }
+        }
+      },
+      {
+        "id": 6,
+        "gridPos": { "h": 10, "w": 12, "x": 12, "y": 4 },
+        "type": "piechart",
+        "title": "Cost Distribution by Model",
+        "targets": [
+          {
+            "expr": "sum(increase(ai_provider_cost_usd[$__range])) by (model)",
+            "legendFormat": "{{ model }}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "pieType": "donut",
+          "tooltip": {
+            "displayMode": "single"
+          },
+          "displayLabels": ["name", "percent", "value"],
+          "legendDisplayMode": "table",
+          "legendPlacement": "right",
+          "legendValues": ["value", "percent"]
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD",
+            "decimals": 2
+          }
+        }
+      },
+      {
+        "id": 7,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+        "type": "timeseries",
+        "title": "Token Usage by Provider",
+        "targets": [
+          {
+            "expr": "sum(rate(ai_provider_tokens_total[5m])) by (provider, token_type)",
+            "legendFormat": "{{ provider }} - {{ token_type }}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "tokens/s",
+            "custom": {
+              "drawStyle": "bars",
+              "lineWidth": 1,
+              "fillOpacity": 70,
+              "gradientMode": "none",
+              "spanNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "normal",
+                "group": "A"
+              },
+              "barAlignment": -1
+            }
+          }
+        }
+      },
+      {
+        "id": 8,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+        "type": "table",
+        "title": "Top Cost Operations",
+        "targets": [
+          {
+            "expr": "topk(10, sum(increase(ai_provider_cost_usd[$__range])) by (operation))",
+            "format": "table",
+            "instant": true,
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "left",
+              "displayMode": "color-background-solid"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 10 },
+                { "color": "red", "value": 50 }
+              ]
+            },
+            "unit": "currencyUSD",
+            "decimals": 2
+          },
+          "overrides": [
+            {
+              "matcher": { "id": "byName", "options": "operation" },
+              "properties": [
+                { "id": "custom.width", "value": 400 }
+              ]
+            }
+          ]
+        },
+        "options": {
+          "showHeader": true,
+          "sortBy": [
+            {
+              "desc": true,
+              "displayName": "Value"
+            }
+          ]
+        }
+      },
+      {
+        "id": 9,
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 22 },
+        "type": "timeseries",
+        "title": "Cost Optimization Metrics",
+        "targets": [
+          {
+            "expr": "sum(rate(cost_savings_usd[5m]))",
+            "legendFormat": "Savings Rate",
+            "refId": "A"
+          },
+          {
+            "expr": "sum(rate(ai_provider_cached_requests_total[5m])) * 0.001",
+            "legendFormat": "Cache Savings (estimated)",
+            "refId": "B"
+          },
+          {
+            "expr": "sum(rate(ai_provider_optimized_tokens_total[5m])) * 0.00001",
+            "legendFormat": "Token Optimization Savings",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "currencyUSD/s",
+            "decimals": 4,
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "gradientMode": "opacity",
+              "spanNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "none",
+                "group": "A"
+              }
+            }
+          }
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          },
+          "legend": {
+            "displayMode": "list",
+            "placement": "bottom",
+            "calcs": []
+          }
+        }
+      },
+      {
+        "id": 10,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 30 },
+        "type": "graph",
+        "title": "Cost per Request by Operation",
+        "targets": [
+          {
+            "expr": "sum(rate(ai_provider_cost_usd[5m])) by (operation) / sum(rate(ai_provider_requests_total[5m])) by (operation)",
+            "legendFormat": "{{ operation }}",
+            "refId": "A"
+          }
+        ],
+        "xaxis": {
+          "mode": "time"
+        },
+        "yaxes": [
+          {
+            "format": "currencyUSD",
+            "label": "Cost per Request",
+            "decimals": 4
+          },
+          {
+            "format": "short"
+          }
+        ],
+        "lines": true,
+        "linewidth": 2,
+        "fill": 0,
+        "tooltip": {
+          "shared": true,
+          "sort": 2
+        }
+      },
+      {
+        "id": 11,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 30 },
+        "type": "bargauge",
+        "title": "Budget Utilization by Team",
+        "targets": [
+          {
+            "expr": "(sum(increase(ai_provider_cost_usd{team=\"backend\"}[30d])) / 1000) * 100",
+            "legendFormat": "Backend Team",
+            "refId": "A"
+          },
+          {
+            "expr": "(sum(increase(ai_provider_cost_usd{team=\"platform\"}[30d])) / 1500) * 100",
+            "legendFormat": "Platform Team",
+            "refId": "B"
+          },
+          {
+            "expr": "(sum(increase(ai_provider_cost_usd{team=\"data\"}[30d])) / 2000) * 100",
+            "legendFormat": "Data Team",
+            "refId": "C"
+          }
+        ],
+        "options": {
+          "orientation": "horizontal",
+          "displayMode": "gradient",
+          "showUnfilled": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "min": 0,
+            "max": 100,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 70 },
+                { "color": "red", "value": 90 }
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "datasource",
+          "type": "datasource",
+          "query": "prometheus"
+        },
+        {
+          "name": "provider",
+          "type": "query",
+          "datasource": "$datasource",
+          "query": "label_values(ai_provider_cost_usd, provider)",
+          "multi": true,
+          "includeAll": true,
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          }
+        },
+        {
+          "name": "model",
+          "type": "query",
+          "datasource": "$datasource",
+          "query": "label_values(ai_provider_cost_usd, model)",
+          "multi": true,
+          "includeAll": true,
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          }
+        },
+        {
+          "name": "time_range",
+          "type": "interval",
+          "current": {
+            "text": "24h",
+            "value": "24h"
+          },
+          "options": [
+            { "text": "1h", "value": "1h" },
+            { "text": "6h", "value": "6h" },
+            { "text": "24h", "value": "24h" },
+            { "text": "7d", "value": "7d" },
+            { "text": "30d", "value": "30d" }
+          ]
+        }
+      ]
+    },
+    "time": {
+      "from": "now-24h",
+      "to": "now"
+    },
+    "annotations": {
+      "list": [
+        {
+          "datasource": "$datasource",
+          "enable": true,
+          "name": "Cost Alerts",
+          "iconColor": "red",
+          "query": "ALERTS{alertname=~\".*Cost.*\",alertstate=\"firing\"}"
+        }
+      ]
+    }
+  }
+}

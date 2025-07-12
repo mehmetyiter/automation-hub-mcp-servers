@@ -1,0 +1,88 @@
+{
+  "service_strategies": [
+    {
+      "service": "n8n-mcp",
+      "type": "adaptive",
+      "max_traces_per_second": 100,
+      "sampling_rate": 0.1,
+      "operation_strategies": [
+        {
+          "operation": "POST /api/n8n/tools/n8n_generate_workflow",
+          "type": "probabilistic",
+          "sampling_rate": 1.0
+        },
+        {
+          "operation": "POST /api/n8n/tools/n8n_create_workflow",
+          "type": "probabilistic",
+          "sampling_rate": 1.0
+        },
+        {
+          "operation": "ai.*",
+          "type": "probabilistic",
+          "sampling_rate": 1.0
+        },
+        {
+          "operation": "db.transaction*",
+          "type": "probabilistic",
+          "sampling_rate": 0.5
+        },
+        {
+          "operation": "GET /health",
+          "type": "probabilistic",
+          "sampling_rate": 0.001
+        },
+        {
+          "operation": "GET /metrics",
+          "type": "probabilistic",
+          "sampling_rate": 0.001
+        }
+      ]
+    },
+    {
+      "service": "auth-mcp",
+      "type": "adaptive",
+      "max_traces_per_second": 50,
+      "sampling_rate": 0.05,
+      "operation_strategies": [
+        {
+          "operation": "POST /api/auth/login",
+          "type": "probabilistic",
+          "sampling_rate": 1.0
+        },
+        {
+          "operation": "POST /api/auth/register",
+          "type": "probabilistic",
+          "sampling_rate": 1.0
+        },
+        {
+          "operation": "POST /api/auth/logout",
+          "type": "probabilistic",
+          "sampling_rate": 0.5
+        }
+      ]
+    },
+    {
+      "service": "api-gateway",
+      "type": "adaptive",
+      "max_traces_per_second": 200,
+      "sampling_rate": 0.01
+    }
+  ],
+  "default_strategy": {
+    "type": "adaptive",
+    "max_traces_per_second": 10,
+    "sampling_rate": 0.001,
+    "operation_strategies": [
+      {
+        "operation": "error",
+        "type": "probabilistic",
+        "sampling_rate": 1.0
+      },
+      {
+        "operation": "slow",
+        "type": "probabilistic",
+        "sampling_rate": 1.0
+      }
+    ]
+  }
+}

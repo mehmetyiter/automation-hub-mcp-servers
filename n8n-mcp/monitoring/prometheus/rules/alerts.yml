@@ -1,0 +1,294 @@
+groups:
+  - name: n8n-mcp-alerts
+    interval: 30s
+    rules:
+      # API Performance Alerts
+      - alert: HighAPILatency
+        expr: |
+          histogram_quantile(0.95, 
+            sum(rate(api_request_duration_ms_bucket[5m])) by (le, endpoint)
+          ) > 1000
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+          component: api
+        annotations:
+          summary: "High API latency detected"
+          description: "95th percentile latency for {{ $labels.endpoint }} is {{ $value }}ms (threshold: 1000ms)"
+          runbook_url: "https://wiki.company.com/runbooks/high-api-latency"
+          dashboard_url: "https://grafana.company.com/d/api-performance"
+
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(api_errors_total[5m])) by (endpoint)
+            /
+            sum(rate(api_requests_total[5m])) by (endpoint)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          team: backend
+          component: api
+          pager: true
+        annotations:
+          summary: "High error rate on API endpoint"
+          description: "Error rate for {{ $labels.endpoint }} is {{ $value | humanizePercentage }} (threshold: 5%)"
+          impact: "Users may be experiencing failures when using {{ $labels.endpoint }}"
+          runbook_url: "https://wiki.company.com/runbooks/high-error-rate"
+
+      - alert: APIDown
+        expr: up{job="n8n-mcp-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: backend
+          component: api
+          pager: true
+        annotations:
+          summary: "API service is down"
+          description: "n8n-MCP API service has been down for more than 1 minute"
+          impact: "All API functionality is unavailable"
+          runbook_url: "https://wiki.company.com/runbooks/api-down"
+
+      # AI Provider Alerts
+      - alert: AIProviderHighCost
+        expr: |
+          sum(increase(ai_provider_cost_usd[1h])) by (provider) > 100
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+          component: ai
+        annotations:
+          summary: "High AI provider costs detected"
+          description: "{{ $labels.provider }} has cost ${{ $value | printf \"%.2f\" }} in the last hour (threshold: $100)"
+          action: "Review usage patterns and consider cost optimization strategies"
+
+      - alert: AIProviderRateLimitNear
+        expr: |
+          (
+            sum(rate(ai_provider_tokens_total[5m])) by (provider)
+            /
+            ai_provider_rate_limit
+          ) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+          component: ai
+        annotations:
+          summary: "AI provider rate limit approaching"
+          description: "{{ $labels.provider }} is at {{ $value | humanizePercentage }} of rate limit"
+          action: "Consider load balancing or upgrading the plan"
+
+      - alert: AIProviderErrors
+        expr: |
+          sum(rate(ai_provider_errors_total[5m])) by (provider) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+          component: ai
+        annotations:
+          summary: "High AI provider error rate"
+          description: "{{ $labels.provider }} is experiencing {{ $value | printf \"%.2f\" }} errors per second"
+          impact: "AI features may be degraded or unavailable"
+
+      # Database Alerts
+      - alert: DatabaseConnectionPoolExhaustion
+        expr: |
+          (db_connection_pool_active / db_connection_pool_size) > 0.9
+        for: 5m
+        labels:
+          severity: critical
+          team: database
+          component: database
+          pager: true
+        annotations:
+          summary: "Database connection pool near exhaustion"
+          description: "Connection pool is {{ $value | humanizePercentage }} full"
+          impact: "New database connections may fail"
+          action: "Scale up connection pool or investigate connection leaks"
+
+      - alert: DatabaseSlowQueries
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(db_query_duration_ms_bucket[5m])) by (le, query_type)
+          ) > 5000
+        for: 10m
+        labels:
+          severity: warning
+          team: database
+          component: database
+        annotations:
+          summary: "Database queries are slow"
+          description: "95th percentile for {{ $labels.query_type }} queries is {{ $value }}ms (threshold: 5000ms)"
+          action: "Review query performance and indexes"
+
+      - alert: DatabaseReplicationLag
+        expr: |
+          pg_replication_lag_seconds > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: database
+          component: database
+        annotations:
+          summary: "Database replication lag detected"
+          description: "Replication lag is {{ $value }}s (threshold: 10s)"
+          impact: "Read replicas may serve stale data"
+
+      # Cache Alerts
+      - alert: CacheHitRateLow
+        expr: |
+          cache_hit_rate < 0.6
+        for: 15m
+        labels:
+          severity: warning
+          team: backend
+          component: cache
+        annotations:
+          summary: "Cache hit rate is low"
+          description: "Cache hit rate is {{ $value | humanizePercentage }} (threshold: 60%)"
+          impact: "Increased load on backend services"
+          action: "Review cache key patterns and TTL settings"
+
+      - alert: RedisMemoryHigh
+        expr: |
+          redis_memory_used_bytes / redis_memory_max_bytes > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          team: backend
+          component: cache
+        annotations:
+          summary: "Redis memory usage is high"
+          description: "Redis is using {{ $value | humanizePercentage }} of available memory"
+          action: "Consider increasing memory limit or implementing eviction policies"
+
+      # Infrastructure Alerts
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          team: infrastructure
+          component: system
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value | humanizePercentage }} (threshold: 90%)"
+          action: "Investigate memory consumption and consider scaling"
+
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+          team: infrastructure
+          component: system
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value | printf \"%.1f\" }}% (threshold: 80%)"
+          action: "Investigate CPU consumption and consider scaling"
+
+      - alert: DiskSpaceLow
+        expr: |
+          (1 - (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes)) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+          team: infrastructure
+          component: system
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk usage on {{ $labels.mountpoint }} is {{ $value | humanizePercentage }} (threshold: 85%)"
+          action: "Clean up disk space or expand storage"
+
+      # Business Metrics Alerts
+      - alert: LowActiveUsers
+        expr: |
+          active_users_total < 10
+        for: 30m
+        labels:
+          severity: info
+          team: product
+          component: business
+        annotations:
+          summary: "Low number of active users"
+          description: "Only {{ $value }} active users in the last 30 minutes"
+          action: "Monitor user engagement metrics"
+
+      - alert: HighCostOptimizationOpportunity
+        expr: |
+          (sum(rate(cost_savings_usd[24h])) / sum(rate(ai_provider_cost_usd[24h]))) < 0.1
+        for: 1h
+        labels:
+          severity: info
+          team: platform
+          component: cost
+        annotations:
+          summary: "Cost optimization opportunity"
+          description: "Only {{ $value | humanizePercentage }} cost savings achieved"
+          action: "Review cost optimization strategies"
+
+      # Security Alerts
+      - alert: HighAuthFailureRate
+        expr: |
+          sum(rate(auth_failures_total[5m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+          component: security
+        annotations:
+          summary: "High authentication failure rate"
+          description: "{{ $value | printf \"%.1f\" }} auth failures per second"
+          action: "Investigate potential brute force attempts"
+
+      - alert: SuspiciousActivity
+        expr: |
+          sum(rate(suspicious_activities_total[5m])) > 5
+        for: 5m
+        labels:
+          severity: critical
+          team: security
+          component: security
+          pager: true
+        annotations:
+          summary: "Suspicious activity detected"
+          description: "{{ $value | printf \"%.1f\" }} suspicious activities per second"
+          impact: "Potential security breach in progress"
+          action: "Immediate investigation required"
+
+      # SLO Alerts
+      - alert: SLOBreach
+        expr: |
+          slo_compliance_percentage < 99.9
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+          component: slo
+          pager: true
+        annotations:
+          summary: "SLO breach detected"
+          description: "Current SLO compliance is {{ $value | printf \"%.2f\" }}% (target: 99.9%)"
+          impact: "Service level objectives are not being met"
+          action: "Investigate root cause and implement fixes"
+
+      - alert: ErrorBudgetNearlyExhausted
+        expr: |
+          slo_error_budget_remaining < 20
+        for: 30m
+        labels:
+          severity: warning
+          team: platform
+          component: slo
+        annotations:
+          summary: "Error budget nearly exhausted"
+          description: "Only {{ $value | printf \"%.1f\" }}% of error budget remaining"
+          action: "Reduce risk of changes and focus on reliability"

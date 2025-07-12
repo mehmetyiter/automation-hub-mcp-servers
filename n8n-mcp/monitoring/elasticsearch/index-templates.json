@@ -1,0 +1,325 @@
+{
+  "n8n-mcp-logs": {
+    "index_patterns": ["n8n-mcp-logs-*"],
+    "template": {
+      "settings": {
+        "number_of_shards": 2,
+        "number_of_replicas": 1,
+        "index.lifecycle.name": "n8n-mcp-logs-policy",
+        "index.lifecycle.rollover_alias": "n8n-mcp-logs",
+        "index.codec": "best_compression",
+        "index.refresh_interval": "5s",
+        "index.search.slowlog.threshold.query.warn": "10s",
+        "index.search.slowlog.threshold.fetch.warn": "1s",
+        "index.search.slowlog.level": "info"
+      },
+      "mappings": {
+        "properties": {
+          "@timestamp": {
+            "type": "date"
+          },
+          "severity": {
+            "type": "keyword"
+          },
+          "message": {
+            "type": "text",
+            "fields": {
+              "keyword": {
+                "type": "keyword",
+                "ignore_above": 256
+              }
+            }
+          },
+          "service": {
+            "properties": {
+              "name": {
+                "type": "keyword"
+              },
+              "version": {
+                "type": "keyword"
+              },
+              "environment": {
+                "type": "keyword"
+              },
+              "instance": {
+                "properties": {
+                  "id": {
+                    "type": "keyword"
+                  }
+                }
+              }
+            }
+          },
+          "trace": {
+            "properties": {
+              "id": {
+                "type": "keyword"
+              },
+              "span_id": {
+                "type": "keyword"
+              }
+            }
+          },
+          "user": {
+            "properties": {
+              "id": {
+                "type": "keyword"
+              },
+              "email": {
+                "type": "keyword"
+              }
+            }
+          },
+          "http": {
+            "properties": {
+              "method": {
+                "type": "keyword"
+              },
+              "url": {
+                "type": "keyword"
+              },
+              "status_code": {
+                "type": "integer"
+              },
+              "duration_ms": {
+                "type": "integer"
+              },
+              "user_agent": {
+                "type": "text",
+                "fields": {
+                  "keyword": {
+                    "type": "keyword",
+                    "ignore_above": 256
+                  }
+                }
+              },
+              "remote_ip": {
+                "type": "ip"
+              },
+              "request_id": {
+                "type": "keyword"
+              }
+            }
+          },
+          "error": {
+            "properties": {
+              "type": {
+                "type": "keyword"
+              },
+              "message": {
+                "type": "text"
+              },
+              "stack": {
+                "type": "text"
+              },
+              "code": {
+                "type": "keyword"
+              }
+            }
+          },
+          "ai_provider": {
+            "properties": {
+              "provider": {
+                "type": "keyword"
+              },
+              "model": {
+                "type": "keyword"
+              },
+              "operation": {
+                "type": "keyword"
+              },
+              "success": {
+                "type": "boolean"
+              },
+              "tokens_used": {
+                "type": "integer"
+              },
+              "cost": {
+                "type": "float"
+              },
+              "cached": {
+                "type": "boolean"
+              },
+              "duration_ms": {
+                "type": "integer"
+              }
+            }
+          },
+          "database": {
+            "properties": {
+              "query": {
+                "type": "text"
+              },
+              "param_count": {
+                "type": "integer"
+              },
+              "duration_ms": {
+                "type": "integer"
+              },
+              "success": {
+                "type": "boolean"
+              }
+            }
+          },
+          "security": {
+            "properties": {
+              "event_type": {
+                "type": "keyword"
+              },
+              "severity": {
+                "type": "keyword"
+              },
+              "user_id": {
+                "type": "keyword"
+              },
+              "ip_address": {
+                "type": "ip"
+              },
+              "details": {
+                "type": "object",
+                "enabled": false
+              }
+            }
+          },
+          "business_event": {
+            "properties": {
+              "type": {
+                "type": "keyword"
+              },
+              "timestamp": {
+                "type": "date"
+              }
+            }
+          },
+          "performance": {
+            "properties": {
+              "metric": {
+                "type": "keyword"
+              },
+              "value": {
+                "type": "float"
+              },
+              "unit": {
+                "type": "keyword"
+              },
+              "tags": {
+                "type": "object",
+                "enabled": false
+              }
+            }
+          },
+          "audit": {
+            "properties": {
+              "action": {
+                "type": "keyword"
+              },
+              "resource_type": {
+                "type": "keyword"
+              },
+              "resource_id": {
+                "type": "keyword"
+              },
+              "user_id": {
+                "type": "keyword"
+              },
+              "changes": {
+                "type": "object",
+                "enabled": false
+              },
+              "timestamp": {
+                "type": "date"
+              }
+            }
+          }
+        }
+      }
+    },
+    "composed_of": [],
+    "priority": 200,
+    "version": 1,
+    "_meta": {
+      "description": "Template for n8n-MCP application logs"
+    }
+  },
+  "security-logs": {
+    "index_patterns": ["security-logs-*"],
+    "template": {
+      "settings": {
+        "number_of_shards": 1,
+        "number_of_replicas": 1,
+        "index.lifecycle.name": "security-logs-policy",
+        "index.lifecycle.rollover_alias": "security-logs",
+        "index.codec": "best_compression",
+        "index.refresh_interval": "1s"
+      },
+      "mappings": {
+        "properties": {
+          "@timestamp": {
+            "type": "date"
+          },
+          "event": {
+            "properties": {
+              "type": {
+                "type": "keyword"
+              },
+              "severity": {
+                "type": "keyword"
+              },
+              "outcome": {
+                "type": "keyword"
+              }
+            }
+          },
+          "user": {
+            "properties": {
+              "id": {
+                "type": "keyword"
+              },
+              "email": {
+                "type": "keyword"
+              },
+              "roles": {
+                "type": "keyword"
+              }
+            }
+          },
+          "source": {
+            "properties": {
+              "ip": {
+                "type": "ip"
+              },
+              "geo": {
+                "properties": {
+                  "country": {
+                    "type": "keyword"
+                  },
+                  "city": {
+                    "type": "keyword"
+                  },
+                  "location": {
+                    "type": "geo_point"
+                  }
+                }
+              }
+            }
+          },
+          "threat": {
+            "properties": {
+              "indicator": {
+                "type": "keyword"
+              },
+              "confidence": {
+                "type": "float"
+              }
+            }
+          }
+        }
+      }
+    },
+    "priority": 300,
+    "version": 1,
+    "_meta": {
+      "description": "Template for security audit logs"
+    }
+  }
+}

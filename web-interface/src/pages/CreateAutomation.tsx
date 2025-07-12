@@ -250,7 +250,7 @@ export default function CreateAutomation() {
           ) : (
             <div className="relative">
               <div className="w-full h-40 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg flex items-center justify-center">
-                <button className="p-4 bg-primary-100 dark:bg-primary/20 rounded-full hover:bg-primary-200 dark:hover:bg-primary/30 transition-colors">
+                <button title="Start recording" className="p-4 bg-primary-100 dark:bg-primary/20 rounded-full hover:bg-primary-200 dark:hover:bg-primary/30 transition-colors">
                   <Mic className="w-8 h-8 text-primary-600 dark:text-primary" />
                 </button>
               </div>
@@ -296,6 +296,7 @@ export default function CreateAutomation() {
               />
               <button
                 type="button"
+                title={showApiKey ? "Hide API key for security" : "Show API key for visibility"}
                 onClick={() => setShowApiKey(!showApiKey)}
                 className="absolute inset-y-0 right-0 pr-3 flex items-center"
               >
@@ -321,6 +322,7 @@ export default function CreateAutomation() {
             </label>
             <button
               type="button"
+              title={useStoredCredentials ? "Disable stored credentials" : "Enable stored credentials"}
               onClick={() => setUseStoredCredentials(!useStoredCredentials)}
               className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 ${
                 useStoredCredentials ? 'bg-primary-600' : 'bg-gray-200'
@@ -389,10 +391,10 @@ export default function CreateAutomation() {
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             Preferred Platform (Optional)
           </label>
-          <div className="grid grid-cols-4 gap-4">
             {Object.entries(platformLogos).map(([key, logo]) => (
               <button
                 key={key}
+                title={`Select ${key} platform`}
                 onClick={() => setPlatform(platform === key ? '' : key)}
                 className={`p-4 rounded-lg border-2 transition-all ${
                   platform === key
@@ -400,6 +402,7 @@ export default function CreateAutomation() {
                     : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'
                 }`}
               >
+              
                 <div className="text-2xl mb-1">{logo}</div>
                 <div className="text-sm font-medium capitalize text-gray-900 dark:text-gray-100">{key}</div>
               </button>
@@ -463,7 +466,6 @@ export default function CreateAutomation() {
             <AIPromptAssistant onPromptGenerated={handlePromptGenerated} />
           </div>
         )}
-      </div>
-    </div>
+      </div>    
   )
 }

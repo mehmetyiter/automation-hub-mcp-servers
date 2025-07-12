@@ -1,0 +1,150 @@
+{{ define "__subject" }}
+[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .GroupLabels.SortedPairs.Values | join " " }} {{ if gt (len .CommonLabels) (len .GroupLabels) }}({{ with .CommonLabels.Remove .GroupLabels.Names }}{{ .Values | join " " }}{{ end }}){{ end }}
+{{ end }}
+
+{{ define "__description" }}
+{{ range .Alerts }}
+{{ if .Annotations.description }}{{ .Annotations.description }}{{ else if .Annotations.summary }}{{ .Annotations.summary }}{{ end }}
+{{ end }}
+{{ end }}
+
+{{ define "__text_alert_list" }}
+{{ range . }}
+Labels:
+{{ range .Labels.SortedPairs }} - {{ .Name }} = {{ .Value }}
+{{ end }}
+Annotations:
+{{ range .Annotations.SortedPairs }} - {{ .Name }} = {{ .Value }}
+{{ end }}
+Source: {{ .GeneratorURL }}
+{{ end }}
+{{ end }}
+
+{{ define "slack.default.title" }}
+{{ template "__subject" . }}
+{{ end }}
+
+{{ define "slack.default.username" }}{{ end }}
+{{ define "slack.default.fallback" }}{{ template "slack.default.title" . }} | {{ template "slack.default.titlelink" . }}{{ end }}
+{{ define "slack.default.callbackid" }}{{ end }}
+{{ define "slack.default.pretext" }}{{ end }}
+{{ define "slack.default.titlelink" }}{{ .ExternalURL }}/#/alerts?receiver={{ .Receiver }}{{ end }}
+
+{{ define "slack.default.iconemoji" }}{{ end }}
+{{ define "slack.default.iconurl" }}{{ end }}
+{{ define "slack.default.text" }}
+{{ range .Alerts }}
+*Alert:* {{ .Annotations.summary }} - {{ if eq .Labels.severity "critical" }}🔴{{ else if eq .Labels.severity "warning" }}🟡{{ else }}🔵{{ end }} `{{ .Labels.severity }}`
+*Description:* {{ .Annotations.description }}
+*Component:* {{ .Labels.component }}
+*Team:* {{ .Labels.team }}
+{{ if .Labels.instance }}*Instance:* {{ .Labels.instance }}{{ end }}
+{{ if .Annotations.runbook_url }}*Runbook:* <{{ .Annotations.runbook_url }}|View Runbook>{{ end }}
+{{ if .Annotations.dashboard_url }}*Dashboard:* <{{ .Annotations.dashboard_url }}|View Dashboard>{{ end }}
+{{ end }}
+{{ end }}
+
+{{ define "slack.default.footer" }}{{ end }}
+
+{{ define "email.default.subject" }}
+{{ template "__subject" . }}
+{{ end }}
+
+{{ define "email.default.html" }}
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+table {
+  font-family: Arial, sans-serif;
+  border-collapse: collapse;
+  width: 100%;
+}
+td, th {
+  border: 1px solid #ddd;
+  text-align: left;
+  padding: 8px;
+}
+tr:nth-child(even) {
+  background-color: #f2f2f2;
+}
+.alert-critical { background-color: #f8d7da; color: #721c24; }
+.alert-warning { background-color: #fff3cd; color: #856404; }
+.alert-info { background-color: #d1ecf1; color: #0c5460; }
+.alert-resolved { background-color: #d4edda; color: #155724; }
+</style>
+</head>
+<body>
+<h2>{{ .Status | title }} Alert{{ if gt (len .Alerts) 1 }}s{{ end }}</h2>
+<p><strong>Group:</strong> {{ .GroupLabels.Values | join ", " }}</p>
+
+{{ if .Alerts.Firing }}
+<h3>🔥 Firing Alerts ({{ .Alerts.Firing | len }})</h3>
+<table>
+<tr>
+  <th>Alert</th>
+  <th>Severity</th>
+  <th>Summary</th>
+  <th>Description</th>
+  <th>Since</th>
+  <th>Actions</th>
+</tr>
+{{ range .Alerts.Firing }}
+<tr class="alert-{{ .Labels.severity }}">
+  <td>{{ .Labels.alertname }}</td>
+  <td>{{ .Labels.severity | title }}</td>
+  <td>{{ .Annotations.summary }}</td>
+  <td>{{ .Annotations.description }}</td>
+  <td>{{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}</td>
+  <td>
+    {{ if .Annotations.runbook_url }}<a href="{{ .Annotations.runbook_url }}">Runbook</a>{{ end }}
+    {{ if .Annotations.dashboard_url }}<a href="{{ .Annotations.dashboard_url }}">Dashboard</a>{{ end }}
+  </td>
+</tr>
+{{ end }}
+</table>
+{{ end }}
+
+{{ if .Alerts.Resolved }}
+<h3>✅ Resolved Alerts ({{ .Alerts.Resolved | len }})</h3>
+<table>
+<tr>
+  <th>Alert</th>
+  <th>Summary</th>
+  <th>Started</th>
+  <th>Resolved</th>
+  <th>Duration</th>
+</tr>
+{{ range .Alerts.Resolved }}
+<tr class="alert-resolved">
+  <td>{{ .Labels.alertname }}</td>
+  <td>{{ .Annotations.summary }}</td>
+  <td>{{ .StartsAt.Format "2006-01-02 15:04:05 MST" }}</td>
+  <td>{{ .EndsAt.Format "2006-01-02 15:04:05 MST" }}</td>
+  <td>{{ .EndsAt.Sub .StartsAt }}</td>
+</tr>
+{{ end }}
+</table>
+{{ end }}
+
+<hr>
+<p><small>View in AlertManager: <a href="{{ .ExternalURL }}">{{ .ExternalURL }}</a></small></p>
+</body>
+</html>
+{{ end }}
+
+{{ define "pagerduty.default.description" }}{{ template "__subject" . }}{{ end }}
+{{ define "pagerduty.default.client" }}AlertManager{{ end }}
+{{ define "pagerduty.default.clientURL" }}{{ .ExternalURL }}{{ end }}
+{{ define "pagerduty.default.details" }}
+{
+  "firing": "{{ .Alerts.Firing | len }}",
+  "resolved": "{{ .Alerts.Resolved | len }}",
+  "num_alerts": "{{ .Alerts | len }}",
+  "status": "{{ .Status }}",
+  "group_labels": {{ .GroupLabels.JSON }},
+  "common_labels": {{ .CommonLabels.JSON }},
+  "common_annotations": {{ .CommonAnnotations.JSON }},
+  "external_url": "{{ .ExternalURL }}"
+}
+{{ end }}

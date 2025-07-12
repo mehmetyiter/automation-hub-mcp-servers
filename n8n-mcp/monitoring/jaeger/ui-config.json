@@ -1,0 +1,72 @@
+{
+  "archiveEnabled": true,
+  "dependencies": {
+    "menuEnabled": true
+  },
+  "tracking": {
+    "gaID": null,
+    "trackErrors": true
+  },
+  "menu": [
+    {
+      "label": "n8n-MCP Docs",
+      "items": [
+        {
+          "label": "Architecture",
+          "url": "https://docs.n8n-mcp.io/architecture"
+        },
+        {
+          "label": "Tracing Guide",
+          "url": "https://docs.n8n-mcp.io/observability/tracing"
+        }
+      ]
+    },
+    {
+      "label": "Dashboards",
+      "items": [
+        {
+          "label": "System Overview",
+          "url": "http://grafana:3000/d/n8n-mcp-overview"
+        },
+        {
+          "label": "API Performance",
+          "url": "http://grafana:3000/d/api-performance"
+        },
+        {
+          "label": "AI Cost Analytics",
+          "url": "http://grafana:3000/d/cost-analytics"
+        }
+      ]
+    }
+  ],
+  "search": {
+    "maxLookback": {
+      "label": "2 days",
+      "value": "2d"
+    },
+    "maxLimit": 1500
+  },
+  "linkPatterns": [
+    {
+      "type": "logs",
+      "key": "trace.id",
+      "url": "http://kibana:5601/app/discover#/?_g=(time:(from:now-1h,to:now))&_a=(query:(match:(trace.id:'#{trace.id}')))",
+      "text": "View logs in Kibana"
+    },
+    {
+      "type": "metrics",
+      "key": "service.name",
+      "url": "http://grafana:3000/d/service-metrics?var-service=#{service.name}",
+      "text": "View service metrics"
+    },
+    {
+      "type": "custom",
+      "key": "http.url",
+      "url": "#{http.url}",
+      "text": "Original request"
+    }
+  ],
+  "monitor": {
+    "menuEnabled": true
+  }
+}

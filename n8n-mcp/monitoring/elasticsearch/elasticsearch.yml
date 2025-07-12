@@ -1,0 +1,112 @@
+# Elasticsearch configuration for n8n-MCP logging
+# This configuration is optimized for logging and trace storage
+
+# Cluster settings
+cluster.name: n8n-mcp-logging
+node.name: ${HOSTNAME}
+
+# Network settings
+network.host: 0.0.0.0
+http.port: 9200
+transport.port: 9300
+
+# Discovery settings
+discovery.type: ${DISCOVERY_TYPE:single-node}
+cluster.initial_master_nodes:
+  - ${HOSTNAME}
+
+# Path settings
+path.data: /usr/share/elasticsearch/data
+path.logs: /usr/share/elasticsearch/logs
+
+# Memory settings
+bootstrap.memory_lock: true
+
+# Security settings
+xpack.security.enabled: true
+xpack.security.transport.ssl.enabled: true
+xpack.security.transport.ssl.verification_mode: certificate
+xpack.security.transport.ssl.client_authentication: required
+xpack.security.transport.ssl.keystore.path: elastic-certificates.p12
+xpack.security.transport.ssl.truststore.path: elastic-certificates.p12
+
+# Monitoring settings
+xpack.monitoring.enabled: true
+xpack.monitoring.collection.enabled: true
+xpack.monitoring.elasticsearch.collection.enabled: true
+
+# Index lifecycle management
+xpack.ilm.enabled: true
+
+# Machine learning (disable if not needed)
+xpack.ml.enabled: false
+
+# Watcher (for alerting)
+xpack.watcher.enabled: true
+
+# Performance settings
+indices.memory.index_buffer_size: 20%
+indices.memory.min_index_buffer_size: 96mb
+
+# Thread pools
+thread_pool:
+  search:
+    size: 20
+    queue_size: 1000
+  write:
+    size: 10
+    queue_size: 500
+  get:
+    size: 10
+    queue_size: 100
+
+# Circuit breakers
+indices.breaker.total.use_real_memory: false
+indices.breaker.total.limit: 85%
+indices.breaker.request.limit: 60%
+indices.breaker.fielddata.limit: 40%
+
+# Slow log settings
+index.search.slowlog.threshold.query.warn: 10s
+index.search.slowlog.threshold.query.info: 5s
+index.search.slowlog.threshold.query.debug: 2s
+index.search.slowlog.threshold.query.trace: 500ms
+
+index.search.slowlog.threshold.fetch.warn: 1s
+index.search.slowlog.threshold.fetch.info: 800ms
+index.search.slowlog.threshold.fetch.debug: 500ms
+index.search.slowlog.threshold.fetch.trace: 200ms
+
+index.indexing.slowlog.threshold.index.warn: 10s
+index.indexing.slowlog.threshold.index.info: 5s
+index.indexing.slowlog.threshold.index.debug: 2s
+index.indexing.slowlog.threshold.index.trace: 500ms
+
+# Snapshot repository
+path.repo:
+  - /usr/share/elasticsearch/backup
+
+# CORS settings (for Kibana)
+http.cors.enabled: true
+http.cors.allow-origin: "*"
+http.cors.allow-methods: OPTIONS, HEAD, GET, POST, PUT, DELETE
+http.cors.allow-headers: "X-Requested-With, Content-Type, Content-Length, X-User"
+
+# Custom analyzers for logs
+analysis:
+  analyzer:
+    log_analyzer:
+      type: custom
+      tokenizer: standard
+      filter:
+        - lowercase
+        - stop
+        - log_synonyms
+  filter:
+    log_synonyms:
+      type: synonym
+      synonyms:
+        - "error, err, exception, fault"
+        - "warning, warn"
+        - "info, information"
+        - "debug, trace"

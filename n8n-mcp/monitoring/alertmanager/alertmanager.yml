@@ -1,0 +1,217 @@
+# AlertManager configuration for n8n-MCP
+
+global:
+  # The smarthost and SMTP sender used for mail notifications.
+  smtp_smarthost: '${SMTP_HOST:localhost:25}'
+  smtp_from: '${SMTP_FROM:alertmanager@n8n-mcp.io}'
+  smtp_auth_username: '${SMTP_USERNAME:}'
+  smtp_auth_password: '${SMTP_PASSWORD:}'
+  smtp_require_tls: true
+
+  # Slack webhook URL
+  slack_api_url: '${SLACK_WEBHOOK_URL:}'
+
+  # PagerDuty service key
+  pagerduty_url: 'https://events.pagerduty.com/v2/enqueue'
+
+  # The default HTTP client configuration
+  http_config:
+    follow_redirects: true
+
+# The directory from which notification templates are read.
+templates:
+- '/etc/alertmanager/templates/*.tmpl'
+
+# The root route on which each incoming alert enters.
+route:
+  # The labels by which incoming alerts are grouped together
+  group_by: ['alertname', 'cluster', 'service']
+  
+  # When a new group of alerts is created by an incoming alert
+  group_wait: 30s
+  
+  # When the first notification was sent, wait 'group_interval' to send a batch
+  group_interval: 5m
+  
+  # If an alert has successfully been sent, wait 'repeat_interval' to resend them
+  repeat_interval: 4h
+  
+  # Default receiver
+  receiver: 'default'
+  
+  # Child routes
+  routes:
+    # Critical alerts that need immediate attention
+    - match:
+        severity: critical
+      receiver: pager
+      continue: true
+      routes:
+        - match:
+            team: security
+          receiver: security-pager
+    
+    # High priority alerts
+    - match:
+        severity: warning
+      receiver: team-slack
+      routes:
+        - match:
+            team: backend
+          receiver: backend-slack
+        - match:
+            team: platform
+          receiver: platform-slack
+        - match:
+            team: database
+          receiver: database-slack
+        - match:
+            team: infrastructure
+          receiver: infrastructure-slack
+    
+    # Business metrics alerts
+    - match:
+        component: business
+      receiver: business-email
+      group_interval: 30m
+      repeat_interval: 24h
+    
+    # SLO alerts
+    - match:
+        component: slo
+      receiver: slo-alerts
+      group_wait: 1m
+      group_interval: 1m
+      repeat_interval: 1h
+
+# Inhibition rules
+inhibit_rules:
+  # Inhibit warning alerts if critical alerts are firing for the same service
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname', 'service', 'instance']
+  
+  # Inhibit info alerts if warning or critical alerts are firing
+  - source_match_re:
+      severity: 'critical|warning'
+    target_match:
+      severity: 'info'
+    equal: ['alertname', 'service']
+  
+  # Inhibit node alerts if the cluster is down
+  - source_match:
+      alertname: 'ClusterDown'
+    target_match_re:
+      alertname: 'Node.*'
+    equal: ['cluster']
+
+# Receivers
+receivers:
+  - name: 'default'
+    webhook_configs:
+      - url: 'http://n8n-mcp-webhook:3006/alerts'
+        send_resolved: true
+
+  - name: 'pager'
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_SERVICE_KEY:}'
+        client: 'AlertManager'
+        client_url: 'https://alertmanager.n8n-mcp.io'
+        description: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+        details:
+          firing: '{{ range .Alerts.Firing }}{{ .Labels.alertname }}: {{ .Annotations.description }}\n{{ end }}'
+          resolved: '{{ range .Alerts.Resolved }}{{ .Labels.alertname }}: {{ .Annotations.description }}\n{{ end }}'
+          num_firing: '{{ .Alerts.Firing | len }}'
+          num_resolved: '{{ .Alerts.Resolved | len }}'
+    webhook_configs:
+      - url: 'http://n8n-mcp-webhook:3006/critical-alerts'
+        send_resolved: true
+
+  - name: 'security-pager'
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_SECURITY_KEY:}'
+        severity: 'critical'
+        client: 'Security AlertManager'
+    email_configs:
+      - to: 'security@n8n-mcp.io'
+        headers:
+          Subject: 'SECURITY ALERT: {{ .GroupLabels.alertname }}'
+
+  - name: 'team-slack'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL:}'
+        channel: '#alerts'
+        title: '{{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.description }}{{ end }}'
+        send_resolved: true
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+        actions:
+          - type: button
+            text: 'View Dashboard'
+            url: '{{ (index .Alerts 0).Annotations.dashboard_url }}'
+          - type: button
+            text: 'Runbook'
+            url: '{{ (index .Alerts 0).Annotations.runbook_url }}'
+
+  - name: 'backend-slack'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL:}'
+        channel: '#backend-alerts'
+        title: 'Backend Alert: {{ .GroupLabels.alertname }}'
+
+  - name: 'platform-slack'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL:}'
+        channel: '#platform-alerts'
+        title: 'Platform Alert: {{ .GroupLabels.alertname }}'
+
+  - name: 'database-slack'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL:}'
+        channel: '#database-alerts'
+        title: 'Database Alert: {{ .GroupLabels.alertname }}'
+
+  - name: 'infrastructure-slack'
+    slack_configs:
+      - api_url: '${SLACK_WEBHOOK_URL:}'
+        channel: '#infra-alerts'
+        title: 'Infrastructure Alert: {{ .GroupLabels.alertname }}'
+
+  - name: 'business-email'
+    email_configs:
+      - to: 'business-metrics@n8n-mcp.io,product@n8n-mcp.io'
+        headers:
+          Subject: 'Business Metric Alert: {{ .GroupLabels.alertname }}'
+        html: |
+          <h2>Business Metric Alert</h2>
+          <p><strong>Alert:</strong> {{ .GroupLabels.alertname }}</p>
+          <p><strong>Summary:</strong> {{ (index .Alerts 0).Annotations.summary }}</p>
+          <p><strong>Description:</strong></p>
+          <ul>
+          {{ range .Alerts }}
+            <li>{{ .Annotations.description }}</li>
+          {{ end }}
+          </ul>
+          <p><strong>Action Required:</strong> {{ (index .Alerts 0).Annotations.action }}</p>
+
+  - name: 'slo-alerts'
+    webhook_configs:
+      - url: 'http://n8n-mcp-webhook:3006/slo-alerts'
+        send_resolved: true
+    pagerduty_configs:
+      - service_key: '${PAGERDUTY_SLO_KEY:}'
+        severity: 'critical'
+        description: 'SLO Violation: {{ .GroupLabels.alertname }}'
+    email_configs:
+      - to: 'sre@n8n-mcp.io,platform@n8n-mcp.io'
+        headers:
+          Subject: 'SLO VIOLATION: {{ .GroupLabels.alertname }}'
+        html: |
+          <h1 style="color: red;">SLO Violation Alert</h1>
+          <p><strong>Service:</strong> {{ .GroupLabels.service }}</p>
+          <p><strong>Current Compliance:</strong> {{ (index .Alerts 0).Annotations.description }}</p>
+          <p><strong>Impact:</strong> {{ (index .Alerts 0).Annotations.impact }}</p>
+          <p><strong>Action Required:</strong> {{ (index .Alerts 0).Annotations.action }}</p>
+          <p><a href="{{ (index .Alerts 0).Annotations.dashboard_url }}">View Dashboard</a></p>

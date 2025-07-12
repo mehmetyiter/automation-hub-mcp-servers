@@ -1,0 +1,380 @@
+{
+  "dashboard": {
+    "id": null,
+    "uid": "api-performance",
+    "title": "API Performance Dashboard",
+    "tags": ["n8n-mcp", "api", "performance"],
+    "timezone": "browser",
+    "schemaVersion": 30,
+    "version": 1,
+    "refresh": "5s",
+    "panels": [
+      {
+        "id": 1,
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+        "type": "graph",
+        "title": "Request Rate by Endpoint",
+        "targets": [
+          {
+            "expr": "sum(rate(api_requests_total[$__rate_interval])) by (endpoint, method)",
+            "legendFormat": "{{ method }} {{ endpoint }}",
+            "refId": "A"
+          }
+        ],
+        "xaxis": {
+          "mode": "time"
+        },
+        "yaxes": [
+          {
+            "format": "reqps",
+            "label": "Requests/sec"
+          },
+          {
+            "format": "short"
+          }
+        ],
+        "lines": true,
+        "linewidth": 2,
+        "fill": 1,
+        "fillGradient": 3,
+        "stack": false,
+        "tooltip": {
+          "shared": true,
+          "sort": 2
+        }
+      },
+      {
+        "id": 2,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+        "type": "heatmap",
+        "title": "Request Latency Heatmap",
+        "targets": [
+          {
+            "expr": "sum(rate(api_request_duration_ms_bucket[$__rate_interval])) by (le)",
+            "format": "heatmap",
+            "legendFormat": "{{ le }}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "calculate": false,
+          "cellGap": 1,
+          "color": {
+            "scheme": "Oranges",
+            "mode": "scheme"
+          },
+          "exemplar": {
+            "color": "rgba(255,0,255,0.7)"
+          },
+          "filterValues": {
+            "le": 1e-9
+          },
+          "tooltip": {
+            "show": true,
+            "yHistogram": true
+          },
+          "yAxis": {
+            "axisLabel": "Latency",
+            "unit": "ms"
+          }
+        }
+      },
+      {
+        "id": 3,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+        "type": "table",
+        "title": "Top 10 Slowest Endpoints (P95)",
+        "targets": [
+          {
+            "expr": "topk(10, histogram_quantile(0.95, sum(rate(api_request_duration_ms_bucket[$__rate_interval])) by (le, endpoint, method)))",
+            "format": "table",
+            "instant": true,
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "left",
+              "displayMode": "color-background"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 500 },
+                { "color": "red", "value": 1000 }
+              ]
+            },
+            "unit": "ms"
+          },
+          "overrides": [
+            {
+              "matcher": { "id": "byName", "options": "endpoint" },
+              "properties": [
+                { "id": "custom.width", "value": 300 }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 4,
+        "gridPos": { "h": 8, "w": 8, "x": 0, "y": 16 },
+        "type": "timeseries",
+        "title": "Error Rate by Status Code",
+        "targets": [
+          {
+            "expr": "sum(rate(api_errors_total[$__rate_interval])) by (status_code)",
+            "legendFormat": "HTTP {{ status_code }}",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "bars",
+              "lineWidth": 0,
+              "fillOpacity": 80,
+              "gradientMode": "none",
+              "barAlignment": -1
+            },
+            "color": {
+              "mode": "palette-classic"
+            },
+            "unit": "errors/s"
+          }
+        }
+      },
+      {
+        "id": 5,
+        "gridPos": { "h": 8, "w": 8, "x": 8, "y": 16 },
+        "type": "stat",
+        "title": "API Availability (24h)",
+        "targets": [
+          {
+            "expr": "(1 - (sum(increase(api_errors_total{status_code=~\"5..\"}[24h])) / sum(increase(api_requests_total[24h])))) * 100",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "reduceOptions": {
+            "calcs": ["lastNotNull"]
+          },
+          "textMode": "value",
+          "graphMode": "area",
+          "colorMode": "background"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percent",
+            "decimals": 3,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "red", "value": null },
+                { "color": "yellow", "value": 99 },
+                { "color": "green", "value": 99.9 }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 6,
+        "gridPos": { "h": 8, "w": 8, "x": 16, "y": 16 },
+        "type": "gauge",
+        "title": "Active Requests",
+        "targets": [
+          {
+            "expr": "sum(api_active_requests)",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "showThresholdLabels": true,
+          "showThresholdMarkers": true
+        },
+        "fieldConfig": {
+          "defaults": {
+            "min": 0,
+            "max": 1000,
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "yellow", "value": 500 },
+                { "color": "red", "value": 800 }
+              ]
+            },
+            "unit": "none"
+          }
+        }
+      },
+      {
+        "id": 7,
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+        "type": "timeseries",
+        "title": "Latency Percentiles by Endpoint",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.50, sum(rate(api_request_duration_ms_bucket[$__rate_interval])) by (le, endpoint))",
+            "legendFormat": "p50 {{ endpoint }}",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(api_request_duration_ms_bucket[$__rate_interval])) by (le, endpoint))",
+            "legendFormat": "p95 {{ endpoint }}",
+            "refId": "B"
+          },
+          {
+            "expr": "histogram_quantile(0.99, sum(rate(api_request_duration_ms_bucket[$__rate_interval])) by (le, endpoint))",
+            "legendFormat": "p99 {{ endpoint }}",
+            "refId": "C"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "drawStyle": "line",
+              "lineInterpolation": "smooth",
+              "lineWidth": 2,
+              "fillOpacity": 10,
+              "gradientMode": "opacity",
+              "spanNulls": false,
+              "showPoints": "never",
+              "pointSize": 5,
+              "stacking": {
+                "mode": "none",
+                "group": "A"
+              },
+              "axisPlacement": "auto",
+              "axisLabel": "",
+              "scaleDistribution": {
+                "type": "linear"
+              },
+              "hideFrom": {
+                "tooltip": false,
+                "viz": false,
+                "legend": false
+              },
+              "thresholdsStyle": {
+                "mode": "off"
+              }
+            },
+            "unit": "ms",
+            "color": {
+              "mode": "palette-classic"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                { "color": "green", "value": null },
+                { "color": "red", "value": 80 }
+              ]
+            }
+          }
+        },
+        "options": {
+          "tooltip": {
+            "mode": "multi",
+            "sort": "desc"
+          },
+          "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "calcs": ["mean", "max"]
+          }
+        }
+      },
+      {
+        "id": 8,
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 32 },
+        "type": "timeseries",
+        "title": "Request Size Distribution",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(api_request_size_bytes_bucket[$__rate_interval])) by (le))",
+            "legendFormat": "P95 Request Size",
+            "refId": "A"
+          },
+          {
+            "expr": "histogram_quantile(0.95, sum(rate(api_response_size_bytes_bucket[$__rate_interval])) by (le))",
+            "legendFormat": "P95 Response Size",
+            "refId": "B"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "decbytes",
+            "custom": {
+              "drawStyle": "line",
+              "lineWidth": 2,
+              "fillOpacity": 10
+            }
+          }
+        }
+      },
+      {
+        "id": 9,
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 32 },
+        "type": "piechart",
+        "title": "Traffic Distribution by Endpoint",
+        "targets": [
+          {
+            "expr": "sum(increase(api_requests_total[$__range])) by (endpoint)",
+            "legendFormat": "{{ endpoint }}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "pieType": "donut",
+          "tooltip": {
+            "displayMode": "single"
+          },
+          "displayLabels": ["name", "percent"],
+          "legendDisplayMode": "table",
+          "legendPlacement": "right",
+          "legendValues": ["value", "percent"]
+        }
+      }
+    ],
+    "templating": {
+      "list": [
+        {
+          "name": "datasource",
+          "type": "datasource",
+          "query": "prometheus"
+        },
+        {
+          "name": "endpoint",
+          "type": "query",
+          "datasource": "$datasource",
+          "query": "label_values(api_requests_total, endpoint)",
+          "multi": true,
+          "includeAll": true,
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          }
+        },
+        {
+          "name": "method",
+          "type": "query",
+          "datasource": "$datasource",
+          "query": "label_values(api_requests_total, method)",
+          "multi": true,
+          "includeAll": true,
+          "current": {
+            "text": "All",
+            "value": "$__all"
+          }
+        }
+      ]
+    },
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    }
+  }
+}
