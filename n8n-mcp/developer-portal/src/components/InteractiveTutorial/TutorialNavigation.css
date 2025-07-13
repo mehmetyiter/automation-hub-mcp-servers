@@ -1,0 +1,175 @@
+.tutorial-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px;
+  background: white;
+  border-top: 1px solid #e1e8ed;
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.nav-left,
+.nav-right {
+  flex: 0 0 auto;
+}
+
+.nav-center {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.nav-button.previous {
+  background: #e1e8ed;
+  color: #687078;
+}
+
+.nav-button.previous:hover:not(:disabled) {
+  background: #d1d8dd;
+  color: #2c3e50;
+}
+
+.nav-button.next {
+  background: #4361ee;
+  color: white;
+}
+
+.nav-button.next:hover:not(:disabled) {
+  background: #3651de;
+  transform: translateX(2px);
+}
+
+.nav-button.next.ready {
+  background: #5a7cff;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(90, 124, 255, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(90, 124, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(90, 124, 255, 0);
+  }
+}
+
+.nav-button.next.complete {
+  background: #28a745;
+}
+
+.nav-button.next.complete:hover {
+  background: #218838;
+  transform: scale(1.02);
+}
+
+.nav-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.nav-button:disabled:hover {
+  transform: none;
+}
+
+/* Step complete indicator */
+.step-complete-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #e6ffed;
+  border: 1px solid #28a745;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #28a745;
+  animation: bounceIn 0.6s ease;
+}
+
+@keyframes bounceIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.3);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.complete-icon {
+  font-size: 16px;
+  animation: checkmark 0.4s ease 0.3s both;
+}
+
+@keyframes checkmark {
+  0% {
+    transform: scale(0) rotate(45deg);
+  }
+  100% {
+    transform: scale(1) rotate(0);
+  }
+}
+
+.complete-text {
+  animation: fadeInUp 0.4s ease 0.4s both;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .tutorial-navigation {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 16px;
+  }
+  
+  .nav-center {
+    order: -1;
+    flex: 0 0 100%;
+    margin-bottom: 8px;
+  }
+  
+  .nav-left,
+  .nav-right {
+    flex: 1;
+  }
+  
+  .nav-button {
+    width: 100%;
+    justify-content: center;
+  }
+}

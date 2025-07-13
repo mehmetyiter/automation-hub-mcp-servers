@@ -1,0 +1,371 @@
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import axiosRetry from 'axios-retry';
+import { EventEmitter } from 'events';
+{{#each endpoints}}
+{{#if @first}}
+import {
+{{#each ../endpoints}}
+{{#if (eq @index 0)}}  {{pascalCase resourceName}}Resource{{else}},
+  {{pascalCase resourceName}}Resource{{/if}}{{/each}}
+} from './resources';
+{{/if}}
+{{/each}}
+import { AuthManager } from './auth/auth';
+import { ApiError, ValidationError, NetworkError } from './errors/errors';
+import { RequestInterceptor, ResponseInterceptor } from './utils/request';
+
+export interface {{info.clientName}}Config {
+  /**
+   * API Key for authentication
+   */
+  apiKey?: string;
+  
+  /**
+   * Base URL for the API
+   * @default "{{servers.0.url}}"
+   */
+  baseURL?: string;
+  
+  /**
+   * Request timeout in milliseconds
+   * @default 30000
+   */
+  timeout?: number;
+  
+  /**
+   * Number of retry attempts for failed requests
+   * @default 3
+   */
+  retries?: number;
+  
+  /**
+   * Custom headers to include in all requests
+   */
+  headers?: Record<string, string>;
+  
+  /**
+   * Enable debug mode for detailed logging
+   * @default false
+   */
+  debug?: boolean;
+  
+  /**
+   * Request interceptor function
+   */
+  onRequest?: RequestInterceptor;
+  
+  /**
+   * Response interceptor function
+   */
+  onResponse?: ResponseInterceptor;
+  
+  /**
+   * Error handler function
+   */
+  onError?: (error: ApiError) => void;
+}
+
+/**
+ * {{info.title}} Client
+ * 
+ * {{info.description}}
+ * 
+ * @example
+ * ```typescript
+ * import { {{info.clientName}} } from '{{info.packageName}}';
+ * 
+ * const client = new {{info.clientName}}({
+ *   apiKey: 'your-api-key',
+ *   baseURL: '{{servers.0.url}}'
+ * });
+ * 
+ * // Use the client
+ * const workflows = await client.workflows.list();
+ * ```
+ */
+export class {{info.clientName}} extends EventEmitter {
+  private readonly config: Required<{{info.clientName}}Config>;
+  private readonly client: AxiosInstance;
+  private readonly authManager: AuthManager;
+  
+  // Resource instances
+{{#each endpoints}}
+{{#if @first}}
+{{#each ../endpoints}}
+  public readonly {{camelCase resourceName}}: {{pascalCase resourceName}}Resource;
+{{/each}}
+{{/if}}
+{{/each}}
+
+  constructor(config: {{info.clientName}}Config = {}) {
+    super();
+    
+    // Initialize configuration with defaults
+    this.config = {
+      apiKey: config.apiKey || '',
+      baseURL: config.baseURL || '{{servers.0.url}}',
+      timeout: config.timeout || 30000,
+      retries: config.retries || 3,
+      headers: config.headers || {},
+      debug: config.debug || false,
+      onRequest: config.onRequest || undefined,
+      onResponse: config.onResponse || undefined,
+      onError: config.onError || undefined
+    };
+    
+    // Validate configuration
+    this.validateConfig();
+    
+    // Create axios instance
+    this.client = this.createClient();
+    
+    // Initialize auth manager
+    this.authManager = new AuthManager(this.config.apiKey);
+    
+    // Setup interceptors
+    this.setupInterceptors();
+    
+    // Setup retry logic
+    this.setupRetry();
+    
+    // Initialize resources
+    this.initializeResources();
+  }
+
+  /**
+   * Validate client configuration
+   * @private
+   */
+  private validateConfig(): void {
+    if (!this.config.baseURL) {
+      throw new ValidationError('Base URL is required');
+    }
+    
+    try {
+      new URL(this.config.baseURL);
+    } catch (error) {
+      throw new ValidationError(`Invalid base URL: ${this.config.baseURL}`);
+    }
+  }
+
+  /**
+   * Create axios instance with base configuration
+   * @private
+   */
+  private createClient(): AxiosInstance {
+    return axios.create({
+      baseURL: this.config.baseURL,
+      timeout: this.config.timeout,
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': '{{info.packageName}}/{{info.packageVersion}}',
+        ...this.config.headers
+      }
+    });
+  }
+
+  /**
+   * Setup request and response interceptors
+   * @private
+   */
+  private setupInterceptors(): void {
+    // Request interceptor
+    this.client.interceptors.request.use(
+      async (config) => {
+        // Add authentication
+        const authHeaders = await this.authManager.getAuthHeaders();
+        config.headers = {
+          ...config.headers,
+          ...authHeaders
+        };
+        
+        // Add request ID for tracking
+        config.headers['X-Request-ID'] = this.generateRequestId();
+        
+        // Debug logging
+        if (this.config.debug) {
+          console.log(`[{{info.clientName}}] Request:`, {
+            method: config.method?.toUpperCase(),
+            url: config.url,
+            headers: config.headers,
+            data: config.data
+          });
+        }
+        
+        // Emit request event
+        this.emit('request', config);
+        
+        // Call custom interceptor if provided
+        if (this.config.onRequest) {
+          config = await this.config.onRequest(config) || config;
+        }
+        
+        return config;
+      },
+      (error) => {
+        this.handleError(error);
+        return Promise.reject(error);
+      }
+    );
+    
+    // Response interceptor
+    this.client.interceptors.response.use(
+      (response) => {
+        // Debug logging
+        if (this.config.debug) {
+          console.log(`[{{info.clientName}}] Response:`, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+            data: response.data
+          });
+        }
+        
+        // Emit response event
+        this.emit('response', response);
+        
+        // Call custom interceptor if provided
+        if (this.config.onResponse) {
+          response = this.config.onResponse(response) || response;
+        }
+        
+        return response;
+      },
+      (error) => {
+        this.handleError(error);
+        return Promise.reject(error);
+      }
+    );
+  }
+
+  /**
+   * Setup retry logic for failed requests
+   * @private
+   */
+  private setupRetry(): void {
+    axiosRetry(this.client, {
+      retries: this.config.retries,
+      retryDelay: axiosRetry.exponentialDelay,
+      retryCondition: (error) => {
+        // Retry on network errors or 5xx status codes
+        return axiosRetry.isNetworkOrIdempotentRequestError(error) ||
+               (error.response?.status ? error.response.status >= 500 : false);
+      },
+      onRetry: (retryCount, error) => {
+        if (this.config.debug) {
+          console.log(`[{{info.clientName}}] Retry attempt ${retryCount} for request:`, error.config?.url);
+        }
+        this.emit('retry', { retryCount, error });
+      }
+    });
+  }
+
+  /**
+   * Initialize resource instances
+   * @private
+   */
+  private initializeResources(): void {
+{{#each endpoints}}
+{{#if @first}}
+{{#each ../endpoints}}
+    this.{{camelCase resourceName}} = new {{pascalCase resourceName}}Resource(this.client);
+{{/each}}
+{{/if}}
+{{/each}}
+  }
+
+  /**
+   * Handle and format errors
+   * @private
+   */
+  private handleError(error: any): void {
+    let apiError: ApiError;
+    
+    if (error.response) {
+      // Server responded with error status
+      apiError = new ApiError(
+        error.response.data?.message || error.message,
+        error.response.status,
+        error.response.data?.code,
+        error.response.data
+      );
+    } else if (error.request) {
+      // Request made but no response
+      apiError = new NetworkError('No response received from server');
+    } else {
+      // Request setup error
+      apiError = new ApiError(error.message);
+    }
+    
+    // Debug logging
+    if (this.config.debug) {
+      console.error(`[{{info.clientName}}] Error:`, apiError);
+    }
+    
+    // Emit error event
+    this.emit('error', apiError);
+    
+    // Call custom error handler
+    if (this.config.onError) {
+      this.config.onError(apiError);
+    }
+  }
+
+  /**
+   * Generate unique request ID
+   * @private
+   */
+  private generateRequestId(): string {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Update API key
+   * @param apiKey New API key
+   */
+  public setApiKey(apiKey: string): void {
+    this.config.apiKey = apiKey;
+    this.authManager.setApiKey(apiKey);
+  }
+
+  /**
+   * Update base URL
+   * @param baseURL New base URL
+   */
+  public setBaseURL(baseURL: string): void {
+    this.config.baseURL = baseURL;
+    this.client.defaults.baseURL = baseURL;
+  }
+
+  /**
+   * Get current configuration
+   * @returns Current client configuration
+   */
+  public getConfig(): Readonly<{{info.clientName}}Config> {
+    return { ...this.config };
+  }
+
+  /**
+   * Make a custom request
+   * @param config Axios request configuration
+   * @returns Promise with response data
+   */
+  public async request<T = any>(config: AxiosRequestConfig): Promise<T> {
+    const response = await this.client.request<T>(config);
+    return response.data;
+  }
+
+  /**
+   * Health check
+   * @returns Promise with health status
+   */
+  public async health(): Promise<any> {
+    return this.request({
+      method: 'GET',
+      url: '/health'
+    });
+  }
+}
+
+// Export a default instance for convenience
+export const defaultClient = new {{info.clientName}}();

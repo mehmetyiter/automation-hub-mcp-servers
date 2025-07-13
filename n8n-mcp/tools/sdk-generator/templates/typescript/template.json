@@ -1,0 +1,61 @@
+{
+  "name": "typescript",
+  "description": "TypeScript SDK Template",
+  "files": [
+    {
+      "template": "package.json.hbs",
+      "output": "package.json"
+    },
+    {
+      "template": "tsconfig.json.hbs",
+      "output": "tsconfig.json"
+    },
+    {
+      "template": "README.md.hbs",
+      "output": "README.md"
+    },
+    {
+      "template": "src/index.ts.hbs",
+      "output": "src/index.ts"
+    },
+    {
+      "template": "src/client.ts.hbs",
+      "output": "src/client.ts"
+    },
+    {
+      "template": "src/types.ts.hbs",
+      "output": "src/types.ts"
+    },
+    {
+      "template": "src/resources/base.ts.hbs",
+      "output": "src/resources/base.ts"
+    },
+    {
+      "template": "src/resources/index.ts.hbs",
+      "output": "src/resources/index.ts"
+    },
+    {
+      "template": "src/auth/auth.ts.hbs",
+      "output": "src/auth/auth.ts"
+    },
+    {
+      "template": "src/errors/errors.ts.hbs",
+      "output": "src/errors/errors.ts"
+    },
+    {
+      "template": "src/utils/request.ts.hbs",
+      "output": "src/utils/request.ts"
+    },
+    {
+      "template": ".eslintrc.json.hbs",
+      "output": ".eslintrc.json",
+      "condition": {
+        "includeTests": true
+      }
+    },
+    {
+      "template": ".gitignore.hbs",
+      "output": ".gitignore"
+    }
+  ]
+}

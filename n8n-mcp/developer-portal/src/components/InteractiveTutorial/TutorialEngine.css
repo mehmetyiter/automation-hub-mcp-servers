@@ -1,0 +1,265 @@
+.tutorial-engine {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #f5f7fa;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tutorial-header {
+  background: white;
+  padding: 20px;
+  border-bottom: 1px solid #e1e8ed;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.tutorial-title {
+  margin: 0 0 8px 0;
+  font-size: 24px;
+  color: #2c3e50;
+}
+
+.tutorial-description {
+  margin: 0;
+  color: #687078;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.tutorial-body {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.tutorial-content {
+  flex: 1;
+  padding: 30px;
+  overflow-y: auto;
+  background: white;
+  margin: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.step-header {
+  margin-bottom: 30px;
+}
+
+.step-title {
+  margin: 0 0 12px 0;
+  font-size: 20px;
+  color: #2c3e50;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: #4361ee;
+  color: white;
+  border-radius: 50%;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.step-description {
+  margin: 0;
+  color: #687078;
+  line-height: 1.6;
+}
+
+.step-content {
+  margin-bottom: 30px;
+}
+
+.step-content h3 {
+  margin: 24px 0 12px 0;
+  font-size: 16px;
+  color: #2c3e50;
+}
+
+.step-content p {
+  margin: 12px 0;
+  color: #687078;
+  line-height: 1.6;
+}
+
+.step-content ul,
+.step-content ol {
+  margin: 12px 0;
+  padding-left: 24px;
+  color: #687078;
+}
+
+.step-content li {
+  margin: 6px 0;
+  line-height: 1.6;
+}
+
+.step-content code {
+  background: #f5f7fa;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  color: #e83e8c;
+}
+
+.step-content pre {
+  background: #1e1e1e;
+  color: #d4d4d4;
+  padding: 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 16px 0;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.step-content pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.step-actions {
+  margin-top: 30px;
+  padding-top: 30px;
+  border-top: 1px solid #e1e8ed;
+}
+
+.tutorial-sidebar {
+  width: 300px;
+  background: white;
+  border-left: 1px solid #e1e8ed;
+  display: flex;
+  flex-direction: column;
+  margin: 20px 20px 20px 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.sidebar-section {
+  padding: 20px;
+  border-bottom: 1px solid #e1e8ed;
+}
+
+.sidebar-section:last-child {
+  border-bottom: none;
+}
+
+.sidebar-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #687078;
+  font-weight: 600;
+}
+
+.tutorial-footer {
+  background: white;
+  padding: 20px;
+  border-top: 1px solid #e1e8ed;
+  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.code-exercise {
+  margin: 20px 0;
+}
+
+.exercise-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.exercise-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.run-button {
+  padding: 8px 16px;
+  background: #4361ee;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.run-button:hover {
+  background: #3651de;
+}
+
+.run-button:disabled {
+  background: #a0a8b0;
+  cursor: not-allowed;
+}
+
+.exercise-output {
+  margin-top: 16px;
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  color: #2c3e50;
+  min-height: 60px;
+}
+
+.exercise-output.error {
+  background: #fee;
+  color: #d73a49;
+}
+
+.exercise-output.success {
+  background: #e6ffed;
+  color: #28a745;
+}
+
+/* Loading states */
+.tutorial-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #687078;
+}
+
+.loading-spinner {
+  margin-right: 8px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Responsive design */
+@media (max-width: 1024px) {
+  .tutorial-body {
+    flex-direction: column;
+  }
+  
+  .tutorial-sidebar {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid #e1e8ed;
+    margin: 0 20px 20px 20px;
+  }
+}

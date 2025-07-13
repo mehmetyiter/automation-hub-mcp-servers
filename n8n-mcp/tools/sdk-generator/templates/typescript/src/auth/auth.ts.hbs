@@ -1,0 +1,144 @@
+/**
+ * Authentication manager for {{info.title}} SDK
+ */
+
+export interface AuthHeaders {
+  [key: string]: string;
+}
+
+/**
+ * Authentication manager handles API key and token management
+ */
+export class AuthManager {
+  private apiKey: string;
+  private customHeaders: AuthHeaders = {};
+
+  constructor(apiKey?: string) {
+    this.apiKey = apiKey || '';
+  }
+
+  /**
+   * Set API key
+   * @param apiKey API key or Bearer token
+   */
+  setApiKey(apiKey: string): void {
+    this.apiKey = apiKey;
+  }
+
+  /**
+   * Get current API key
+   * @returns Current API key
+   */
+  getApiKey(): string {
+    return this.apiKey;
+  }
+
+  /**
+   * Check if authentication is configured
+   * @returns True if API key is set
+   */
+  hasAuth(): boolean {
+    return !!this.apiKey;
+  }
+
+  /**
+   * Set custom authentication headers
+   * @param headers Custom headers object
+   */
+  setCustomHeaders(headers: AuthHeaders): void {
+    this.customHeaders = headers;
+  }
+
+  /**
+   * Get authentication headers for requests
+   * @returns Headers object with authentication
+   */
+  async getAuthHeaders(): Promise<AuthHeaders> {
+    const headers: AuthHeaders = { ...this.customHeaders };
+
+    if (this.apiKey) {
+      if (this.apiKey.toLowerCase().startsWith('bearer ')) {
+        // Already includes Bearer prefix
+        headers['Authorization'] = this.apiKey;
+      } else {
+        // Add Bearer prefix for JWT tokens or use X-API-Key for API keys
+        if (this.isJWT(this.apiKey)) {
+          headers['Authorization'] = `Bearer ${this.apiKey}`;
+        } else {
+          headers['X-API-Key'] = this.apiKey;
+        }
+      }
+    }
+
+    return headers;
+  }
+
+  /**
+   * Clear authentication
+   */
+  clearAuth(): void {
+    this.apiKey = '';
+    this.customHeaders = {};
+  }
+
+  /**
+   * Check if token looks like a JWT
+   * @private
+   */
+  private isJWT(token: string): boolean {
+    const parts = token.split('.');
+    return parts.length === 3;
+  }
+
+  /**
+   * Parse JWT token (without verification)
+   * @param token JWT token
+   * @returns Decoded token payload or null
+   */
+  parseJWT(token?: string): any | null {
+    const jwt = token || this.apiKey;
+    
+    if (!jwt || !this.isJWT(jwt)) {
+      return null;
+    }
+
+    try {
+      const base64Payload = jwt.split('.')[1];
+      const payload = Buffer.from(base64Payload, 'base64').toString();
+      return JSON.parse(payload);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Check if JWT token is expired
+   * @param token JWT token (optional, uses stored token if not provided)
+   * @returns True if token is expired
+   */
+  isTokenExpired(token?: string): boolean {
+    const payload = this.parseJWT(token);
+    
+    if (!payload || !payload.exp) {
+      return false; // Can't determine, assume valid
+    }
+
+    const expirationTime = payload.exp * 1000; // Convert to milliseconds
+    return Date.now() > expirationTime;
+  }
+
+  /**
+   * Get token expiration time
+   * @param token JWT token (optional, uses stored token if not provided)
+   * @returns Expiration date or null
+   */
+  getTokenExpiration(token?: string): Date | null {
+    const payload = this.parseJWT(token);
+    
+    if (!payload || !payload.exp) {
+      return null;
+    }
+
+    return new Date(payload.exp * 1000);
+  }
+}

@@ -1,0 +1,260 @@
+/* Quick Actions Styles */
+.quick-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 240px;
+}
+
+.actions-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 0.25rem;
+}
+
+.actions-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.action-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+}
+
+.action-btn:hover:not(:disabled) {
+  background: #f9fafb;
+  border-color: #9ca3af;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.action-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.action-btn:disabled {
+  background: #f3f4f6;
+  color: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* Specific button styles */
+.postman-btn {
+  border-color: #ff6c37;
+  color: #ff6c37;
+}
+
+.postman-btn:hover:not(:disabled) {
+  background: #fff5f1;
+  border-color: #ff6c37;
+  color: #e55a2b;
+}
+
+.sdk-btn {
+  border-color: #8b5cf6;
+  color: #8b5cf6;
+}
+
+.sdk-btn:hover:not(:disabled) {
+  background: #faf7ff;
+  border-color: #8b5cf6;
+  color: #7c3aed;
+}
+
+.playground-btn {
+  border-color: #10b981;
+  color: #10b981;
+}
+
+.playground-btn:hover:not(:disabled) {
+  background: #f0fdf7;
+  border-color: #10b981;
+  color: #059669;
+}
+
+.playground-btn:disabled {
+  border-color: #d1d5db;
+  color: #9ca3af;
+}
+
+.actions-notice {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.actions-notice small {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: #92400e;
+  line-height: 1.4;
+}
+
+/* Loading state */
+.action-btn.loading {
+  position: relative;
+  color: transparent;
+}
+
+.action-btn.loading::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e5e7eb;
+  border-top: 2px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: translate(-50%, -50%) rotate(0deg); }
+  100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* Success state */
+.action-btn.success {
+  background: #dcfce7;
+  border-color: #16a34a;
+  color: #16a34a;
+}
+
+.action-btn.success .btn-icon {
+  animation: bounceIn 0.5s ease-out;
+}
+
+@keyframes bounceIn {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .quick-actions {
+    min-width: auto;
+    width: 100%;
+  }
+  
+  .actions-buttons {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  
+  .action-btn {
+    flex: 1;
+    min-width: 0;
+    justify-content: center;
+    padding: 0.5rem 0.75rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .actions-buttons {
+    flex-direction: column;
+  }
+  
+  .action-btn {
+    flex: none;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .actions-label {
+    color: #f3f4f6;
+  }
+  
+  .action-btn {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f3f4f6;
+  }
+  
+  .action-btn:hover:not(:disabled) {
+    background: #4b5563;
+    border-color: #6b7280;
+  }
+  
+  .action-btn:disabled {
+    background: #1f2937;
+    color: #6b7280;
+  }
+  
+  .postman-btn {
+    border-color: #ff6c37;
+    color: #ff6c37;
+  }
+  
+  .postman-btn:hover:not(:disabled) {
+    background: #451a03;
+  }
+  
+  .sdk-btn {
+    border-color: #8b5cf6;
+    color: #8b5cf6;
+  }
+  
+  .sdk-btn:hover:not(:disabled) {
+    background: #2e1065;
+  }
+  
+  .playground-btn {
+    border-color: #10b981;
+    color: #10b981;
+  }
+  
+  .playground-btn:hover:not(:disabled) {
+    background: #064e3b;
+  }
+  
+  .actions-notice {
+    background: #451a03;
+    border-color: #92400e;
+  }
+  
+  .actions-notice small {
+    color: #fbbf24;
+  }
+}

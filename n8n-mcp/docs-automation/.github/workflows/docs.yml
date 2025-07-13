@@ -1,0 +1,317 @@
+name: Documentation
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/**'
+      - 'docs/**'
+      - 'openapi.yaml'
+      - '*.md'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'docs/**'
+      - 'openapi.yaml'
+      - '*.md'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Validate Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate documentation
+        run: npm run docs:validate
+
+      - name: Check for broken links
+        run: npm run docs:validate -- --strict
+
+  generate:
+    name: Generate Documentation
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Needed for changelog generation
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate API documentation
+        run: npm run docs:api
+
+      - name: Generate SDK documentation
+        run: npm run docs:sdk
+
+      - name: Generate changelog
+        run: npm run docs:changelog
+
+      - name: Generate reference documentation
+        run: npm run docs:reference
+
+      - name: Archive documentation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: documentation
+          path: docs/
+          retention-days: 30
+
+  deploy:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: generate
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate all documentation
+        run: npm run docs:all
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Create Pages structure
+        run: |
+          mkdir -p _site
+          cp -r docs/* _site/
+          
+          # Create index.html if it doesn't exist
+          if [ ! -f _site/index.html ]; then
+            if [ -f _site/README.md ]; then
+              # Convert README.md to index.html
+              npm run docs:serve -- --build-only --output _site
+            else
+              # Create basic index.html
+              cat > _site/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <title>n8n-MCP Documentation</title>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <style>
+                  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 40px; }
+                  h1 { color: #2c3e50; }
+                  .section { margin: 20px 0; }
+                  .section a { display: block; padding: 10px; background: #f8f9fa; margin: 5px 0; text-decoration: none; color: #2c3e50; border-radius: 4px; }
+                  .section a:hover { background: #e9ecef; }
+              </style>
+          </head>
+          <body>
+              <h1>n8n-MCP Documentation</h1>
+              <div class="section">
+                  <h2>API Documentation</h2>
+                  <a href="api/">API Reference</a>
+              </div>
+              <div class="section">
+                  <h2>SDK Documentation</h2>
+                  <a href="sdk/">SDK Reference</a>
+              </div>
+              <div class="section">
+                  <h2>Other</h2>
+                  <a href="CHANGELOG.md">Changelog</a>
+                  <a href="reference.md">Complete Reference</a>
+              </div>
+          </body>
+          </html>
+          EOF
+            fi
+          fi
+
+      - name: Upload to Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  notify:
+    name: Notify on Documentation Updates
+    runs-on: ubuntu-latest
+    needs: [validate, generate, deploy]
+    if: always() && github.ref == 'refs/heads/main'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get commit info
+        id: commit
+        run: |
+          echo "message=$(git log -1 --pretty=format:'%s')" >> $GITHUB_OUTPUT
+          echo "author=$(git log -1 --pretty=format:'%an')" >> $GITHUB_OUTPUT
+          echo "sha=$(git log -1 --pretty=format:'%h')" >> $GITHUB_OUTPUT
+
+      - name: Slack notification on success
+        if: needs.deploy.result == 'success'
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_CHANNEL: '#documentation'
+          SLACK_COLOR: 'good'
+          SLACK_MESSAGE: |
+            📚 Documentation updated successfully!
+            
+            Commit: `${{ steps.commit.outputs.sha }}` by ${{ steps.commit.outputs.author }}
+            Message: ${{ steps.commit.outputs.message }}
+            
+            View: ${{ steps.deployment.outputs.page_url }}
+
+      - name: Slack notification on failure
+        if: needs.validate.result == 'failure' || needs.generate.result == 'failure' || needs.deploy.result == 'failure'
+        uses: rtCamp/action-slack-notify@v2
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+          SLACK_CHANNEL: '#documentation'
+          SLACK_COLOR: 'danger'
+          SLACK_MESSAGE: |
+            ❌ Documentation build failed!
+            
+            Commit: `${{ steps.commit.outputs.sha }}` by ${{ steps.commit.outputs.author }}
+            Message: ${{ steps.commit.outputs.message }}
+            
+            Check: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  performance-check:
+    name: Documentation Performance Check
+    runs-on: ubuntu-latest
+    needs: generate
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate documentation
+        run: npm run docs:all
+
+      - name: Install Lighthouse CI
+        run: npm install -g @lhci/cli@0.12.x
+
+      - name: Start documentation server
+        run: |
+          npm run docs:serve -- --port 3001 &
+          sleep 10
+
+      - name: Run Lighthouse CI
+        run: |
+          lhci autorun --upload.target=filesystem --upload.outputDir=./lighthouse-reports
+        env:
+          LHCI_BUILD_CONTEXT__CURRENT_HASH: ${{ github.sha }}
+
+      - name: Upload Lighthouse reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-reports
+          path: lighthouse-reports/
+          retention-days: 7
+
+  accessibility-check:
+    name: Accessibility Check
+    runs-on: ubuntu-latest
+    needs: generate
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate documentation
+        run: npm run docs:all
+
+      - name: Install Pa11y
+        run: npm install -g pa11y
+
+      - name: Start documentation server
+        run: |
+          npm run docs:serve -- --port 3002 &
+          sleep 10
+
+      - name: Run accessibility tests
+        run: |
+          pa11y http://localhost:3002 --reporter json > accessibility-report.json || true
+          pa11y http://localhost:3002/api/ --reporter json >> accessibility-report.json || true
+          pa11y http://localhost:3002/sdk/ --reporter json >> accessibility-report.json || true
+
+      - name: Upload accessibility report
+        uses: actions/upload-artifact@v4
+        with:
+          name: accessibility-report
+          path: accessibility-report.json
+          retention-days: 7

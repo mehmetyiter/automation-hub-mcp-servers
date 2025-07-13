@@ -1,0 +1,361 @@
+# {{info.packageName}}
+
+Official TypeScript SDK for the {{info.title}} API.
+
+{{info.description}}
+
+## Installation
+
+```bash
+npm install {{info.packageName}}
+# or
+yarn add {{info.packageName}}
+# or
+pnpm add {{info.packageName}}
+```
+
+## Quick Start
+
+```typescript
+import { {{info.clientName}} } from '{{info.packageName}}';
+
+// Initialize the client
+const client = new {{info.clientName}}({
+  apiKey: 'your-api-key',
+  baseURL: '{{servers.0.url}}'
+});
+
+// Make API calls
+try {
+  // List workflows
+  const workflows = await client.workflows.list({
+    page: 1,
+    limit: 20
+  });
+  
+  console.log('Workflows:', workflows);
+  
+  // Create a new workflow
+  const newWorkflow = await client.workflows.create({
+    name: 'My Automation Workflow',
+    description: 'Automated email workflow',
+    prompt: 'Send welcome email when user signs up'
+  });
+  
+  console.log('Created workflow:', newWorkflow);
+  
+} catch (error) {
+  console.error('API Error:', error);
+}
+```
+
+## Configuration
+
+### Client Options
+
+```typescript
+const client = new {{info.clientName}}({
+  // Required
+  apiKey: 'your-api-key',
+  
+  // Optional
+  baseURL: '{{servers.0.url}}',  // API base URL
+  timeout: 30000,                 // Request timeout in ms
+  retries: 3,                     // Number of retry attempts
+  headers: {                      // Custom headers
+    'X-Custom-Header': 'value'
+  },
+  debug: true,                    // Enable debug logging
+  
+  // Interceptors
+  onRequest: (config) => {
+    console.log('Request:', config);
+    return config;
+  },
+  onResponse: (response) => {
+    console.log('Response:', response);
+    return response;
+  },
+  onError: (error) => {
+    console.error('Error:', error);
+  }
+});
+```
+
+## Authentication
+
+The SDK supports multiple authentication methods:
+
+### API Key Authentication
+
+```typescript
+const client = new {{info.clientName}}({
+  apiKey: 'your-api-key'
+});
+
+// Update API key at runtime
+client.setApiKey('new-api-key');
+```
+
+### Bearer Token Authentication
+
+```typescript
+const client = new {{info.clientName}}({
+  apiKey: 'Bearer your-jwt-token'
+});
+```
+
+## API Resources
+
+{{#each endpoints}}
+{{#if @first}}
+### Available Resources
+
+{{#each ../endpoints}}
+- `client.{{camelCase resourceName}}` - {{resourceName}} operations
+{{/each}}
+{{/if}}
+{{/each}}
+
+## Examples
+
+### Workflows
+
+```typescript
+// List workflows
+const workflows = await client.workflows.list({
+  page: 1,
+  limit: 20,
+  status: 'active'
+});
+
+// Get a specific workflow
+const workflow = await client.workflows.get('workflow-id');
+
+// Create a workflow
+const newWorkflow = await client.workflows.create({
+  name: 'Email Automation',
+  description: 'Send automated emails',
+  prompt: 'Send welcome email when user signs up',
+  tags: ['email', 'automation']
+});
+
+// Update a workflow
+const updatedWorkflow = await client.workflows.update('workflow-id', {
+  name: 'Updated Email Automation',
+  active: true
+});
+
+// Delete a workflow
+await client.workflows.delete('workflow-id');
+
+// Execute a workflow
+const execution = await client.workflows.execute('workflow-id', {
+  data: {
+    email: 'user@example.com',
+    name: 'John Doe'
+  }
+});
+```
+
+### Error Handling
+
+```typescript
+import { ApiError, ValidationError, NetworkError } from '{{info.packageName}}';
+
+try {
+  const workflow = await client.workflows.get('invalid-id');
+} catch (error) {
+  if (error instanceof ValidationError) {
+    console.error('Validation failed:', error.details);
+  } else if (error instanceof NetworkError) {
+    console.error('Network error:', error.message);
+  } else if (error instanceof ApiError) {
+    console.error(`API error ${error.status}:`, error.message);
+    
+    switch (error.status) {
+      case 401:
+        console.error('Authentication failed');
+        break;
+      case 403:
+        console.error('Permission denied');
+        break;
+      case 404:
+        console.error('Resource not found');
+        break;
+      case 429:
+        console.error('Rate limit exceeded');
+        break;
+    }
+  }
+}
+```
+
+### Pagination
+
+```typescript
+// Using pagination
+let page = 1;
+let hasMore = true;
+
+while (hasMore) {
+  const response = await client.workflows.list({
+    page,
+    limit: 50
+  });
+  
+  console.log(`Page ${page}:`, response.data);
+  
+  hasMore = page < response.pagination.totalPages;
+  page++;
+}
+```
+
+### Event Handling
+
+```typescript
+// Listen to SDK events
+client.on('request', (config) => {
+  console.log('Making request to:', config.url);
+});
+
+client.on('response', (response) => {
+  console.log('Received response:', response.status);
+});
+
+client.on('error', (error) => {
+  console.error('Request failed:', error);
+});
+
+client.on('retry', ({ retryCount, error }) => {
+  console.log(`Retry attempt ${retryCount} due to:`, error.message);
+});
+```
+
+### Custom Requests
+
+```typescript
+// Make custom API requests
+const customResponse = await client.request({
+  method: 'POST',
+  url: '/custom-endpoint',
+  data: {
+    custom: 'data'
+  },
+  headers: {
+    'X-Custom-Header': 'value'
+  }
+});
+```
+
+## TypeScript Support
+
+This SDK is written in TypeScript and provides full type definitions:
+
+```typescript
+import { 
+  {{info.clientName}},
+  Workflow,
+  WorkflowExecution,
+  ApiError 
+} from '{{info.packageName}}';
+
+// All responses are fully typed
+const workflow: Workflow = await client.workflows.get('id');
+
+// TypeScript will catch type errors
+client.workflows.create({
+  name: 'My Workflow',
+  // TypeScript error: property 'invalid' does not exist
+  invalid: true
+});
+```
+
+## Advanced Usage
+
+### Interceptors
+
+```typescript
+// Add request interceptor
+const client = new {{info.clientName}}({
+  apiKey: 'your-api-key',
+  onRequest: async (config) => {
+    // Add custom logic before request
+    config.headers['X-Request-Time'] = Date.now().toString();
+    return config;
+  }
+});
+
+// Add response interceptor
+client.on('response', (response) => {
+  // Log response time
+  const requestTime = response.config.headers['X-Request-Time'];
+  const responseTime = Date.now() - parseInt(requestTime);
+  console.log(`Request took ${responseTime}ms`);
+});
+```
+
+### Retry Configuration
+
+```typescript
+const client = new {{info.clientName}}({
+  apiKey: 'your-api-key',
+  retries: 5, // Retry up to 5 times
+  
+  // Custom retry logic
+  onError: (error) => {
+    // Implement custom retry logic
+    if (error.status === 503) {
+      // Service unavailable, wait longer
+      return new Promise(resolve => setTimeout(resolve, 5000));
+    }
+  }
+});
+```
+
+### Environment Variables
+
+```typescript
+// Load configuration from environment
+const client = new {{info.clientName}}({
+  apiKey: process.env.N8N_MCP_API_KEY!,
+  baseURL: process.env.N8N_MCP_BASE_URL || '{{servers.0.url}}',
+  debug: process.env.NODE_ENV === 'development'
+});
+```
+
+## Testing
+
+{{#if options.includeTests}}
+The SDK includes comprehensive tests. To run them:
+
+```bash
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+
+# Generate coverage report
+npm run test:coverage
+```
+{{/if}}
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+## Support
+
+- 📚 [Documentation]({{info.termsOfService}})
+- 💬 [Discord Community](https://discord.gg/n8n-mcp)
+- 🐛 [Issue Tracker](https://github.com/n8n-mcp/{{info.packageName}}/issues)
+- 📧 [Support Email](mailto:{{info.contact.email}})
+
+## License
+
+This SDK is licensed under the {{info.license}} License. See [LICENSE](LICENSE) for details.
+
+---
+
+Generated with ❤️ by the n8n-MCP SDK Generator

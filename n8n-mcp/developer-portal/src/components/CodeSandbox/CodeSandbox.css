@@ -1,0 +1,133 @@
+.code-sandbox {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border: 1px solid #e1e8ed;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #1e1e1e;
+}
+
+.monaco-container {
+  flex: 1;
+  min-height: 200px;
+}
+
+.code-sandbox-footer {
+  padding: 8px 16px;
+  background: #252526;
+  border-top: 1px solid #3e3e42;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.keyboard-hint {
+  font-size: 12px;
+  color: #858585;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.keyboard-hint kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 20px;
+  padding: 0 6px;
+  background: #3e3e42;
+  border: 1px solid #464647;
+  border-radius: 3px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+  font-size: 11px;
+  color: #cccccc;
+  box-shadow: 0 1px 0 #464647;
+}
+
+/* Light theme adjustments */
+.code-sandbox.light {
+  background: white;
+  border-color: #d1d5db;
+}
+
+.code-sandbox.light .code-sandbox-footer {
+  background: #f9fafb;
+  border-top-color: #e5e7eb;
+}
+
+.code-sandbox.light .keyboard-hint {
+  color: #6b7280;
+}
+
+.code-sandbox.light .keyboard-hint kbd {
+  background: white;
+  border-color: #d1d5db;
+  color: #374151;
+  box-shadow: 0 1px 0 #e5e7eb;
+}
+
+/* Loading state */
+.code-sandbox-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: #1e1e1e;
+  color: #cccccc;
+}
+
+.code-sandbox.light .code-sandbox-loading {
+  background: #f9fafb;
+  color: #6b7280;
+}
+
+/* Error state */
+.code-sandbox-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 20px;
+  text-align: center;
+  background: #1e1e1e;
+  color: #f48771;
+}
+
+.code-sandbox.light .code-sandbox-error {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.error-icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.error-message {
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .monaco-container {
+    min-height: 300px;
+  }
+  
+  .keyboard-hint {
+    font-size: 11px;
+  }
+  
+  .keyboard-hint kbd {
+    min-width: 20px;
+    height: 18px;
+    font-size: 10px;
+    padding: 0 4px;
+  }
+}

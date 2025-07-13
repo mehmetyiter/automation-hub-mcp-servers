@@ -3,6 +3,7 @@ import sqlite3 from 'sqlite3';
 import bcrypt from 'bcryptjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { createAIProviderTable } from './database-ai-providers.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -94,6 +95,9 @@ class Database {
     await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)`);
     await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_credentials_user ON credentials(user_id)`);
     await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_credentials_platform ON credentials(platform)`);
+    
+    // Create AI provider table
+    await createAIProviderTable();
   }
 
   private async seedDemoUsers() {
@@ -201,6 +205,11 @@ class Database {
 
   async getCredentialById(id: number): Promise<Credential | null> {
     return await this.db.get('SELECT * FROM credentials WHERE id = ?', [id]);
+  }
+  
+  // Expose db instance for other modules
+  get dbInstance() {
+    return this.db;
   }
 }
 

@@ -14,7 +14,7 @@ export interface AIProviderSetting {
 }
 
 export async function createAIProviderTable() {
-  await (db as any).db.exec(`
+  await (db as any).dbInstance.exec(`
     CREATE TABLE IF NOT EXISTS ai_provider_settings (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
@@ -31,8 +31,8 @@ export async function createAIProviderTable() {
     )
   `);
 
-  await (db as any).db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_providers_user ON ai_provider_settings(user_id)`);
-  await (db as any).db.exec(`CREATE INDEX IF NOT EXISTS idx_ai_providers_active ON ai_provider_settings(is_active)`);
+  await (db as any).dbInstance.exec(`CREATE INDEX IF NOT EXISTS idx_ai_providers_user ON ai_provider_settings(user_id)`);
+  await (db as any).dbInstance.exec(`CREATE INDEX IF NOT EXISTS idx_ai_providers_active ON ai_provider_settings(is_active)`);
 }
 
 export async function saveAIProviderSettings(data: {
@@ -43,7 +43,7 @@ export async function saveAIProviderSettings(data: {
   temperature?: number;
   max_tokens?: number;
 }): Promise<number> {
-  const result = await (db as any).db.run(
+  const result = await (db as any).dbInstance.run(
     `INSERT INTO ai_provider_settings (user_id, provider, api_key_encrypted, model, temperature, max_tokens) 
      VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(user_id, provider) 
@@ -71,14 +71,14 @@ export async function saveAIProviderSettings(data: {
 }
 
 export async function getAIProviderSettings(userId: number): Promise<AIProviderSetting[]> {
-  return await (db as any).db.all(
+  return await (db as any).dbInstance.all(
     'SELECT * FROM ai_provider_settings WHERE user_id = ? ORDER BY provider',
     [userId]
   );
 }
 
 export async function getActiveAIProvider(userId: number): Promise<AIProviderSetting | null> {
-  return await (db as any).db.get(
+  return await (db as any).dbInstance.get(
     'SELECT * FROM ai_provider_settings WHERE user_id = ? AND is_active = 1 LIMIT 1',
     [userId]
   );
@@ -86,20 +86,20 @@ export async function getActiveAIProvider(userId: number): Promise<AIProviderSet
 
 export async function setActiveAIProvider(userId: number, provider: string): Promise<void> {
   // First, deactivate all providers for this user
-  await (db as any).db.run(
+  await (db as any).dbInstance.run(
     'UPDATE ai_provider_settings SET is_active = 0 WHERE user_id = ?',
     [userId]
   );
   
   // Then activate the selected provider
-  await (db as any).db.run(
+  await (db as any).dbInstance.run(
     'UPDATE ai_provider_settings SET is_active = 1 WHERE user_id = ? AND provider = ?',
     [userId, provider]
   );
 }
 
 export async function deleteAIProviderSettings(userId: number, provider: string): Promise<void> {
-  await (db as any).db.run(
+  await (db as any).dbInstance.run(
     'DELETE FROM ai_provider_settings WHERE user_id = ? AND provider = ?',
     [userId, provider]
   );

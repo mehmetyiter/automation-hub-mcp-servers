@@ -1,0 +1,67 @@
+/**
+ * Auto-generated TypeScript types for {{info.title}}
+ * Version: {{info.version}}
+ * Generated: {{generatedAt}}
+ */
+
+{{#each models}}
+/**
+ * {{#if schema.description}}{{schema.description}}{{else}}{{name}} model{{/if}}
+ */
+export interface {{className}} {
+{{#each properties}}
+  /**
+   * {{#if description}}{{description}}{{else}}{{name}} property{{/if}}
+   */
+  {{name}}{{#unless required}}?{{/unless}}: {{getType schema ../language}};
+{{/each}}
+}
+
+{{/each}}
+
+/**
+ * Common types
+ */
+export interface PaginationParams {
+  page?: number;
+  limit?: number;
+  sort?: string;
+  order?: 'asc' | 'desc';
+}
+
+export interface ListResponse<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
+export interface ErrorResponse {
+  error: string;
+  message: string;
+  code?: string;
+  details?: any[];
+  requestId?: string;
+}
+
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+export interface RequestOptions {
+  headers?: Record<string, string>;
+  query?: Record<string, any>;
+  timeout?: number;
+}
+
+/**
+ * API Response wrapper
+ */
+export interface ApiResponse<T = any> {
+  data: T;
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  requestId?: string;
+}

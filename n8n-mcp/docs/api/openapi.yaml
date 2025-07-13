@@ -1,0 +1,1146 @@
+openapi: 3.0.3
+info:
+  title: n8n-MCP API
+  description: |
+    The n8n-MCP API provides a comprehensive automation platform that enables users to create, manage, and execute workflows using AI-powered natural language prompts. 
+    
+    ## Features
+    - 🤖 AI-powered workflow generation
+    - 🔄 Real-time workflow execution
+    - 🔐 Secure API key authentication
+    - 📊 Comprehensive monitoring and analytics
+    - 🧪 Testing and validation tools
+    
+    ## Getting Started
+    1. Obtain an API key from your dashboard
+    2. Review the authentication section below
+    3. Try your first API call with the interactive documentation
+    4. Explore our SDKs and tutorials for deeper integration
+    
+    ## Rate Limits
+    - **Free Tier**: 1,000 requests/hour
+    - **Pro Tier**: 10,000 requests/hour  
+    - **Enterprise**: Custom limits available
+    
+    ## Support
+    - 📚 [Documentation](https://docs.n8n-mcp.com)
+    - 💬 [Community Discord](https://discord.gg/n8n-mcp)
+    - 📧 [Support Email](mailto:support@n8n-mcp.com)
+    
+  version: 1.0.0
+  termsOfService: https://n8n-mcp.com/terms
+  contact:
+    name: n8n-MCP Support
+    url: https://n8n-mcp.com/support
+    email: support@n8n-mcp.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://api.n8n-mcp.com
+    description: Production server
+  - url: https://staging-api.n8n-mcp.com
+    description: Staging server
+  - url: https://sandbox-api.n8n-mcp.com
+    description: Sandbox server (for testing)
+
+paths:
+  /health:
+    get:
+      summary: Health Check
+      description: Check the API health status and version information
+      operationId: healthCheck
+      tags:
+        - System
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: "healthy"
+                version: "1.0.0"
+                timestamp: "2024-01-07T10:30:00Z"
+                services:
+                  database: "healthy"
+                  redis: "healthy"
+                  ai_service: "healthy"
+
+  /auth/login:
+    post:
+      summary: User Authentication
+      description: Authenticate user and receive access token
+      operationId: login
+      tags:
+        - Authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            example:
+              email: "user@example.com"
+              password: "secure_password"
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              example:
+                token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                expires_in: 3600
+                user:
+                  id: "user123"
+                  email: "user@example.com"
+                  name: "John Doe"
+                  plan: "pro"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /workflows:
+    get:
+      summary: List Workflows
+      description: Retrieve a paginated list of workflows for the authenticated user
+      operationId: listWorkflows
+      tags:
+        - Workflows
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: page
+          in: query
+          description: Page number for pagination
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+          example: 1
+        - name: limit
+          in: query
+          description: Number of workflows per page
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+          example: 20
+        - name: status
+          in: query
+          description: Filter by workflow status
+          schema:
+            type: string
+            enum: [active, inactive, draft, error]
+          example: active
+        - name: search
+          in: query
+          description: Search workflows by name or description
+          schema:
+            type: string
+          example: "email automation"
+        - name: tags
+          in: query
+          description: Filter by tags (comma-separated)
+          schema:
+            type: string
+          example: "automation,email"
+      responses:
+        '200':
+          description: List of workflows
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowListResponse'
+              example:
+                workflows:
+                  - id: "wf_123"
+                    name: "Email Automation"
+                    description: "Automated email campaign workflow"
+                    status: "active"
+                    created_at: "2024-01-01T00:00:00Z"
+                    updated_at: "2024-01-07T10:30:00Z"
+                    tags: ["automation", "email"]
+                    nodes_count: 5
+                    executions_count: 1250
+                pagination:
+                  page: 1
+                  limit: 20
+                  total: 45
+                  total_pages: 3
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      summary: Create Workflow
+      description: |
+        Create a new workflow using either natural language description or explicit node configuration.
+        
+        ## Natural Language Creation
+        Use the `prompt` field to describe your workflow in natural language. Our AI will generate the appropriate nodes and connections.
+        
+        ## Manual Creation  
+        Provide explicit `nodes` and `connections` arrays for precise control over the workflow structure.
+        
+        ## Examples
+        - "Send an email when a webhook receives data"
+        - "Process CSV files and save to database"
+        - "Monitor API endpoint and alert on failures"
+      operationId: createWorkflow
+      tags:
+        - Workflows
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWorkflowRequest'
+            examples:
+              natural_language:
+                summary: Natural Language Workflow
+                description: Create workflow using AI prompt
+                value:
+                  name: "Email Automation"
+                  prompt: "Send a welcome email when someone submits the contact form on my website"
+                  tags: ["automation", "email"]
+                  active: true
+              manual_creation:
+                summary: Manual Workflow Creation
+                description: Create workflow with explicit nodes
+                value:
+                  name: "API Data Processing"
+                  description: "Fetch data from API and process it"
+                  nodes:
+                    - id: "webhook_1"
+                      type: "webhook"
+                      parameters:
+                        path: "/api/data"
+                        method: "POST"
+                    - id: "transform_1"
+                      type: "transform"
+                      parameters:
+                        code: "return items.map(item => ({ ...item, processed: true }));"
+                  connections:
+                    - source: "webhook_1"
+                      target: "transform_1"
+                  active: false
+      responses:
+        '201':
+          description: Workflow created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowResponse'
+              example:
+                id: "wf_456"
+                name: "Email Automation"
+                description: "AI-generated workflow for email automation"
+                status: "active"
+                nodes:
+                  - id: "webhook_1"
+                    type: "webhook"
+                    name: "Contact Form Trigger"
+                    parameters:
+                      path: "/contact-form"
+                      method: "POST"
+                  - id: "email_1"
+                    type: "email"
+                    name: "Send Welcome Email"
+                    parameters:
+                      to: "{{ $json.email }}"
+                      subject: "Welcome to our platform!"
+                      template: "welcome_email"
+                connections:
+                  - source: "webhook_1"
+                    target: "email_1"
+                created_at: "2024-01-07T10:30:00Z"
+                updated_at: "2024-01-07T10:30:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /workflows/{workflowId}:
+    get:
+      summary: Get Workflow
+      description: Retrieve detailed information about a specific workflow
+      operationId: getWorkflow
+      tags:
+        - Workflows
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          description: Unique identifier of the workflow
+          schema:
+            type: string
+          example: "wf_123"
+      responses:
+        '200':
+          description: Workflow details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      summary: Update Workflow
+      description: Update an existing workflow's configuration, nodes, or metadata
+      operationId: updateWorkflow
+      tags:
+        - Workflows
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          description: Unique identifier of the workflow
+          schema:
+            type: string
+          example: "wf_123"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWorkflowRequest'
+            example:
+              name: "Updated Email Automation"
+              description: "Enhanced email automation with additional features"
+              active: true
+              nodes:
+                - id: "webhook_1"
+                  type: "webhook"
+                  parameters:
+                    path: "/contact-form"
+                    method: "POST"
+                - id: "condition_1"
+                  type: "condition"
+                  parameters:
+                    field: "email"
+                    operation: "exists"
+                - id: "email_1"
+                  type: "email"
+                  parameters:
+                    to: "{{ $json.email }}"
+                    subject: "Welcome!"
+              connections:
+                - source: "webhook_1"
+                  target: "condition_1"
+                - source: "condition_1"
+                  target: "email_1"
+                  condition: "true"
+      responses:
+        '200':
+          description: Workflow updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WorkflowResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    delete:
+      summary: Delete Workflow
+      description: Permanently delete a workflow and all its execution history
+      operationId: deleteWorkflow
+      tags:
+        - Workflows
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          description: Unique identifier of the workflow
+          schema:
+            type: string
+          example: "wf_123"
+      responses:
+        '204':
+          description: Workflow deleted successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workflows/{workflowId}/execute:
+    post:
+      summary: Execute Workflow
+      description: |
+        Trigger immediate execution of a workflow with optional input data.
+        
+        ## Execution Modes
+        - **Synchronous**: Wait for completion and return results
+        - **Asynchronous**: Return execution ID immediately
+        
+        ## Input Data
+        Provide data that will be available to the workflow's first node as `$input.json`.
+      operationId: executeWorkflow
+      tags:
+        - Workflows
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          description: Unique identifier of the workflow
+          schema:
+            type: string
+          example: "wf_123"
+        - name: mode
+          in: query
+          description: Execution mode
+          schema:
+            type: string
+            enum: [sync, async]
+            default: async
+          example: "async"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExecuteWorkflowRequest'
+            example:
+              data:
+                name: "John Doe"
+                email: "john@example.com"
+                company: "Acme Corp"
+              metadata:
+                source: "api"
+                campaign_id: "camp_123"
+      responses:
+        '200':
+          description: Workflow execution completed (sync mode)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionResponse'
+        '202':
+          description: Workflow execution started (async mode)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionStartedResponse'
+              example:
+                execution_id: "exec_789"
+                status: "running"
+                started_at: "2024-01-07T10:30:00Z"
+                estimated_duration: 30
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /workflows/{workflowId}/executions:
+    get:
+      summary: List Workflow Executions
+      description: Retrieve execution history for a specific workflow
+      operationId: listWorkflowExecutions
+      tags:
+        - Executions
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: workflowId
+          in: path
+          required: true
+          description: Unique identifier of the workflow
+          schema:
+            type: string
+          example: "wf_123"
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          description: Filter by execution status
+          schema:
+            type: string
+            enum: [pending, running, success, error, cancelled]
+        - name: from
+          in: query
+          description: Start date filter (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+          example: "2024-01-01T00:00:00Z"
+        - name: to
+          in: query
+          description: End date filter (ISO 8601)
+          schema:
+            type: string
+            format: date-time
+          example: "2024-01-07T23:59:59Z"
+      responses:
+        '200':
+          description: List of workflow executions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionListResponse'
+
+  /executions/{executionId}:
+    get:
+      summary: Get Execution Details
+      description: Retrieve detailed information about a specific workflow execution
+      operationId: getExecution
+      tags:
+        - Executions
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      parameters:
+        - name: executionId
+          in: path
+          required: true
+          description: Unique identifier of the execution
+          schema:
+            type: string
+          example: "exec_789"
+        - name: include_data
+          in: query
+          description: Include execution data in response
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Execution details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExecutionResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api-keys:
+    get:
+      summary: List API Keys
+      description: Retrieve all API keys for the authenticated user
+      operationId: listApiKeys
+      tags:
+        - API Keys
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      summary: Create API Key
+      description: Generate a new API key for programmatic access
+      operationId: createApiKey
+      tags:
+        - API Keys
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiKeyRequest'
+            example:
+              name: "Production Integration"
+              scopes: ["read", "write"]
+              expires_at: "2024-12-31T23:59:59Z"
+      responses:
+        '201':
+          description: API key created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /api-keys/{keyId}:
+    delete:
+      summary: Revoke API Key
+      description: Permanently revoke an API key
+      operationId: revokeApiKey
+      tags:
+        - API Keys
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: keyId
+          in: path
+          required: true
+          description: Unique identifier of the API key
+          schema:
+            type: string
+          example: "key_123"
+      responses:
+        '204':
+          description: API key revoked successfully
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from login endpoint
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: API key for programmatic access
+
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+        version:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        services:
+          type: object
+          additionalProperties:
+            type: string
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          description: User's email address
+        password:
+          type: string
+          minLength: 8
+          description: User's password
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT access token
+        expires_in:
+          type: integer
+          description: Token expiration time in seconds
+        user:
+          $ref: '#/components/schemas/User'
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        plan:
+          type: string
+          enum: [free, pro, enterprise]
+        created_at:
+          type: string
+          format: date-time
+
+    WorkflowListResponse:
+      type: object
+      properties:
+        workflows:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowSummary'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    WorkflowSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, draft, error]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        tags:
+          type: array
+          items:
+            type: string
+        nodes_count:
+          type: integer
+        executions_count:
+          type: integer
+
+    CreateWorkflowRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Human-readable workflow name
+        description:
+          type: string
+          maxLength: 1000
+          description: Optional workflow description
+        prompt:
+          type: string
+          description: Natural language description for AI generation
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowNode'
+          description: Manual node configuration (alternative to prompt)
+        connections:
+          type: array
+          items:
+            $ref: '#/components/schemas/NodeConnection'
+          description: Node connections (used with manual nodes)
+        tags:
+          type: array
+          items:
+            type: string
+          description: Tags for organizing workflows
+        active:
+          type: boolean
+          default: false
+          description: Whether workflow should be active immediately
+
+    UpdateWorkflowRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          maxLength: 1000
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowNode'
+        connections:
+          type: array
+          items:
+            $ref: '#/components/schemas/NodeConnection'
+        tags:
+          type: array
+          items:
+            type: string
+        active:
+          type: boolean
+
+    WorkflowResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, draft, error]
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/WorkflowNode'
+        connections:
+          type: array
+          items:
+            $ref: '#/components/schemas/NodeConnection'
+        tags:
+          type: array
+          items:
+            type: string
+        settings:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    WorkflowNode:
+      type: object
+      required:
+        - id
+        - type
+      properties:
+        id:
+          type: string
+          description: Unique node identifier within workflow
+        type:
+          type: string
+          description: Node type (webhook, email, transform, etc.)
+        name:
+          type: string
+          description: Human-readable node name
+        parameters:
+          type: object
+          description: Node-specific configuration parameters
+        position:
+          type: object
+          properties:
+            x:
+              type: number
+            y:
+              type: number
+
+    NodeConnection:
+      type: object
+      required:
+        - source
+        - target
+      properties:
+        source:
+          type: string
+          description: Source node ID
+        target:
+          type: string
+          description: Target node ID
+        source_output:
+          type: string
+          default: main
+          description: Source node output name
+        target_input:
+          type: string
+          default: main
+          description: Target node input name
+
+    ExecuteWorkflowRequest:
+      type: object
+      properties:
+        data:
+          type: object
+          description: Input data for workflow execution
+        metadata:
+          type: object
+          description: Additional metadata for tracking
+
+    ExecutionStartedResponse:
+      type: object
+      properties:
+        execution_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, running]
+        started_at:
+          type: string
+          format: date-time
+        estimated_duration:
+          type: integer
+          description: Estimated duration in seconds
+
+    ExecutionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        workflow_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, success, error, cancelled]
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        duration:
+          type: integer
+          description: Execution duration in milliseconds
+        data:
+          type: object
+          description: Execution input/output data
+        error:
+          type: string
+          description: Error message if execution failed
+
+    ExecutionListResponse:
+      type: object
+      properties:
+        executions:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExecutionResponse'
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+
+    ApiKeyListResponse:
+      type: object
+      properties:
+        api_keys:
+          type: array
+          items:
+            $ref: '#/components/schemas/ApiKeySummary'
+
+    ApiKeySummary:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        scopes:
+          type: array
+          items:
+            type: string
+        last_used:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    CreateApiKeyRequest:
+      type: object
+      required:
+        - name
+        - scopes
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Human-readable name for the API key
+        scopes:
+          type: array
+          items:
+            type: string
+            enum: [read, write, admin]
+          description: Permissions granted to this API key
+        expires_at:
+          type: string
+          format: date-time
+          description: Optional expiration date
+
+    ApiKeyResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        key:
+          type: string
+          description: The actual API key (only shown once)
+        scopes:
+          type: array
+          items:
+            type: string
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        limit:
+          type: integer
+        total:
+          type: integer
+        total_pages:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error type
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+        request_id:
+          type: string
+          description: Unique request identifier for support
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "bad_request"
+            message: "The request is invalid"
+            request_id: "req_123"
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "unauthorized"
+            message: "Authentication required"
+            request_id: "req_123"
+
+    Forbidden:
+      description: Access forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "forbidden"
+            message: "Insufficient permissions"
+            request_id: "req_123"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "not_found"
+            message: "The requested resource was not found"
+            request_id: "req_123"
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: "validation_error"
+            message: "Request validation failed"
+            details:
+              - field: "name"
+                message: "Name is required"
+              - field: "email"
+                message: "Invalid email format"
+            request_id: "req_123"
+
+tags:
+  - name: System
+    description: System health and status endpoints
+  - name: Authentication
+    description: User authentication and session management
+  - name: Workflows
+    description: Workflow management and execution
+  - name: Executions
+    description: Workflow execution tracking and history
+  - name: API Keys
+    description: API key management for programmatic access
+
+externalDocs:
+  description: Complete API documentation and guides
+  url: https://docs.n8n-mcp.com

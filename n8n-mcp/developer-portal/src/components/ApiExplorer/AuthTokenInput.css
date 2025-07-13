@@ -1,0 +1,275 @@
+/* Auth Token Input Styles */
+.auth-token-input {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 300px;
+}
+
+.auth-token-input label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  margin-bottom: 0.25rem;
+}
+
+.token-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.token-input {
+  flex: 1;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 0.5rem 3rem 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: #374151;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  transition: all 0.2s;
+}
+
+.token-input::placeholder {
+  color: #9ca3af;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+.token-input:hover {
+  border-color: #9ca3af;
+}
+
+.token-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.token-actions {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 0.25rem;
+}
+
+.toggle-visibility,
+.clear-token {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  color: #6b7280;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+}
+
+.toggle-visibility:hover,
+.clear-token:hover {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.token-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.generate-token-btn {
+  background: #3b82f6;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  align-self: flex-start;
+}
+
+.generate-token-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.generate-token-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.token-help {
+  font-size: 0.75rem;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+.token-help a {
+  color: #3b82f6;
+  text-decoration: underline;
+}
+
+.token-help a:hover {
+  color: #2563eb;
+}
+
+.token-status {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.token-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.token-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.token-value {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.75rem;
+  color: #1f2937;
+  background: #fff;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.token-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.token-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.token-indicator.valid {
+  background-color: #10b981;
+}
+
+.token-indicator.invalid {
+  background-color: #ef4444;
+}
+
+.token-status-text {
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+/* Animation for token generation */
+.generate-token-btn:disabled::after {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-left: 0.5rem;
+  border: 2px solid #fff;
+  border-top: 2px solid transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .auth-token-input label {
+    color: #f3f4f6;
+  }
+  
+  .token-input {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f3f4f6;
+  }
+  
+  .token-input::placeholder {
+    color: #9ca3af;
+  }
+  
+  .token-input:hover {
+    border-color: #6b7280;
+  }
+  
+  .token-input:focus {
+    border-color: #60a5fa;
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.1);
+  }
+  
+  .toggle-visibility,
+  .clear-token {
+    color: #9ca3af;
+  }
+  
+  .toggle-visibility:hover,
+  .clear-token:hover {
+    background: #4b5563;
+    color: #f3f4f6;
+  }
+  
+  .generate-token-btn {
+    background: #3b82f6;
+  }
+  
+  .generate-token-btn:hover:not(:disabled) {
+    background: #2563eb;
+  }
+  
+  .token-help {
+    color: #9ca3af;
+  }
+  
+  .token-help a {
+    color: #60a5fa;
+  }
+  
+  .token-help a:hover {
+    color: #3b82f6;
+  }
+  
+  .token-status {
+    background: #1f2937;
+    border-color: #374151;
+  }
+  
+  .token-label {
+    color: #f3f4f6;
+  }
+  
+  .token-value {
+    background: #374151;
+    border-color: #4b5563;
+    color: #f3f4f6;
+  }
+  
+  .token-status-text {
+    color: #9ca3af;
+  }
+}

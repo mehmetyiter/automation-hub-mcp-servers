@@ -1,0 +1,244 @@
+/**
+ * Custom error classes for {{info.title}} SDK
+ */
+
+/**
+ * Base error class for all SDK errors
+ */
+export class {{info.clientName}}Error extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = '{{info.clientName}}Error';
+    Object.setPrototypeOf(this, {{info.clientName}}Error.prototype);
+  }
+}
+
+/**
+ * API error with HTTP status code and response data
+ */
+export class ApiError extends {{info.clientName}}Error {
+  public readonly status: number;
+  public readonly code?: string;
+  public readonly data?: any;
+  public readonly requestId?: string;
+
+  constructor(
+    message: string,
+    status: number = 0,
+    code?: string,
+    data?: any,
+    requestId?: string
+  ) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.data = data;
+    this.requestId = requestId;
+    Object.setPrototypeOf(this, ApiError.prototype);
+  }
+
+  /**
+   * Check if error is a specific HTTP status
+   */
+  isStatus(status: number): boolean {
+    return this.status === status;
+  }
+
+  /**
+   * Common status checks
+   */
+  get isUnauthorized(): boolean {
+    return this.status === 401;
+  }
+
+  get isForbidden(): boolean {
+    return this.status === 403;
+  }
+
+  get isNotFound(): boolean {
+    return this.status === 404;
+  }
+
+  get isRateLimited(): boolean {
+    return this.status === 429;
+  }
+
+  get isServerError(): boolean {
+    return this.status >= 500;
+  }
+}
+
+/**
+ * Validation error with field-level details
+ */
+export class ValidationError extends ApiError {
+  public readonly details: Array<{
+    field: string;
+    message: string;
+    code?: string;
+  }>;
+
+  constructor(
+    message: string,
+    details: Array<{ field: string; message: string; code?: string }> = []
+  ) {
+    super(message, 422, 'VALIDATION_ERROR');
+    this.name = 'ValidationError';
+    this.details = details;
+    Object.setPrototypeOf(this, ValidationError.prototype);
+  }
+
+  /**
+   * Get validation errors for a specific field
+   */
+  getFieldErrors(field: string): string[] {
+    return this.details
+      .filter(detail => detail.field === field)
+      .map(detail => detail.message);
+  }
+
+  /**
+   * Check if a specific field has errors
+   */
+  hasFieldError(field: string): boolean {
+    return this.details.some(detail => detail.field === field);
+  }
+}
+
+/**
+ * Network error when request fails to reach server
+ */
+export class NetworkError extends {{info.clientName}}Error {
+  public readonly code: string = 'NETWORK_ERROR';
+
+  constructor(message: string = 'Network request failed') {
+    super(message);
+    this.name = 'NetworkError';
+    Object.setPrototypeOf(this, NetworkError.prototype);
+  }
+}
+
+/**
+ * Timeout error when request exceeds time limit
+ */
+export class TimeoutError extends NetworkError {
+  public readonly timeout: number;
+
+  constructor(timeout: number) {
+    super(`Request timed out after ${timeout}ms`);
+    this.name = 'TimeoutError';
+    this.code = 'TIMEOUT_ERROR';
+    this.timeout = timeout;
+    Object.setPrototypeOf(this, TimeoutError.prototype);
+  }
+}
+
+/**
+ * Rate limit error with retry information
+ */
+export class RateLimitError extends ApiError {
+  public readonly retryAfter?: number;
+  public readonly limit?: number;
+  public readonly remaining?: number;
+  public readonly reset?: Date;
+
+  constructor(
+    message: string,
+    retryAfter?: number,
+    limit?: number,
+    remaining?: number,
+    reset?: Date
+  ) {
+    super(message, 429, 'RATE_LIMIT_EXCEEDED');
+    this.name = 'RateLimitError';
+    this.retryAfter = retryAfter;
+    this.limit = limit;
+    this.remaining = remaining;
+    this.reset = reset;
+    Object.setPrototypeOf(this, RateLimitError.prototype);
+  }
+
+  /**
+   * Get retry delay in milliseconds
+   */
+  getRetryDelay(): number {
+    if (this.retryAfter) {
+      return this.retryAfter * 1000;
+    }
+    if (this.reset) {
+      return Math.max(0, this.reset.getTime() - Date.now());
+    }
+    return 60000; // Default to 1 minute
+  }
+}
+
+/**
+ * Authentication error
+ */
+export class AuthenticationError extends ApiError {
+  constructor(message: string = 'Authentication failed') {
+    super(message, 401, 'AUTHENTICATION_ERROR');
+    this.name = 'AuthenticationError';
+    Object.setPrototypeOf(this, AuthenticationError.prototype);
+  }
+}
+
+/**
+ * Authorization error
+ */
+export class AuthorizationError extends ApiError {
+  constructor(message: string = 'Insufficient permissions') {
+    super(message, 403, 'AUTHORIZATION_ERROR');
+    this.name = 'AuthorizationError';
+    Object.setPrototypeOf(this, AuthorizationError.prototype);
+  }
+}
+
+/**
+ * Resource not found error
+ */
+export class NotFoundError extends ApiError {
+  public readonly resource?: string;
+  public readonly id?: string;
+
+  constructor(resource?: string, id?: string) {
+    const message = resource && id
+      ? `${resource} with id '${id}' not found`
+      : 'Resource not found';
+    
+    super(message, 404, 'NOT_FOUND');
+    this.name = 'NotFoundError';
+    this.resource = resource;
+    this.id = id;
+    Object.setPrototypeOf(this, NotFoundError.prototype);
+  }
+}
+
+/**
+ * Type guard to check if error is an API error
+ */
+export function isApiError(error: any): error is ApiError {
+  return error instanceof ApiError;
+}
+
+/**
+ * Type guard to check if error is a validation error
+ */
+export function isValidationError(error: any): error is ValidationError {
+  return error instanceof ValidationError;
+}
+
+/**
+ * Type guard to check if error is a network error
+ */
+export function isNetworkError(error: any): error is NetworkError {
+  return error instanceof NetworkError;
+}
+
+/**
+ * Type guard to check if error is a rate limit error
+ */
+export function isRateLimitError(error: any): error is RateLimitError {
+  return error instanceof RateLimitError;
+}

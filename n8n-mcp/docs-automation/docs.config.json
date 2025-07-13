@@ -1,0 +1,182 @@
+{
+  "version": "1.0.0",
+  "name": "n8n-MCP Documentation",
+  "description": "Complete documentation for the n8n-MCP platform",
+  "output": "./docs",
+  "baseUrl": "https://n8n-mcp.github.io/docs",
+  
+  "api": {
+    "input": "./openapi.yaml",
+    "output": "./docs/api",
+    "format": "markdown",
+    "theme": "default",
+    "includeExamples": true,
+    "includeTryIt": true,
+    "servers": [
+      {
+        "url": "https://api.n8n-mcp.com",
+        "description": "Production API"
+      },
+      {
+        "url": "https://staging-api.n8n-mcp.com",
+        "description": "Staging API"
+      }
+    ]
+  },
+  
+  "changelog": {
+    "output": "CHANGELOG.md",
+    "preset": "angular",
+    "releaseCount": 0,
+    "includeBreaking": true,
+    "groupBy": "type",
+    "repository": {
+      "url": "https://github.com/n8n-mcp/automation-hub",
+      "type": "git"
+    }
+  },
+  
+  "sdk": {
+    "languages": ["typescript", "python", "go", "java", "csharp", "ruby", "php"],
+    "output": "./docs/sdk",
+    "includeExamples": true,
+    "includeApiReference": true,
+    "theme": "default",
+    "sources": {
+      "typescript": "./sdk/typescript",
+      "python": "./sdk/python", 
+      "go": "./sdk/go",
+      "java": "./sdk/java",
+      "csharp": "./sdk/csharp",
+      "ruby": "./sdk/ruby",
+      "php": "./sdk/php"
+    }
+  },
+  
+  "reference": {
+    "include": [
+      "./src/**/*.ts",
+      "./src/**/*.js",
+      "./README.md",
+      "./docs/guides/**/*.md",
+      "./docs/tutorials/**/*.md",
+      "./docs/examples/**/*.md"
+    ],
+    "exclude": [
+      "**/*.test.ts",
+      "**/*.test.js",
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/.git/**"
+    ],
+    "output": "./docs"
+  },
+  
+  "serve": {
+    "port": 3000,
+    "theme": "default",
+    "watch": true,
+    "open": false,
+    "livereload": true
+  },
+  
+  "validation": {
+    "strict": true,
+    "checkLinks": true,
+    "checkCodeExamples": true,
+    "maxLineLength": 120,
+    "requireAltText": true,
+    "rules": {
+      "heading-levels": "error",
+      "trailing-whitespace": "warning",
+      "missing-alt-text": "warning",
+      "broken-links": "error",
+      "invalid-json": "error",
+      "todo-comments": "warning"
+    }
+  },
+  
+  "watch": {
+    "debounceMs": 1000,
+    "ignore": [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/.git/**",
+      "**/docs/**"
+    ],
+    "triggers": {
+      "api": ["./openapi.yaml", "./api-spec/**/*.yaml"],
+      "sdk": ["./sdk/**/*.ts", "./sdk/**/*.py", "./sdk/**/*.go"],
+      "reference": ["./src/**/*", "./**/*.md"]
+    }
+  },
+  
+  "themes": {
+    "default": {
+      "primaryColor": "#3498db",
+      "secondaryColor": "#2c3e50",
+      "backgroundColor": "#ffffff",
+      "textColor": "#333333",
+      "codeTheme": "default"
+    },
+    "dark": {
+      "primaryColor": "#61dafb",
+      "secondaryColor": "#282c34",
+      "backgroundColor": "#1e1e1e",
+      "textColor": "#ffffff",
+      "codeTheme": "dark"
+    }
+  },
+  
+  "features": {
+    "search": true,
+    "navigation": true,
+    "breadcrumbs": true,
+    "tableOfContents": true,
+    "syntaxHighlighting": true,
+    "mermaidDiagrams": true,
+    "mathExpressions": false,
+    "comments": false,
+    "analytics": {
+      "enabled": false,
+      "googleAnalytics": "",
+      "customTracking": ""
+    }
+  },
+  
+  "deployment": {
+    "provider": "github-pages",
+    "branch": "gh-pages",
+    "directory": "./docs",
+    "customDomain": "",
+    "cname": false
+  },
+  
+  "integrations": {
+    "slack": {
+      "webhook": "",
+      "channel": "#documentation",
+      "notifications": ["deploy", "error"]
+    },
+    "discord": {
+      "webhook": "",
+      "notifications": ["deploy", "error"]
+    }
+  },
+  
+  "metadata": {
+    "title": "n8n-MCP Documentation",
+    "description": "Complete documentation for the n8n-MCP automation platform",
+    "keywords": ["n8n", "MCP", "automation", "workflow", "API", "SDK"],
+    "author": "n8n-MCP Team",
+    "version": "1.0.0",
+    "license": "MIT",
+    "social": {
+      "twitter": "@n8n_mcp",
+      "github": "https://github.com/n8n-mcp/automation-hub",
+      "website": "https://n8n-mcp.com"
+    }
+  }
+}

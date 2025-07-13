@@ -1,0 +1,48 @@
+/**
+ * {{info.title}} SDK
+ * Version: {{info.version}}
+ * 
+ * {{info.description}}
+ */
+
+// Main client
+export { {{info.clientName}}, {{info.clientName}}Config, defaultClient } from './client';
+
+// Types
+export * from './types';
+
+// Resources
+export * from './resources';
+
+// Auth
+export { AuthManager } from './auth/auth';
+
+// Errors
+export * from './errors/errors';
+
+// Utils
+export * from './utils/request';
+
+// Version
+export const VERSION = '{{info.packageVersion}}';
+
+/**
+ * Quick start example:
+ * 
+ * ```typescript
+ * import { {{info.clientName}} } from '{{info.packageName}}';
+ * 
+ * const client = new {{info.clientName}}({
+ *   apiKey: 'your-api-key'
+ * });
+ * 
+ * // List workflows
+ * const workflows = await client.workflows.list();
+ * 
+ * // Create a workflow
+ * const newWorkflow = await client.workflows.create({
+ *   name: 'My Workflow',
+ *   description: 'Automated workflow'
+ * });
+ * ```
+ */

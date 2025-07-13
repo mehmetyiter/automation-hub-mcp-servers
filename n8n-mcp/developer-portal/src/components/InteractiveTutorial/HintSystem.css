@@ -1,0 +1,233 @@
+.hint-system {
+  position: relative;
+  margin: 16px 0;
+}
+
+.hint-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #f5f7fa;
+  border: 1px solid #e1e8ed;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #687078;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.hint-button:hover {
+  background: #e8ecf0;
+  border-color: #d1d8dd;
+  color: #4361ee;
+}
+
+.hint-button:active {
+  transform: translateY(1px);
+}
+
+.hint-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.hint-count {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+.hint-display {
+  margin-top: 16px;
+  padding: 16px;
+  background: #f0f4ff;
+  border: 1px solid #4361ee;
+  border-radius: 6px;
+  animation: expandIn 0.3s ease;
+}
+
+@keyframes expandIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.hint-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.hint-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #4361ee;
+}
+
+.hint-level {
+  font-size: 12px;
+  padding: 2px 8px;
+  background: rgba(67, 97, 238, 0.1);
+  border-radius: 12px;
+  font-weight: 500;
+}
+
+.hint-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #2c3e50;
+}
+
+.hint-content p {
+  margin: 8px 0;
+}
+
+.hint-content p:first-child {
+  margin-top: 0;
+}
+
+.hint-content p:last-child {
+  margin-bottom: 0;
+}
+
+.hint-content code {
+  background: rgba(255, 255, 255, 0.8);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 13px;
+  color: #e83e8c;
+}
+
+.hint-content strong {
+  color: #4361ee;
+  font-weight: 600;
+}
+
+.hint-navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(67, 97, 238, 0.2);
+}
+
+.hint-nav-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: white;
+  border: 1px solid #e1e8ed;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #687078;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.hint-nav-button:hover:not(:disabled) {
+  background: #f5f7fa;
+  border-color: #4361ee;
+  color: #4361ee;
+}
+
+.hint-nav-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.hint-progress {
+  font-size: 13px;
+  color: #687078;
+  font-weight: 500;
+}
+
+/* No hints available */
+.no-hints {
+  padding: 24px;
+  text-align: center;
+  background: #f5f7fa;
+  border-radius: 6px;
+  color: #687078;
+}
+
+.no-hints-icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 12px;
+  opacity: 0.3;
+}
+
+.no-hints-message {
+  font-size: 14px;
+  margin: 0;
+}
+
+/* Hint types */
+.hint-display.general {
+  background: #f0f4ff;
+  border-color: #4361ee;
+}
+
+.hint-display.specific {
+  background: #e6ffed;
+  border-color: #28a745;
+}
+
+.hint-display.specific .hint-title {
+  color: #28a745;
+}
+
+.hint-display.solution {
+  background: #fff3cd;
+  border-color: #ffc107;
+}
+
+.hint-display.solution .hint-title {
+  color: #ff9800;
+}
+
+/* Animation for hint reveal */
+.hint-reveal {
+  overflow: hidden;
+}
+
+.hint-reveal-content {
+  animation: revealText 0.5s ease;
+}
+
+@keyframes revealText {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Mobile responsive */
+@media (max-width: 480px) {
+  .hint-navigation {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .hint-nav-button {
+    width: 100%;
+    justify-content: center;
+  }
+}
