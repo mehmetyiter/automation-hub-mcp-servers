@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { Pool } from 'pg';
-import { Logger } from '../utils/logger';
+import { logger } from '../utils/logger.js';
 
 interface SecurityIncident {
   id: string;
@@ -81,14 +81,14 @@ interface IncidentTemplate {
 
 export class IncidentResponseService extends EventEmitter {
   private db: Pool;
-  private logger: Logger;
+  private logger: typeof logger;
   private templates: Map<string, IncidentTemplate> = new Map();
   private escalationTimer: Map<string, NodeJS.Timeout> = new Map();
 
-  constructor(db: Pool, logger: Logger) {
+  constructor(db: Pool, loggerInstance: typeof logger) {
     super();
     this.db = db;
-    this.logger = logger;
+    this.logger = loggerInstance;
     
     this.initializeTemplates();
     this.startEscalationMonitor();
@@ -307,7 +307,6 @@ export class IncidentResponseService extends EventEmitter {
     if (existingIncident) {
       // Update existing incident
       return this.updateIncident(existingIncident.id, {
-        eventIds: [...existingIncident.eventIds || [], ...data.eventIds],
         severity: this.getHigherSeverity(existingIncident.severity, data.severity)
       });
     } else {

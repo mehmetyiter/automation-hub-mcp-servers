@@ -311,7 +311,7 @@ export class DynamicBusinessLogicGenerator extends EventEmitter {
       
       // Phase 4: Implementation Generation
       this.startOperation('implementation-generation');
-      const implementation = await this.generateImplementation(logicPatterns, mathModel, request);
+      const implementation = await this.generateImplementation(logicPatterns, mathModel, request, domain);
       this.endOperation('implementation-generation');
       this.emit('phase-complete', { phase: 'implementation-generation', result: implementation });
       
@@ -600,7 +600,8 @@ Focus on creating a comprehensive pattern library that will generate production-
   private async generateImplementation(
     logicPatterns: LogicPatterns,
     mathModel: MathematicalModel,
-    request: BusinessLogicRequest
+    request: BusinessLogicRequest,
+    domain: BusinessDomain
   ): Promise<BusinessLogicImplementation> {
     const implementationPrompt = `
 TASK: Generate complete business logic implementation based on patterns and mathematical model.

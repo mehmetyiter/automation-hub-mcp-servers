@@ -245,7 +245,7 @@ export abstract class BasePlatformAdapter implements IPlatformAdapter {
       const contentType = response.headers.get('content-type');
       
       if (contentType?.includes('application/json')) {
-        const data = await response.json();
+        const data = await response.json() as any;
         return data.error?.message || data.message || data.error || 'Unknown error';
       }
       

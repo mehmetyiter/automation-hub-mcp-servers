@@ -3,10 +3,10 @@
  */
 
 import { EventEmitter } from 'events';
-import { CodeGenerationEvent, EventHandler } from '../types/common-types';
+import { CodeGenerationEvent, EventHandler } from '../types/common-types.js';
 
 export interface IEventEmitter {
-  emit(event: CodeGenerationEvent): void;
+  emitEvent(event: CodeGenerationEvent): void;
   on(eventType: string, handler: EventHandler): void;
   off(eventType: string, handler: EventHandler): void;
   once(eventType: string, handler: EventHandler): void;
@@ -25,7 +25,7 @@ export class CodeGenerationEventEmitter extends EventEmitter implements IEventEm
   /**
    * Emit a code generation event
    */
-  emit(event: CodeGenerationEvent): void {
+  emitEvent(event: CodeGenerationEvent): void {
     // Add to history
     this.addToHistory(event);
     
@@ -53,7 +53,7 @@ export class CodeGenerationEventEmitter extends EventEmitter implements IEventEm
   /**
    * Register an event handler
    */
-  on(eventType: string, handler: EventHandler): void {
+  on(eventType: string, handler: EventHandler): this {
     // Register with native EventEmitter
     super.on(eventType, handler);
     
@@ -62,12 +62,13 @@ export class CodeGenerationEventEmitter extends EventEmitter implements IEventEm
       this.eventHandlers.set(eventType, new Set());
     }
     this.eventHandlers.get(eventType)!.add(handler);
+    return this;
   }
 
   /**
    * Remove an event handler
    */
-  off(eventType: string, handler: EventHandler): void {
+  off(eventType: string, handler: EventHandler): this {
     // Remove from native EventEmitter
     super.off(eventType, handler);
     
@@ -79,17 +80,19 @@ export class CodeGenerationEventEmitter extends EventEmitter implements IEventEm
         this.eventHandlers.delete(eventType);
       }
     }
+    return this;
   }
 
   /**
    * Register a one-time event handler
    */
-  once(eventType: string, handler: EventHandler): void {
+  once(eventType: string, handler: EventHandler): this {
     const wrappedHandler: EventHandler = (event) => {
       handler(event);
       this.off(eventType, wrappedHandler);
     };
     this.on(eventType, wrappedHandler);
+    return this;
   }
 
   /**
@@ -140,8 +143,8 @@ export class CodeGenerationEventEmitter extends EventEmitter implements IEventEm
     } catch (error) {
       console.error(`Error in event handler for ${event.type}:`, error);
       // Emit error event
-      this.emit({
-        type: 'handler_error',
+      this.emitEvent({
+        type: 'generation_failed',
         timestamp: new Date().toISOString(),
         data: {
           originalEvent: event,
@@ -213,7 +216,7 @@ export const EventTypes = {
 
 // Helper function to create events
 export function createEvent(
-  type: string,
+  type: CodeGenerationEvent['type'],
   codeId?: string,
   data?: Record<string, unknown>
 ): CodeGenerationEvent {
@@ -229,7 +232,7 @@ export function createEvent(
 export class EventBuilder {
   private event: Partial<CodeGenerationEvent> = {};
 
-  type(type: string): EventBuilder {
+  type(type: CodeGenerationEvent['type']): EventBuilder {
     this.event.type = type;
     return this;
   }
@@ -267,6 +270,6 @@ export class EventBuilder {
 
   emit(): void {
     const event = this.build();
-    globalEventEmitter.emit(event);
+    globalEventEmitter.emitEvent(event);
   }
 }

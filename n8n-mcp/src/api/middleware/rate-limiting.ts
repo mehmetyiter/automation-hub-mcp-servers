@@ -45,7 +45,7 @@ export class RateLimitingMiddleware {
             'X-RateLimit-Reset': resetTime.toISOString()
           });
 
-          return res.status(429).json({
+          res.status(429).json({
             success: false,
             error: {
               code: 'RATE_LIMIT_EXCEEDED',
@@ -57,6 +57,7 @@ export class RateLimitingMiddleware {
               }
             }
           });
+          return;
         }
 
         // Record this request

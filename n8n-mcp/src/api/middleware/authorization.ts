@@ -18,23 +18,25 @@ export class AuthorizationMiddleware {
     
     return (req: AuthorizedRequest, res: Response, next: NextFunction) => {
       if (!req.user) {
-        return res.status(401).json({
+        res.status(401).json({
           success: false,
           error: {
             code: 'AUTHENTICATION_REQUIRED',
             message: 'Authentication required'
           }
         });
+        return;
       }
 
       if (!roles.includes(req.user.role)) {
-        return res.status(403).json({
+        res.status(403).json({
           success: false,
           error: {
             code: 'INSUFFICIENT_PRIVILEGES',
             message: 'Insufficient privileges for this operation'
           }
         });
+        return;
       }
 
       next();
@@ -45,13 +47,14 @@ export class AuthorizationMiddleware {
   requireOwnershipOrAdmin = (getResourceUserId: (req: Request) => string) => {
     return (req: AuthorizedRequest, res: Response, next: NextFunction) => {
       if (!req.user) {
-        return res.status(401).json({
+        res.status(401).json({
           success: false,
           error: {
             code: 'AUTHENTICATION_REQUIRED',
             message: 'Authentication required'
           }
         });
+        return;
       }
 
       const resourceUserId = getResourceUserId(req);
@@ -59,13 +62,14 @@ export class AuthorizationMiddleware {
       if (req.user.role === 'admin' || req.user.id === resourceUserId) {
         next();
       } else {
-        return res.status(403).json({
+        res.status(403).json({
           success: false,
           error: {
             code: 'ACCESS_DENIED',
             message: 'Access denied to this resource'
           }
         });
+        return;
       }
     };
   };
@@ -86,13 +90,14 @@ export class AuthorizationMiddleware {
         const hasPermission = scopes.every(scope => allowedForUsers.includes(scope));
         
         if (!hasPermission) {
-          return res.status(403).json({
+          res.status(403).json({
             success: false,
             error: {
               code: 'INSUFFICIENT_PRIVILEGES',
               message: 'Insufficient privileges for this operation'
             }
           });
+          return;
         }
         
         return next();
@@ -105,25 +110,27 @@ export class AuthorizationMiddleware {
         );
 
         if (!hasRequiredScopes) {
-          return res.status(403).json({
+          res.status(403).json({
             success: false,
             error: {
               code: 'INSUFFICIENT_SCOPE',
               message: `Required scope(s): ${scopes.join(', ')}`
             }
           });
+          return;
         }
 
         return next();
       }
 
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         error: {
           code: 'AUTHENTICATION_REQUIRED',
           message: 'Authentication required'
         }
       });
+      return;
     };
   };
 }

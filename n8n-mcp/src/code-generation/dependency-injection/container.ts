@@ -2,7 +2,8 @@
  * Dependency Injection Container for the Code Generation System
  */
 
-import { Injectable } from '../types/common-types';
+import 'reflect-metadata';
+import { Injectable } from '../types/common-types.js';
 
 export interface ServiceFactory<T = unknown> {
   (): T | Promise<T>;

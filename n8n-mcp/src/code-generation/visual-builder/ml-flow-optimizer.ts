@@ -339,7 +339,7 @@ export class MLFlowOptimizer {
     }
   }
 
-  private extractFlowFeatures(flow: VisualFlow): FlowFeatures {
+  public extractFlowFeatures(flow: VisualFlow): FlowFeatures {
     console.log('🔍 Extracting flow features for ML analysis...');
     
     const nodeCount = flow.blocks.length;

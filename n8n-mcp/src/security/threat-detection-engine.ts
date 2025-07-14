@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { Pool } from 'pg';
-import { Logger } from '../utils/logger';
+import { logger } from '../utils/logger.js';
 
 interface ThreatRule {
   id: string;
@@ -62,16 +62,16 @@ interface GeolocationCondition {
 
 export class ThreatDetectionEngine extends EventEmitter {
   private db: Pool;
-  private logger: Logger;
+  private logger: typeof logger;
   private rules: Map<string, ThreatRule> = new Map();
   private ruleProcessors: Map<string, (rule: ThreatRule, event: any) => Promise<boolean>> = new Map();
   private eventBuffer: Map<string, any[]> = new Map();
   private bufferCleanupInterval: NodeJS.Timeout | null = null;
 
-  constructor(db: Pool, logger: Logger) {
+  constructor(db: Pool, loggerInstance: typeof logger) {
     super();
     this.db = db;
-    this.logger = logger;
+    this.logger = loggerInstance;
 
     this.initializeRuleProcessors();
     this.loadRules();

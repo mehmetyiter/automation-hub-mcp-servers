@@ -40,6 +40,12 @@ export interface DomainKnowledge {
   successMetrics: SuccessMetrics;
   commonMistakes: string[];
   bestPractices: string[];
+  examples: Array<{
+    description: string;
+    implementation: string;
+    result: 'success' | 'failure';
+    confidence: number;
+  }>;
 }
 
 export interface PatternLibrary {
@@ -117,7 +123,8 @@ export class BusinessLogicLearningEngine extends EventEmitter {
           commonFailureReasons: []
         },
         commonMistakes: [],
-        bestPractices: []
+        bestPractices: [],
+        examples: []
       });
     });
   }
@@ -546,7 +553,8 @@ Synthesize key insights that should be remembered for future ${domain} domain im
         commonFailureReasons: []
       },
       commonMistakes: [],
-      bestPractices: []
+      bestPractices: [],
+      examples: []
     };
   }
   
@@ -555,6 +563,66 @@ Synthesize key insights that should be remembered for future ${domain} domain im
     this.domainKnowledge.clear();
     this.learningHistory = [];
     this.initializeDomainKnowledge();
+  }
+
+  async recordBusinessOutcome(outcome: {
+    implementationId: string;
+    success: boolean;
+    confidence: number;
+    executionTime: number;
+    userFeedback?: string;
+    errorDetails?: string;
+    improvements?: string[];
+  }): Promise<void> {
+    console.log('📝 Recording business outcome:', outcome.implementationId);
+    
+    // Store in learning history
+    // Note: we need to have a proper request and learnings to match the type
+    // For now, we'll skip adding to learningHistory since we only have the outcome
+
+    // Update success metrics
+    const domain = this.extractDomainFromImplementationId(outcome.implementationId);
+    if (domain) {
+      const knowledge = this.domainKnowledge.get(domain);
+      if (knowledge) {
+        knowledge.successMetrics.totalImplementations++;
+        if (outcome.success) {
+          knowledge.successMetrics.successfulImplementations++;
+        }
+        
+        // Update average confidence
+        const metrics = knowledge.successMetrics;
+        metrics.averageConfidence = 
+          (metrics.averageConfidence * (metrics.totalImplementations - 1) + outcome.confidence) / 
+          metrics.totalImplementations;
+
+        // Store feedback
+        if (outcome.userFeedback) {
+          knowledge.examples.push({
+            description: outcome.userFeedback,
+            implementation: '',
+            result: outcome.success ? 'success' : 'failure',
+            confidence: outcome.confidence
+          });
+        }
+
+        // Store error patterns
+        if (!outcome.success && outcome.errorDetails) {
+          knowledge.commonMistakes.push(outcome.errorDetails);
+        }
+
+        // Store improvements
+        if (outcome.improvements && outcome.improvements.length > 0) {
+          knowledge.bestPractices.push(...outcome.improvements);
+        }
+      }
+    }
+  }
+
+  private extractDomainFromImplementationId(implementationId: string): string {
+    // Extract domain from implementation ID format: domain_timestamp_random
+    const parts = implementationId.split('_');
+    return parts[0] || 'general';
   }
 }
 

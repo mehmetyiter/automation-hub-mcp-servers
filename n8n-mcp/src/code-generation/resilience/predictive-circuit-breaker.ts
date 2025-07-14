@@ -43,8 +43,8 @@ export class PredictiveCircuitBreaker extends CircuitBreaker {
   private metrics: PerformanceMetric[] = [];
   private predictions: PredictionResult[] = [];
   private adaptiveThresholds?: AdaptiveThresholds;
-  private predictionInterval?: NodeJS.Timer;
-  private config: PredictiveConfig;
+  private predictionInterval?: NodeJS.Timeout;
+  declare protected config: PredictiveConfig;
   
   // Statistical tracking
   private movingAverages: {

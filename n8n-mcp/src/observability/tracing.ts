@@ -1,5 +1,5 @@
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
-import { Resource } from '@opentelemetry/resources';
+import { Resource, defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { JaegerExporter } from '@opentelemetry/exporter-jaeger';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
@@ -15,18 +15,6 @@ export class TracingService {
   private static instance: TracingService;
   
   constructor() {
-    this.provider = new NodeTracerProvider({
-      resource: Resource.default().merge(
-        new Resource({
-          [SemanticResourceAttributes.SERVICE_NAME]: 'n8n-mcp',
-          [SemanticResourceAttributes.SERVICE_VERSION]: process.env.VERSION || '1.0.0',
-          [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
-          [SemanticResourceAttributes.SERVICE_NAMESPACE]: 'automation-hub',
-          [SemanticResourceAttributes.SERVICE_INSTANCE_ID]: process.env.INSTANCE_ID || `instance-${Date.now()}`,
-        })
-      ),
-    });
-
     // Configure Jaeger exporter
     const jaegerExporter = new JaegerExporter({
       endpoint: process.env.JAEGER_ENDPOINT || 'http://localhost:14268/api/traces',
@@ -36,15 +24,26 @@ export class TracingService {
       ],
     });
 
-    // Add span processor with batching
-    this.provider.addSpanProcessor(
-      new BatchSpanProcessor(jaegerExporter, {
-        maxQueueSize: 1000,
-        maxExportBatchSize: 512,
-        scheduledDelayMillis: 5000,
-        exportTimeoutMillis: 30000,
-      })
-    );
+    // Create span processor with batching
+    const spanProcessor = new BatchSpanProcessor(jaegerExporter, {
+      maxQueueSize: 1000,
+      maxExportBatchSize: 512,
+      scheduledDelayMillis: 5000,
+      exportTimeoutMillis: 30000,
+    });
+
+    this.provider = new NodeTracerProvider({
+      resource: defaultResource().merge(
+        resourceFromAttributes({
+          [SemanticResourceAttributes.SERVICE_NAME]: 'n8n-mcp',
+          [SemanticResourceAttributes.SERVICE_VERSION]: process.env.VERSION || '1.0.0',
+          [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: process.env.NODE_ENV || 'development',
+          [SemanticResourceAttributes.SERVICE_NAMESPACE]: 'automation-hub',
+          [SemanticResourceAttributes.SERVICE_INSTANCE_ID]: process.env.INSTANCE_ID || `instance-${Date.now()}`,
+        })
+      ),
+      spanProcessors: [spanProcessor],
+    });
 
     // Register the provider
     this.provider.register();
@@ -66,21 +65,33 @@ export class TracingService {
       instrumentations: [
         new HttpInstrumentation({
           requestHook: (span, request) => {
-            span.setAttributes({
-              'http.request.body.size': request.headers['content-length'] || '0',
-              'http.user_agent': request.headers['user-agent'] || 'unknown',
-              'custom.user_id': (request as any).user?.id || 'anonymous',
-              'custom.workspace_id': (request as any).workspace?.id,
-            });
+            // Check if it's IncomingMessage (has headers)
+            if ('headers' in request && request.headers) {
+              span.setAttributes({
+                'http.request.body.size': request.headers['content-length'] || '0',
+                'http.user_agent': request.headers['user-agent'] || 'unknown',
+                'custom.user_id': (request as any).user?.id || 'anonymous',
+                'custom.workspace_id': (request as any).workspace?.id,
+              });
+            }
           },
           responseHook: (span, response) => {
-            span.setAttributes({
-              'http.response.body.size': response.getHeader('content-length') || '0',
-              'custom.cache_hit': response.getHeader('x-cache-hit') === 'true',
-            });
+            // Check if it's ServerResponse (has getHeader)
+            if ('getHeader' in response && typeof response.getHeader === 'function') {
+              span.setAttributes({
+                'http.response.body.size': response.getHeader('content-length') || '0',
+                'custom.cache_hit': response.getHeader('x-cache-hit') === 'true',
+              });
+            }
           },
-          ignoreIncomingPaths: ['/health', '/metrics', '/ready'],
-          ignoreOutgoingUrls: [(url) => url.includes('metrics')],
+          ignoreIncomingRequestHook: (request) => {
+            const ignorePaths = ['/health', '/metrics', '/ready'];
+            return ignorePaths.includes(request.url || '');
+          },
+          ignoreOutgoingRequestHook: (options) => {
+            const url = (options as any).href || (options as any).url || '';
+            return url.includes('metrics');
+          },
         }),
         new ExpressInstrumentation({
           requestHook: (span, info) => {
@@ -89,9 +100,13 @@ export class TracingService {
         }),
         new IORedisInstrumentation({
           requestHook: (span, cmdArgs) => {
+            // IORedis hook info has command info in different structure
+            const command = (cmdArgs as any).command || (cmdArgs as any).cmd;
+            const args = (cmdArgs as any).args || (cmdArgs as any).cmdArgs || [];
+            
             span.setAttributes({
-              'redis.command': cmdArgs.command,
-              'redis.key': cmdArgs.args?.[0],
+              'redis.command': command,
+              'redis.key': args[0],
             });
           },
         }),
@@ -235,6 +250,8 @@ export class TracingService {
         'job.type': jobType,
         'job.scheduled_at': new Date().toISOString(),
       }
+    }, (span) => {
+      return span;
     });
   }
 

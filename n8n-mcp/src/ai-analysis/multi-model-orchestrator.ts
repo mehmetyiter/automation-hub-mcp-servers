@@ -617,17 +617,18 @@ function processWithCompliance(data) {
     if (typeof result === 'string') {
       return {
         implementation: result,
-        confidence: 0.7,
-        explanation: 'Generated implementation',
-        testCases: []
+        language: 'typescript',
+        dependencies: [],
+        documentation: 'Generated implementation'
       };
     }
     
     return {
       implementation: result.implementation || result.code || '',
-      confidence: result.confidence || 0.7,
-      explanation: result.explanation || result.reasoning || '',
-      testCases: result.testCases || []
+      language: result.language || 'typescript',
+      dependencies: result.dependencies || [],
+      tests: result.tests || result.testCases || [],
+      documentation: result.documentation || result.explanation || result.reasoning || ''
     };
   }
   
@@ -701,8 +702,9 @@ function processWithCompliance(data) {
       issues.push('Empty implementation');
     }
     
-    if (result.confidence < 0.5) {
-      issues.push('Low confidence score');
+    // Check implementation quality based on content
+    if (result.implementation.length < 100) {
+      issues.push('Implementation seems too short');
     }
     
     return {
@@ -821,11 +823,9 @@ function processWithCompliance(data) {
         (metrics.avgResponseTime * (metrics.totalRequests - 1) + execResult.executionTime) / 
         metrics.totalRequests;
       
-      // Update accuracy based on validation results
-      if (result.confidence > 0.8) {
-        metrics.avgAccuracy = 
-          (metrics.avgAccuracy * (metrics.successCount - 1) + result.confidence) / 
-          metrics.successCount;
+      // Update accuracy based on success rate
+      if (metrics.successCount > 0) {
+        metrics.avgAccuracy = metrics.successCount / metrics.totalRequests;
       }
       
       metrics.lastUsed = new Date();

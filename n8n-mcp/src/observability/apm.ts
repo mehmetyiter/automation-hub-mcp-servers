@@ -1,6 +1,6 @@
-import { TracingService } from './tracing';
-import { MetricsService } from './metrics';
-import { LoggingService } from './logging';
+import { TracingService } from './tracing.js';
+import { MetricsService } from './metrics.js';
+import { LoggingService } from './logging.js';
 import { trace, SpanKind, SpanStatusCode } from '@opentelemetry/api';
 
 interface APMConfig {

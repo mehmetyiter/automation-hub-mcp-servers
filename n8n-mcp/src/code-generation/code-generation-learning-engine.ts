@@ -3,9 +3,9 @@ import {
   CodeExecutionResult, 
   LearningData, 
   CodePattern 
-} from './types';
-import { AIService } from '../ai-service';
-import { CodeGenerationDatabase } from './database/code-generation-db';
+} from './types.js';
+import { AIService } from '../ai-service.js';
+import { CodeGenerationDatabase } from './database/code-generation-db.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 

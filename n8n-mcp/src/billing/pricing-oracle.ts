@@ -108,6 +108,20 @@ export interface QualityPriceAnalysis {
   valueScore: number;
 }
 
+export interface PricingComparison {
+  models: Array<{
+    provider: string;
+    model: string;
+    inputTokenPrice: number;
+    outputTokenPrice: number;
+    features: string[];
+    score: number;
+  }>;
+  lowestCostProvider: string;
+  potentialSavings: number;
+  recommendations: string[];
+}
+
 export class PricingOracle extends EventEmitter {
   private cache: Map<string, ProviderPricing>;
   private redis: Redis;
@@ -239,7 +253,8 @@ export class PricingOracle extends EventEmitter {
           );
           
           const reliabilityScore = await this.getReliabilityScore(provider.provider);
-          const latencyScore = this.calculateLatencyScore(model, taskRequirements);
+          // TODO: Implement calculateLatencyScore method
+          const latencyScore = 0.8; // Default score
           
           const overallScore = this.calculateOverallScore(
             estimatedCost,
@@ -307,7 +322,7 @@ export class PricingOracle extends EventEmitter {
   }
 
   async trackPriceChanges(provider: string, model: string): Promise<PriceChangeAnalysis> {
-    const historyKey = `${provider}:${model}`;
+    const historyKey = `${provider}:history`;
     const history = this.pricingHistory.get(historyKey) || [];
 
     if (history.length < 2) {
@@ -315,15 +330,30 @@ export class PricingOracle extends EventEmitter {
         provider,
         model,
         changeDetected: false,
-        analysis: 'Insufficient historical data'
+        analysis: 'Insufficient historical data',
+        lastChecked: new Date()
       };
     }
 
     const current = history[history.length - 1];
     const previous = history[history.length - 2];
 
-    const inputPriceChange = ((current.inputTokenPrice - previous.inputTokenPrice) / previous.inputTokenPrice) * 100;
-    const outputPriceChange = ((current.outputTokenPrice - previous.outputTokenPrice) / previous.outputTokenPrice) * 100;
+    // Find the specific model in current and previous pricing
+    const currentModel = current.pricing.models.find(m => m.model === model);
+    const previousModel = previous.pricing.models.find(m => m.model === model);
+
+    if (!currentModel || !previousModel) {
+      return {
+        provider,
+        model,
+        changeDetected: false,
+        analysis: 'Model not found in historical data',
+        lastChecked: new Date()
+      };
+    }
+
+    const inputPriceChange = ((currentModel.inputTokenPrice - previousModel.inputTokenPrice) / previousModel.inputTokenPrice) * 100;
+    const outputPriceChange = ((currentModel.outputTokenPrice - previousModel.outputTokenPrice) / previousModel.outputTokenPrice) * 100;
 
     const changeThreshold = 5; // 5% change threshold
     const significantChange = Math.abs(inputPriceChange) > changeThreshold || 
@@ -373,7 +403,13 @@ export class PricingOracle extends EventEmitter {
       );
 
       // Store in history
-      this.storePricingHistory(pricing);
+      const historyKey = `${provider}:history`;
+      const history = this.pricingHistory.get(historyKey) || [];
+      history.push({
+        timestamp: new Date(),
+        pricing
+      });
+      this.pricingHistory.set(historyKey, history);
 
       this.emit('pricing-updated', { provider, pricing });
       return pricing;
@@ -583,16 +619,62 @@ export class PricingOracle extends EventEmitter {
     if (model.contextWindow >= 32000) score += 0.2;
     if (model.features.includes('function-calling')) score += 0.1;
     if (model.features.includes('vision')) score += 0.1;
-    if (model.features.includes('json-mode')) score += 0.05;
+    
+    return Math.min(score, 1.0);
+  }
 
-    // Adjust based on requirements match
-    if (requirements.qualityRequirement === 'premium' && model.model.includes('gpt-4')) {
-      score += 0.3;
-    } else if (requirements.qualityRequirement === 'basic' && model.model.includes('3.5')) {
-      score += 0.2;
+  async comparePricing(providers: string[], model: string): Promise<PricingComparison> {
+    const comparison: PricingComparison = {
+      models: [],
+      lowestCostProvider: '',
+      potentialSavings: 0,
+      recommendations: []
+    };
+
+    let lowestCost = Infinity;
+    let highestCost = 0;
+
+    for (const provider of providers) {
+      const pricing = await this.getCurrentPricing(provider);
+      const modelPricing = pricing.models.find(m => m.model === model);
+      
+      if (modelPricing) {
+        const avgCost = (modelPricing.inputTokenPrice + modelPricing.outputTokenPrice) / 2;
+        
+        comparison.models.push({
+          provider,
+          model,
+          inputTokenPrice: modelPricing.inputTokenPrice,
+          outputTokenPrice: modelPricing.outputTokenPrice,
+          features: modelPricing.features,
+          score: this.calculateQualityScore(modelPricing, {
+            complexity: 'moderate',
+            estimatedInputTokens: 1000,
+            estimatedOutputTokens: 1000,
+            qualityRequirement: 'high',
+            latencyRequirement: 'standard',
+            features: [],
+            contextNeeded: 8000
+          } as TaskRequirements)
+        });
+
+        if (avgCost < lowestCost) {
+          lowestCost = avgCost;
+          comparison.lowestCostProvider = provider;
+        }
+        if (avgCost > highestCost) {
+          highestCost = avgCost;
+        }
+      }
     }
 
-    return Math.min(1.0, score);
+    comparison.potentialSavings = ((highestCost - lowestCost) / highestCost) * 100;
+    comparison.recommendations = [
+      `Consider using ${comparison.lowestCostProvider} for the best pricing`,
+      `Potential savings of ${comparison.potentialSavings.toFixed(2)}% compared to highest cost option`
+    ];
+
+    return comparison;
   }
 
   async destroy(): Promise<void> {
@@ -606,6 +688,252 @@ export class PricingOracle extends EventEmitter {
     
     console.log('📡 PricingOracle destroyed');
   }
+
+  // Missing method implementations
+
+  private async calculateDiscounts(
+    provider: string,
+    model: string,
+    totalCost: number,
+    context: CostCalculationContext
+  ): Promise<Discount[]> {
+    // TODO: Implement discount calculation logic
+    const discounts: Discount[] = [];
+    
+    // Example volume discount
+    if (context.volume === 'high') {
+      discounts.push({
+        type: 'volume',
+        description: 'High volume discount',
+        amount: totalCost * 0.1,
+        percentage: 10
+      });
+    }
+    
+    return discounts;
+  }
+
+  private async calculateSurcharges(
+    provider: string,
+    model: string,
+    totalCost: number,
+    context: CostCalculationContext
+  ): Promise<Surcharge[]> {
+    // TODO: Implement surcharge calculation logic
+    const surcharges: Surcharge[] = [];
+    
+    // Example peak hours surcharge
+    if (context.timeOfDay === 'peak') {
+      surcharges.push({
+        type: 'peak_hours',
+        description: 'Peak hours surcharge',
+        amount: totalCost * 0.2,
+        percentage: 20
+      });
+    }
+    
+    return surcharges;
+  }
+
+  private async getAllProviderPricing(): Promise<ProviderPricing[]> {
+    // TODO: Implement fetching all provider pricing
+    const providers = ['openai', 'anthropic', 'google', 'cohere'];
+    const allPricing: ProviderPricing[] = [];
+    
+    for (const provider of providers) {
+      try {
+        const pricing = await this.getCurrentPricing(provider);
+        allPricing.push(pricing);
+      } catch (error) {
+        console.error(`Failed to get pricing for ${provider}:`, error);
+      }
+    }
+    
+    return allPricing;
+  }
+
+  private async estimateCost(
+    provider: string,
+    model: string,
+    inputTokens: number,
+    outputTokens: number
+  ): Promise<number> {
+    // TODO: Implement cost estimation
+    const pricing = await this.getCurrentPricing(provider);
+    const modelPricing = pricing.models.find(m => m.model === model);
+    
+    if (!modelPricing) {
+      throw new Error(`Model ${model} not found for provider ${provider}`);
+    }
+    
+    const inputCost = (inputTokens / 1000) * modelPricing.inputTokenPrice;
+    const outputCost = (outputTokens / 1000) * modelPricing.outputTokenPrice;
+    
+    return inputCost + outputCost;
+  }
+
+  private async getReliabilityScore(provider: string): Promise<number> {
+    // TODO: Implement reliability score calculation
+    const pricing = await this.getCurrentPricing(provider);
+    return pricing.reliability || 0.8;
+  }
+
+  private calculateOverallScore(
+    estimatedCost: number,
+    qualityScore: number,
+    reliabilityScore: number,
+    latencyScore: number,
+    taskRequirements: TaskRequirements
+  ): number {
+    // TODO: Implement overall score calculation
+    // Weighted average based on requirements
+    const costWeight = 0.4;
+    const qualityWeight = 0.3;
+    const reliabilityWeight = 0.2;
+    const latencyWeight = 0.1;
+    
+    // Normalize cost score (lower cost = higher score)
+    const maxCost = 0.1; // Example max cost per request
+    const costScore = Math.max(0, 1 - (estimatedCost / maxCost));
+    
+    return (
+      costScore * costWeight +
+      qualityScore * qualityWeight +
+      reliabilityScore * reliabilityWeight +
+      latencyScore * latencyWeight
+    );
+  }
+
+  private generatePros(model: ModelPricing, requirements: TaskRequirements): string[] {
+    // TODO: Implement pros generation
+    const pros: string[] = [];
+    
+    if (model.contextWindow > requirements.contextNeeded * 2) {
+      pros.push('Large context window for complex tasks');
+    }
+    
+    if (model.features.includes('function-calling')) {
+      pros.push('Supports function calling');
+    }
+    
+    if (model.features.includes('vision')) {
+      pros.push('Multimodal capabilities');
+    }
+    
+    return pros;
+  }
+
+  private generateCons(model: ModelPricing, requirements: TaskRequirements): string[] {
+    // TODO: Implement cons generation
+    const cons: string[] = [];
+    
+    if (model.rateLimits.requestsPerMinute < 100) {
+      cons.push('Lower rate limits');
+    }
+    
+    if (model.maxOutputTokens < 8192) {
+      cons.push('Limited output token capacity');
+    }
+    
+    return cons;
+  }
+
+  private generateSuitabilityReason(model: ModelPricing, requirements: TaskRequirements): string {
+    // TODO: Implement suitability reason generation
+    const reasons: string[] = [];
+    
+    if (model.contextWindow >= requirements.contextNeeded) {
+      reasons.push('Sufficient context window');
+    }
+    
+    if (requirements.features.every(f => model.features.includes(f))) {
+      reasons.push('Supports all required features');
+    }
+    
+    return reasons.join('; ') || 'Meets basic requirements';
+  }
+
+  private calculatePriceScore(
+    estimatedCost: number,
+    priceRange: { min: number; max: number }
+  ): number {
+    // TODO: Implement price score calculation
+    if (priceRange.max === priceRange.min) {
+      return 0.5;
+    }
+    
+    // Normalize to 0-1 scale (lower price = higher score)
+    const normalizedScore = 1 - ((estimatedCost - priceRange.min) / (priceRange.max - priceRange.min));
+    return Math.max(0, Math.min(1, normalizedScore));
+  }
+
+  private generateRecommendations(
+    suitableOptions: ProviderOption[],
+    requirements: TaskRequirements
+  ): string[] {
+    // TODO: Implement recommendations generation
+    const recommendations: string[] = [];
+    
+    if (suitableOptions.length > 0) {
+      const bestOption = suitableOptions[0];
+      recommendations.push(`Best option: ${bestOption.provider} ${bestOption.model}`);
+    }
+    
+    if (requirements.qualityRequirement === 'premium') {
+      recommendations.push('Consider premium models for best quality');
+    }
+    
+    if (requirements.latencyRequirement === 'real-time') {
+      recommendations.push('Prioritize providers with low latency');
+    }
+    
+    return recommendations;
+  }
+
+  private calculatePriceTrend(history: PriceHistoryEntry[]): 'increasing' | 'decreasing' | 'stable' {
+    // TODO: Implement price trend calculation
+    if (history.length < 3) {
+      return 'stable';
+    }
+    
+    // Simple trend detection based on last 3 entries
+    const recent = history.slice(-3);
+    const priceChanges = recent.slice(1).map((entry, index) => {
+      const prev = recent[index];
+      // Use the first model's pricing as a reference
+      const currentPrice = entry.pricing.models[0]?.inputTokenPrice || 0;
+      const prevPrice = prev.pricing.models[0]?.inputTokenPrice || 0;
+      return currentPrice - prevPrice;
+    });
+    
+    const avgChange = priceChanges.reduce((sum, change) => sum + change, 0) / priceChanges.length;
+    
+    if (avgChange > 0.001) return 'increasing';
+    if (avgChange < -0.001) return 'decreasing';
+    return 'stable';
+  }
+
+  private generatePriceChangeAnalysis(
+    inputPriceChange: number,
+    outputPriceChange: number
+  ): string {
+    // TODO: Implement price change analysis generation
+    const analyses: string[] = [];
+    
+    if (Math.abs(inputPriceChange) > 10) {
+      analyses.push(`Significant input price change: ${inputPriceChange.toFixed(2)}%`);
+    }
+    
+    if (Math.abs(outputPriceChange) > 10) {
+      analyses.push(`Significant output price change: ${outputPriceChange.toFixed(2)}%`);
+    }
+    
+    if (analyses.length === 0) {
+      analyses.push('Price remains relatively stable');
+    }
+    
+    return analyses.join('. ');
+  }
 }
 
 // Additional interfaces...
@@ -617,10 +945,11 @@ interface CostCalculationContext {
 }
 
 interface PriceHistoryEntry {
-  date: Date;
-  inputTokenPrice: number;
-  outputTokenPrice: number;
-  rateLimits: any;
+  timestamp: Date;
+  pricing: ProviderPricing;
+  inputTokenPrice?: number;
+  outputTokenPrice?: number;
+  rateLimits?: any;
 }
 
 interface PriceChangeAnalysis {

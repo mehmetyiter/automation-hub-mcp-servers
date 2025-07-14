@@ -2,10 +2,10 @@
  * Dynamic Code Generator with Event-Driven Architecture
  */
 
-import { DynamicCodeGeneratorDI } from './dynamic-code-generator-di';
-import { CodeGenerationRequest, GeneratedCode } from './types';
-import { globalEventEmitter, EventTypes, EventBuilder } from './events/event-emitter';
-import { IServiceContainer } from './dependency-injection/container';
+import { DynamicCodeGeneratorDI } from './dynamic-code-generator-di.js';
+import { CodeGenerationRequest, GeneratedCode } from './types.js';
+import { globalEventEmitter, EventTypes, EventBuilder } from './events/event-emitter.js';
+import { IServiceContainer } from './dependency-injection/container.js';
 
 export class DynamicCodeGeneratorWithEvents extends DynamicCodeGeneratorDI {
   constructor(container: IServiceContainer) {
@@ -251,8 +251,8 @@ export class DynamicCodeGeneratorWithEvents extends DynamicCodeGeneratorDI {
 
     // If feedback indicates issues, consider optimization
     if (!feedback.worked || feedback.rating < 3) {
-      globalEventEmitter.emit({
-        type: 'optimization_requested',
+      globalEventEmitter.emitEvent({
+        type: 'optimization_started',
         timestamp: new Date().toISOString(),
         codeId,
         data: {
@@ -263,14 +263,6 @@ export class DynamicCodeGeneratorWithEvents extends DynamicCodeGeneratorDI {
     }
   }
 
-  private generateCodeId(request: CodeGenerationRequest): string {
-    const hash = require('crypto')
-      .createHash('sha256')
-      .update(JSON.stringify(request))
-      .digest('hex');
-    
-    return `code_${request.nodeType}_${hash.substring(0, 8)}_${Date.now()}`;
-  }
 
   // Override profileCode to add events
   async profileCode(codeId: string, options?: any): Promise<any> {
@@ -285,7 +277,7 @@ export class DynamicCodeGeneratorWithEvents extends DynamicCodeGeneratorDI {
       .emit();
 
     try {
-      const profile = await super.profileCode(codeId, options);
+      const profile = await super.profileCode(codeId);
 
       // Emit profile completed event
       new EventBuilder()

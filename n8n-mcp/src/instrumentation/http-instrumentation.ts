@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { MetricsService } from '../observability/metrics';
-import { LoggingService } from '../observability/logging';
-import { TracingService } from '../observability/tracing';
+import { MetricsService } from '../observability/metrics.js';
+import { LoggingService } from '../observability/logging.js';
+import { TracingService } from '../observability/tracing.js';
 import { trace, context, SpanKind, SpanStatusCode } from '@opentelemetry/api';
 
 export class HTTPInstrumentation {

@@ -1,10 +1,10 @@
-import { AIService } from '../../ai-service';
+import { AIService } from '../../ai-service.js';
 import { 
   DatabaseSchema, 
   TableSchema, 
   IndexSuggestion, 
   OptimizedQuery 
-} from './sql-adapter';
+} from './sql-adapter.js';
 
 export interface QueryAnalysis {
   tables: string[];
@@ -203,8 +203,8 @@ Provide detailed analysis:
       joins,
       whereConditions,
       subqueries: [],
-      aggregations: { functions: [], groupByColumns: [], canUseIndex: false },
-      orderBy: { columns: [], directions: [], canUseIndex: false },
+      aggregations: [],
+      orderBy: [],
       indexUsage: this.analyzeIndexUsage(sql, schema),
       estimatedRows: 1000,
       estimatedCost: 100
@@ -364,7 +364,7 @@ Provide detailed analysis:
       {
         name: 'Optimize ORDER BY',
         description: 'Optimize ORDER BY clauses with indexes',
-        check: (analysis) => analysis.orderBy.columns.length > 0 && !analysis.orderBy.canUseIndex,
+        check: (analysis) => analysis.orderBy.length > 0 && analysis.orderBy.some(ob => !ob.canUseIndex),
         apply: (sql, analysis, schema) => this.optimizeOrderBy(sql, analysis, schema),
         estimatedImprovement: 10
       }
@@ -417,8 +417,10 @@ Provide detailed analysis:
 
   private optimizeOrderBy(sql: string, analysis: QueryAnalysis, schema: DatabaseSchema): string {
     // Suggest composite indexes for ORDER BY
-    if (analysis.orderBy.columns.length > 1) {
-      const indexSuggestion = `/* Consider adding index: CREATE INDEX idx_${analysis.orderBy.columns.join('_')} ON table(${analysis.orderBy.columns.join(', ')}) */`;
+    if (analysis.orderBy.length > 0 && analysis.orderBy[0].columns.length > 1) {
+      const orderByColumns = analysis.orderBy[0].columns;
+      const tableName = orderByColumns[0].split('.')[0];
+      const indexSuggestion = `/* Consider adding index: CREATE INDEX idx_${orderByColumns.join('_').replace(/\./g, '_')} ON ${tableName}(${orderByColumns.map(c => c.split('.')[1] || c).join(', ')}) */`;
       return `${indexSuggestion}\n${sql}`;
     }
     

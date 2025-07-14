@@ -97,7 +97,8 @@ export class AIProviderInstrumentation {
     });
 
     // Record request metric
-    this.metrics.recordAIProviderRequest(this.provider, this.model, operation);
+    // Record as API request for now
+    this.metrics.recordAPIRequest('POST', `ai/${this.provider}/${operation}`, 0, 0);
 
     try {
       // Execute the AI call with context
@@ -337,7 +338,6 @@ export class AIProviderInstrumentation {
   }
 
   // Function calling instrumentation
-  @TracingService.traceMethod('ai.function_call')
   async instrumentFunctionCall(
     functionName: string,
     args: any,

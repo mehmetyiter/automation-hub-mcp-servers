@@ -8,41 +8,41 @@ import {
   CodeContext, 
   CodeEnvironment, 
   LogicPatterns 
-} from './types';
+} from './types.js';
 import { 
   CodeGenerationError, 
   ValidationError, 
   SecurityError, 
   VersioningError,
   ErrorHandler 
-} from './errors/custom-errors';
+} from './errors/custom-errors.js';
 import { 
   ExecutionContext, 
   ValidationContext,
   CodeMetadata,
   RequestParameters 
-} from './types/common-types';
-import { ProfilingOptions, PerformanceProfile } from './performance/performance-profiler';
-import { IServiceContainer, ServiceTokens } from './dependency-injection/container';
-import { CodeContextAnalyzer } from './code-context-analyzer';
-import { CodeValidationEngine } from './code-validation-engine';
-import { CodeOptimizationEngine } from './code-optimization-engine';
-import { CodeExecutionMonitor } from './code-execution-monitor';
-import { PythonCodeAdapter } from './language-adapters/python-adapter';
-import { SQLCodeAdapter } from './language-adapters/sql-adapter';
-import { TypeScriptCodeAdapter } from './language-adapters/typescript-adapter';
-import { RCodeAdapter } from './language-adapters/r-adapter';
-import { AdvancedPerformanceMetrics } from './performance/advanced-metrics';
-import { PerformanceProfiler } from './performance/performance-profiler';
-import { AdvancedPromptingEngine } from './prompting/advanced-prompting-engine';
-import { CodeVersionManager, VersionMetadata } from './versioning/code-version-manager';
-import { AIService } from '../ai-service';
+} from './types/common-types.js';
+import { ProfilingOptions, PerformanceProfile } from './performance/performance-profiler.js';
+import { IServiceContainer, ServiceTokens } from './dependency-injection/container.js';
+import { CodeContextAnalyzer } from './code-context-analyzer.js';
+import { CodeValidationEngine } from './code-validation-engine.js';
+import { CodeOptimizationEngine } from './code-optimization-engine.js';
+import { CodeExecutionMonitor } from './code-execution-monitor.js';
+import { PythonCodeAdapter } from './language-adapters/python-adapter.js';
+import { SQLCodeAdapter } from './language-adapters/sql-adapter.js';
+import { TypeScriptCodeAdapter } from './language-adapters/typescript-adapter.js';
+import { RCodeAdapter } from './language-adapters/r-adapter.js';
+import { AdvancedPerformanceMetrics } from './performance/advanced-metrics.js';
+import { PerformanceProfiler } from './performance/performance-profiler.js';
+import { AdvancedPromptingEngine } from './prompting/advanced-prompting-engine.js';
+import { CodeVersionManager, VersionMetadata } from './versioning/code-version-manager.js';
+import { AIService } from '../ai-service.js';
 
 export class DynamicCodeGeneratorDI {
   private readonly aiService: AIService;
   private readonly contextAnalyzer: CodeContextAnalyzer;
-  private readonly validationEngine: CodeValidationEngine;
-  private readonly optimizationEngine: CodeOptimizationEngine;
+  protected readonly validationEngine: CodeValidationEngine;
+  protected readonly optimizationEngine: CodeOptimizationEngine;
   private readonly executionMonitor: CodeExecutionMonitor;
   private readonly pythonAdapter: PythonCodeAdapter;
   private readonly sqlAdapter: SQLCodeAdapter;
@@ -51,8 +51,8 @@ export class DynamicCodeGeneratorDI {
   private readonly performanceMetrics: AdvancedPerformanceMetrics;
   private readonly performanceProfiler: PerformanceProfiler;
   private readonly promptingEngine: AdvancedPromptingEngine;
-  private readonly versionManager: CodeVersionManager;
-  private generatedCodeCache: Map<string, GeneratedCode>;
+  protected readonly versionManager: CodeVersionManager;
+  protected generatedCodeCache: Map<string, GeneratedCode>;
 
   constructor(private container: IServiceContainer) {
     // Resolve all dependencies from the container
@@ -130,8 +130,8 @@ export class DynamicCodeGeneratorDI {
         description: `Generated code for: ${request.description}`,
         changeType: 'major',
         changes: ['Initial code generation'],
-        context,
-        request,
+        context: context as unknown as Record<string, unknown>,
+        request: request as unknown as Record<string, unknown>,
         improvements: [],
         regressions: []
       };
@@ -211,11 +211,11 @@ export class DynamicCodeGeneratorDI {
       case 'ts':
         return this.typeScriptAdapter.generateTypeScriptCode(request, context, {
           strict: request.requirements?.strict ?? true,
-          targetES: (request.requirements?.targetES as 'ES2015' | 'ES2016' | 'ES2017' | 'ES2018' | 'ES2019' | 'ES2020' | 'ES2021' | 'ES2022' | 'ESNext') || 'ES2020',
-          moduleSystem: (request.requirements?.moduleSystem as 'commonjs' | 'es6' | 'amd' | 'umd' | 'system') || 'commonjs',
+          targetES: (['ES2020', 'ES2021', 'ES2022', 'ESNext'].includes(request.requirements?.targetES as string) ? request.requirements?.targetES as 'ES2020' | 'ES2021' | 'ES2022' | 'ESNext' : 'ES2020'),
+          moduleSystem: (request.requirements?.moduleSystem === 'es6' ? 'esm' : 'commonjs') as 'commonjs' | 'esm',
           includeTypes: true,
           asyncAwait: true,
-          errorHandling: (request.requirements?.errorHandling as 'try-catch' | 'promise' | 'async-await' | 'callback') || 'try-catch'
+          errorHandling: 'try-catch' as 'try-catch' | 'result-type' | 'promises'
         });
         
       case 'r':
@@ -395,12 +395,37 @@ return processedItems;`;
     }
   }
 
-  private generateCodeId(request: CodeGenerationRequest): string {
+  protected generateCodeId(request: CodeGenerationRequest): string {
     const hash = require('crypto')
       .createHash('sha256')
       .update(JSON.stringify(request))
       .digest('hex');
     
     return `code_${request.nodeType}_${hash.substring(0, 8)}_${Date.now()}`;
+  }
+
+  // Methods for event-driven extensions
+  async executeGeneratedCode(codeId: string, executionContext: any): Promise<any> {
+    // TODO: Implement code execution logic
+    console.log(`Executing code ${codeId} with context:`, executionContext);
+    return { success: true, codeId, result: null };
+  }
+
+  async provideFeedback(codeId: string, feedback: any): Promise<void> {
+    // TODO: Implement feedback handling
+    console.log(`Received feedback for code ${codeId}:`, feedback);
+  }
+
+  async profileCode(codeId: string): Promise<any> {
+    // TODO: Implement code profiling
+    console.log(`Profiling code ${codeId}`);
+    return {
+      codeId,
+      performanceMetrics: {
+        executionTime: 0,
+        memoryUsage: 0,
+        cpuUsage: 0
+      }
+    };
   }
 }

@@ -1,5 +1,5 @@
-import { CodeContext, CodeMetadata } from './types';
-import { AIService } from '../ai-service';
+import { CodeContext, CodeMetadata } from './types.js';
+import { AIService } from '../ai-service.js';
 
 export class CodeOptimizationEngine {
   private aiService: AIService;

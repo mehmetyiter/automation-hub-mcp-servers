@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { PerformanceProfiler, RealTimeMetrics } from '../performance/performance-profiler.js';
-import { HealthChecker, HealthStatus } from '../health/health-checker.js';
+import { HealthChecker, HealthStatus } from '../resilience/health-checker.js';
 import { CircuitBreakerManager } from '../resilience/circuit-breaker.js';
 import { CodeGenerationDatabase } from '../database/code-generation-db.js';
 
@@ -570,21 +570,14 @@ export class AutoScaler extends EventEmitter {
     console.log(`📝 Registering instance ${instance.id}`);
     
     // Add health check
-    await this.healthChecker.registerComponent({
-      name: `instance-${instance.id}`,
-      check: async () => ({
-        status: instance.status === 'running' ? 'healthy' : 'unhealthy',
-        message: `Instance is ${instance.status}`,
-        details: {
-          uptime: Date.now() - instance.startTime.getTime(),
-          metrics: instance.metrics
-        }
-      }),
-      interval: 30000,
-      timeout: 5000,
-      retries: 3,
-      critical: false
-    });
+    this.healthChecker.registerComponent(
+      `instance-${instance.id}`,
+      async () => ({
+        status: instance.status === 'running' ? 'healthy' : 'unhealthy' as 'healthy' | 'degraded' | 'unhealthy',
+        lastChecked: Date.now(),
+        message: `Instance is ${instance.status}`
+      })
+    );
   }
 
   private async deregisterInstance(instance: Instance): Promise<void> {

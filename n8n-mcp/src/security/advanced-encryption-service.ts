@@ -349,7 +349,7 @@ export class AdvancedEncryptionService extends EncryptionService {
     const firstPass = await this.encrypt(data, context);
     const secondPass = await this.encrypt(firstPass.data, {
       ...context,
-      purpose: 'double-encryption'
+      purpose: 'storage' // Use storage for double encryption
     });
     
     return {
@@ -403,14 +403,21 @@ export class AdvancedEncryptionService extends EncryptionService {
       
       async encrypt(keyId: string, data: Buffer): Promise<Buffer> {
         const key = await this.generateKey(keyId);
-        const cipher = crypto.createCipher('aes-256-gcm', key);
-        return Buffer.concat([cipher.update(data), cipher.final()]);
+        const iv = crypto.randomBytes(16);
+        const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+        const encrypted = Buffer.concat([cipher.update(data), cipher.final()]);
+        const authTag = cipher.getAuthTag();
+        return Buffer.concat([iv, authTag, encrypted]);
       },
       
       async decrypt(keyId: string, encryptedData: Buffer): Promise<Buffer> {
         const key = await this.generateKey(keyId);
-        const decipher = crypto.createDecipher('aes-256-gcm', key);
-        return Buffer.concat([decipher.update(encryptedData), decipher.final()]);
+        const iv = encryptedData.slice(0, 16);
+        const authTag = encryptedData.slice(16, 32);
+        const encrypted = encryptedData.slice(32);
+        const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+        decipher.setAuthTag(authTag);
+        return Buffer.concat([decipher.update(encrypted), decipher.final()]);
       },
       
       async rotateKey(keyId: string): Promise<void> {
@@ -559,8 +566,8 @@ export class AdvancedEncryptionService extends EncryptionService {
       this.auditLog = this.auditLog.slice(-1000);
     }
     
-    // Emit event for external monitoring
-    this.emit('security-event', event);
+    // Log security event for external monitoring
+    console.log('Security event:', event);
   }
 
   // Public API methods

@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { Pool } from 'pg';
-import { Logger } from '../utils/logger';
+import { logger } from '../utils/logger.js';
 
 interface ComplianceFramework {
   name: string;
@@ -103,14 +103,14 @@ interface AuditEvent {
 
 export class ComplianceReportingService extends EventEmitter {
   private db: Pool;
-  private logger: Logger;
+  private logger: typeof logger;
   private frameworks: Map<string, ComplianceFramework> = new Map();
   private reportGenerationInterval: NodeJS.Timeout | null = null;
 
-  constructor(db: Pool, logger: Logger) {
+  constructor(db: Pool, loggerInstance: typeof logger) {
     super();
     this.db = db;
-    this.logger = logger;
+    this.logger = loggerInstance;
 
     this.initializeFrameworks();
     this.startAutomatedReporting();

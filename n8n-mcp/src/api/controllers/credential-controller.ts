@@ -16,7 +16,7 @@ export class CredentialController {
   }
 
   // Get all credentials for user
-  getAllCredentials = async (req: AuthenticatedRequest, res: Response) => {
+  getAllCredentials = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const userId = req.params.userId || req.user!.id;
       const { page = 1, limit = 20, provider, status } = req.query;
@@ -77,7 +77,7 @@ export class CredentialController {
   };
 
   // Get single credential
-  getCredential = async (req: AuthenticatedRequest, res: Response) => {
+  getCredential = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const { credentialId } = req.params;
       const userId = req.user!.id;
@@ -90,13 +90,14 @@ export class CredentialController {
       );
 
       if (credential.rows.length === 0) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           error: {
             code: 'CREDENTIAL_NOT_FOUND',
             message: 'Credential not found'
           }
         });
+        return;
       }
 
       res.json({
@@ -116,7 +117,7 @@ export class CredentialController {
   };
 
   // Create new credential
-  createCredential = async (req: AuthenticatedRequest, res: Response) => {
+  createCredential = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const userId = req.user!.id;
       const { provider, name, credentials, isDefault = false, metadata = {} } = req.body;
@@ -124,7 +125,7 @@ export class CredentialController {
       // Validate credential data
       const validation = await this.validateCredential({ provider, credentials });
       if (!validation.isValid) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           error: {
             code: 'INVALID_CREDENTIAL',
@@ -132,6 +133,7 @@ export class CredentialController {
             details: validation.errors
           }
         });
+        return;
       }
 
       // Encrypt credentials
@@ -179,7 +181,7 @@ export class CredentialController {
   };
 
   // Update credential
-  updateCredential = async (req: AuthenticatedRequest, res: Response) => {
+  updateCredential = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const { credentialId } = req.params;
       const userId = req.user!.id;
@@ -192,13 +194,14 @@ export class CredentialController {
       );
 
       if (existing.rows.length === 0) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           error: {
             code: 'CREDENTIAL_NOT_FOUND',
             message: 'Credential not found'
           }
         });
+        return;
       }
 
       const updates: string[] = [];
@@ -239,13 +242,14 @@ export class CredentialController {
       }
 
       if (updates.length === 0) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           error: {
             code: 'NO_UPDATES',
             message: 'No valid fields to update'
           }
         });
+        return;
       }
 
       // Add updated_at
@@ -293,7 +297,7 @@ export class CredentialController {
   };
 
   // Delete credential
-  deleteCredential = async (req: AuthenticatedRequest, res: Response) => {
+  deleteCredential = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const { credentialId } = req.params;
       const userId = req.user!.id;
@@ -307,13 +311,14 @@ export class CredentialController {
       );
 
       if (result.rows.length === 0) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           error: {
             code: 'CREDENTIAL_NOT_FOUND',
             message: 'Credential not found'
           }
         });
+        return;
       }
 
       // Send webhook notification
@@ -339,7 +344,7 @@ export class CredentialController {
   };
 
   // Test credential
-  testCredential = async (req: AuthenticatedRequest, res: Response) => {
+  testCredential = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const { credentialId } = req.params;
       const userId = req.user!.id;
@@ -353,13 +358,14 @@ export class CredentialController {
       );
 
       if (credential.rows.length === 0) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           error: {
             code: 'CREDENTIAL_NOT_FOUND',
             message: 'Credential not found'
           }
         });
+        return;
       }
 
       const { provider, encrypted_credentials } = credential.rows[0];
@@ -391,7 +397,7 @@ export class CredentialController {
   };
 
   // Get credential usage stats
-  getCredentialUsage = async (req: AuthenticatedRequest, res: Response) => {
+  getCredentialUsage = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     try {
       const { credentialId } = req.params;
       const userId = req.user!.id;
@@ -404,13 +410,14 @@ export class CredentialController {
       );
 
       if (credential.rows.length === 0) {
-        return res.status(404).json({
+        res.status(404).json({
           success: false,
           error: {
             code: 'CREDENTIAL_NOT_FOUND',
             message: 'Credential not found'
           }
         });
+        return;
       }
 
       // Get usage stats from usage_logs table

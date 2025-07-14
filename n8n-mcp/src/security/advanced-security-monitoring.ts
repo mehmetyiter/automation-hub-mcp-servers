@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import crypto from 'crypto';
 import { promisify } from 'util';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 const sleep = promisify(setTimeout);
 

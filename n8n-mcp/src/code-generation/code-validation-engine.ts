@@ -1,6 +1,6 @@
-import { ValidationResult, ValidationIssue, CodeContext } from './types';
-import { PythonCodeAdapter } from './language-adapters/python-adapter';
-import { AIService } from '../ai-service';
+import { ValidationResult, ValidationIssue, CodeContext } from './types.js';
+import { PythonCodeAdapter } from './language-adapters/python-adapter.js';
+import { AIService } from '../ai-service.js';
 
 export class CodeValidationEngine {
   private aiService: AIService;

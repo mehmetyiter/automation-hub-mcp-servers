@@ -1,5 +1,5 @@
-import { Database } from '../database/connection-pool-manager';
-import { PricingOracle } from './pricing-oracle';
+import { Database } from '../database/connection-pool-manager.js';
+import { PricingOracle } from './pricing-oracle.js';
 
 export interface OptimizationSuggestion {
   id: string;

@@ -66,6 +66,15 @@ app.use('/api/community', createProxyMiddleware({
   }
 }));
 
+// Add AI analysis routes (route to n8n service)
+app.use('/api/ai-analysis', createProxyMiddleware({
+  target: process.env.N8N_MCP_URL || 'http://localhost:3006',
+  ...proxyOptions,
+  pathRewrite: {
+    '^/api/ai-analysis': '/api/ai-analysis'
+  }
+}));
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });

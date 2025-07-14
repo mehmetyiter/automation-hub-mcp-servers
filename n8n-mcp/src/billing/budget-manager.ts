@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { Database } from '../database/connection-pool-manager';
+import { Database } from '../database/connection-pool-manager.js';
 
 export interface BudgetConfig {
   id: string;

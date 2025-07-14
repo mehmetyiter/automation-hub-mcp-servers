@@ -267,8 +267,15 @@ export interface CacheArray extends Array<CacheValue> {}
 // Event types for event-driven architecture
 export interface CodeGenerationEvent {
   type: 'generation_started' | 'generation_completed' | 'generation_failed' | 
-        'validation_completed' | 'optimization_completed' | 'version_created' |
-        'feedback_received' | 'cache_hit' | 'cache_miss';
+        'validation_started' | 'validation_completed' | 'validation_failed' |
+        'optimization_started' | 'optimization_completed' | 'optimization_failed' |
+        'version_created' | 'version_activated' | 'version_rollback' |
+        'performance_profile_started' | 'performance_profile_completed' | 'performance_threshold_exceeded' |
+        'cache_hit' | 'cache_miss' | 'cache_cleared' |
+        'database_connected' | 'database_disconnected' | 'database_error' |
+        'feedback_received' | 'feedback_processed' |
+        'security_scan_started' | 'security_scan_completed' | 'security_issue_detected' |
+        'error_occurred' | 'error_recovered';
   timestamp: string;
   codeId?: string;
   data: Record<string, unknown>;

@@ -1,5 +1,5 @@
-import { CodeGenerationRequest, CodeContext, CodeEnvironment, LogicPatterns } from './types';
-import { AIService } from '../ai-service';
+import { CodeGenerationRequest, CodeContext, CodeEnvironment, LogicPatterns } from './types.js';
+import { AIService } from '../ai-service.js';
 
 export class CodeContextAnalyzer {
   private aiService: AIService;

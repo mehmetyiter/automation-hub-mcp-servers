@@ -106,6 +106,11 @@ export class LearningEngine {
   private getMetricBasedImprovements(workflow: WorkflowArchitecture, metrics: any): string[] {
     const improvements = [];
     
+    // Check if workflow and nodes exist
+    if (!workflow || !workflow.nodes) {
+      return ['Workflow structure is incomplete or missing nodes'];
+    }
+    
     // Analyze node count
     if (workflow.nodes.length > 30) {
       improvements.push('Consider breaking this workflow into smaller sub-workflows for better maintainability');
@@ -117,14 +122,14 @@ export class LearningEngine {
     }
     
     // Check for common performance issues
-    if (workflow.nodes.some(n => n.type.includes('loop') || n.type.includes('iteration'))) {
+    if (workflow.nodes && workflow.nodes.some(n => n.type && (n.type.includes('loop') || n.type.includes('iteration')))) {
       improvements.push('Add batch processing to loops for better performance');
     }
     
     // Check for missing error handling
-    const nodesWithoutErrorHandling = workflow.nodes.filter(n => 
-      !n.configuration.errorHandling && !n.configuration.continueOnFail
-    );
+    const nodesWithoutErrorHandling = workflow.nodes ? workflow.nodes.filter(n => 
+      n.configuration && !n.configuration.errorHandling && !n.configuration.continueOnFail
+    ) : [];
     if (nodesWithoutErrorHandling.length > 0) {
       improvements.push(`Add error handling to ${nodesWithoutErrorHandling.length} nodes that currently lack it`);
     }
@@ -154,11 +159,12 @@ export class LearningEngine {
       'Consider caching frequently accessed data'
     ];
     
-    if (workflow.nodes.length > 20) {
+    // Check if workflow and nodes exist before accessing properties
+    if (workflow && workflow.nodes && workflow.nodes.length > 20) {
       improvements.push('Break down complex workflows into smaller, reusable components');
     }
     
-    if (workflow.connections.length > workflow.nodes.length * 1.5) {
+    if (workflow && workflow.connections && workflow.nodes && workflow.connections.length > workflow.nodes.length * 1.5) {
       improvements.push('Simplify workflow connections to improve maintainability');
     }
     

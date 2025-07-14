@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { Pool } from 'pg';
-import { Logger } from '../utils/logger';
+import { logger } from '../utils/logger.js';
 
 interface AuditLog {
   id: string;
@@ -104,16 +104,16 @@ interface AuditQuery {
 
 export class SecurityAuditManager extends EventEmitter {
   private db: Pool;
-  private logger: Logger;
+  private logger: typeof logger;
   private auditRules: Map<string, AuditRule> = new Map();
   private auditBuffer: AuditLog[] = [];
   private flushInterval: NodeJS.Timeout | null = null;
   private analysisInterval: NodeJS.Timeout | null = null;
 
-  constructor(db: Pool, logger: Logger) {
+  constructor(db: Pool, loggerInstance: typeof logger) {
     super();
     this.db = db;
-    this.logger = logger;
+    this.logger = loggerInstance;
 
     this.initializeAuditRules();
     this.startBufferFlush();

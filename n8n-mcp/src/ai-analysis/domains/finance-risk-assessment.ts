@@ -30,7 +30,7 @@ export interface RiskModel {
 
 export class FinanceRiskAssessmentGenerator {
   private businessLogicGenerator: DynamicBusinessLogicGenerator;
-  private riskModels: Map<string, RiskModel>;
+  private riskModels: Map<string, RiskModel> = new Map();
   
   constructor(aiProvider?: string) {
     this.businessLogicGenerator = new DynamicBusinessLogicGenerator(aiProvider);

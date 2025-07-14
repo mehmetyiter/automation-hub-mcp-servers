@@ -1,5 +1,5 @@
 import { getEncryptionService, EncryptionService, EncryptedData } from '../security/encryption-service.js';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 export interface UserApiKeys {
   openai?: string;

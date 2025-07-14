@@ -1,5 +1,5 @@
-import { CodeGenerationRequest, CodeContext } from '../types';
-import { AIService } from '../../ai-service';
+import { CodeGenerationRequest, CodeContext } from '../types.js';
+import { AIService } from '../../ai-service.js';
 
 export interface TypeScriptCodeGenerationOptions {
   strict?: boolean;
@@ -155,9 +155,10 @@ The code should work within n8n's Code node with TypeScript support.`;
     });
     
     // Add custom types based on context
-    if (context.intent.dataStructure) {
-      typeDefinitions += this.generateCustomTypes(context.intent.dataStructure);
-    }
+    // TODO: Add custom type generation based on technical requirements
+    // if (context.technicalRequirements.inputDataStructure) {
+    //   typeDefinitions += this.generateCustomTypes(context.technicalRequirements.inputDataStructure);
+    // }
     
     return typeDefinitions + '\n' + code;
   }

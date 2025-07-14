@@ -1,5 +1,5 @@
-import { CodeGenerationRequest, CodeContext } from '../types';
-import { AIService } from '../../ai-service';
+import { CodeGenerationRequest, CodeContext } from '../types.js';
+import { AIService } from '../../ai-service.js';
 
 export interface RCodeGenerationOptions {
   libraries?: string[];

@@ -1,21 +1,21 @@
-import { PerformanceObserver, performance } from 'perf_hooks';
-import { AIService } from '../../ai-service';
-import { CodeGenerationDatabase } from '../database/code-generation-db';
+import { PerformanceObserver, performance, PerformanceEntry } from 'perf_hooks';
+import { AIService } from '../../ai-service.js';
+import { CodeGenerationDatabase } from '../database/code-generation-db.js';
 import * as v8 from 'v8';
 import * as os from 'os';
 import { 
   PerformanceError,
   ValidationError 
-} from '../errors/custom-errors';
-import { ExecutionContext } from '../types/common-types';
+} from '../errors/custom-errors.js';
+import { ExecutionContext } from '../types/common-types.js';
 import { EventEmitter } from 'events';
-import { RealTimePerformanceMonitor, MonitoringOptions } from './websocket-monitor';
+import { RealTimePerformanceMonitor, MonitoringOptions } from './websocket-monitor.js';
 import { 
   DistributedPerformanceProfiler, 
   NodeConfig, 
   DistributedProfilingOptions,
   DistributedProfile 
-} from './distributed-profiler';
+} from './distributed-profiler.js';
 
 export interface PerformanceProfile {
   id: string;
@@ -1308,14 +1308,16 @@ ${profile.optimizationSuggestions
     await this.wsMonitor.stopWebSocketMonitoring(sessionId);
   }
 
-  async detectMemoryLeaks(codeId: string, timeWindow: string = '1h'): Promise<any> {
+  async detectMemoryLeaksAsync(codeId: string, timeWindow: string = '1h'): Promise<any> {
     console.log(`🔍 Detecting memory leaks for ${codeId}`);
     return await this.wsMonitor.detectMemoryLeaks(codeId, timeWindow);
   }
 
   initializeWebSocketServer(port: number): void {
     console.log(`🚀 Initializing WebSocket server on port ${port}`);
-    this.wsMonitor = new RealTimePerformanceMonitor(port);
+    this.wsMonitor = new RealTimePerformanceMonitor();
+    // Start the WebSocket server on the specified port
+    this.wsMonitor.startWebSocketServer(port);
     
     // Set up event listeners for alerts and metrics
     this.wsMonitor.on('alert', (alert: PerformanceAlert) => {

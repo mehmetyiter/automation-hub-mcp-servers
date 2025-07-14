@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
-import * as WebSocket from 'ws';
+import WebSocket from 'ws';
+import { WebSocketServer } from 'ws';
 import { performance } from 'perf_hooks';
 import { PerformanceProfile, ResourceUsage, Bottleneck, ExecutionProfile } from './performance-profiler.js';
 import * as crypto from 'crypto';
@@ -157,7 +158,7 @@ export class DistributedPerformanceProfiler extends EventEmitter {
   private wsConnections: Map<string, WebSocket> = new Map();
   private nodeProfiles: Map<string, NodeProfile> = new Map();
   private traceEvents: TraceEvent[] = [];
-  private coordinationServer?: WebSocket.Server;
+  private coordinationServer?: WebSocketServer;
   
   constructor() {
     super();
@@ -250,7 +251,7 @@ export class DistributedPerformanceProfiler extends EventEmitter {
     console.log('🔧 Initializing distributed coordination...');
     
     // Set up coordination server
-    this.coordinationServer = new WebSocket.Server({ port: 0 });
+    this.coordinationServer = new WebSocketServer({ port: 0 });
     const port = (this.coordinationServer.address() as any).port;
     
     this.coordinationServer.on('connection', (ws, req) => {
@@ -1200,7 +1201,7 @@ export class DistributedPerformanceProfiler extends EventEmitter {
           const response = JSON.parse(data.toString());
           if (response.messageId === messageId) {
             clearTimeout(timeoutId);
-            ws.off('message', handler);
+            ws.removeListener('message', handler);
             resolve(response);
           }
         } catch (error) {
@@ -1208,7 +1209,7 @@ export class DistributedPerformanceProfiler extends EventEmitter {
         }
       };
       
-      ws.on('message', handler);
+      ws.addListener('message', handler);
       ws.send(JSON.stringify({ ...message, messageId }));
     });
   }
@@ -1216,7 +1217,7 @@ export class DistributedPerformanceProfiler extends EventEmitter {
   private broadcast(message: any): void {
     const messageStr = JSON.stringify(message);
     for (const ws of this.wsConnections.values()) {
-      if (ws.readyState === WebSocket.OPEN) {
+      if (ws.readyState === ws.OPEN) {
         ws.send(messageStr);
       }
     }

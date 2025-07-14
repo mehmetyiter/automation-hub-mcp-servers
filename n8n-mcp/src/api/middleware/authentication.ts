@@ -29,13 +29,14 @@ export class AuthenticationMiddleware {
       const authHeader = req.headers.authorization;
       
       if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({
+        res.status(401).json({
           success: false,
           error: {
             code: 'MISSING_TOKEN',
             message: 'Authentication token required'
           }
         });
+        return;
       }
 
       const token = authHeader.slice(7);
@@ -48,25 +49,27 @@ export class AuthenticationMiddleware {
       );
 
       if (user.rows.length === 0 || !user.rows[0].is_active) {
-        return res.status(401).json({
+        res.status(401).json({
           success: false,
           error: {
             code: 'INVALID_TOKEN',
             message: 'Invalid or expired token'
           }
         });
+        return;
       }
 
       req.user = user.rows[0];
       next();
     } catch (error) {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         error: {
           code: 'TOKEN_VERIFICATION_FAILED',
           message: 'Token verification failed'
         }
       });
+      return;
     }
   };
 
@@ -76,13 +79,14 @@ export class AuthenticationMiddleware {
       const apiKey = req.headers['x-api-key'] as string;
       
       if (!apiKey) {
-        return res.status(401).json({
+        res.status(401).json({
           success: false,
           error: {
             code: 'MISSING_API_KEY',
             message: 'API key required'
           }
         });
+        return;
       }
 
       // Hash the provided API key
@@ -98,13 +102,14 @@ export class AuthenticationMiddleware {
       `, [keyHash]);
 
       if (result.rows.length === 0) {
-        return res.status(401).json({
+        res.status(401).json({
           success: false,
           error: {
             code: 'INVALID_API_KEY',
             message: 'Invalid or expired API key'
           }
         });
+        return;
       }
 
       const keyData = result.rows[0];
@@ -117,7 +122,7 @@ export class AuthenticationMiddleware {
       );
 
       if (!rateLimitCheck.allowed) {
-        return res.status(429).json({
+        res.status(429).json({
           success: false,
           error: {
             code: 'RATE_LIMIT_EXCEEDED',
@@ -128,6 +133,7 @@ export class AuthenticationMiddleware {
             }
           }
         });
+        return;
       }
 
       // Update last used timestamp and usage count
@@ -150,13 +156,14 @@ export class AuthenticationMiddleware {
       next();
     } catch (error) {
       console.error('API key authentication error:', error);
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         error: {
           code: 'AUTHENTICATION_ERROR',
           message: 'Authentication service error'
         }
       });
+      return;
     }
   };
 
@@ -214,11 +221,11 @@ export class AuthenticationMiddleware {
     const hasAPIKey = req.headers['x-api-key'];
 
     if (hasJWT) {
-      return this.authenticateJWT(req, res, next);
+      this.authenticateJWT(req, res, next);
     } else if (hasAPIKey) {
-      return this.authenticateAPIKey(req, res, next);
+      this.authenticateAPIKey(req, res, next);
     } else {
-      return res.status(401).json({
+      res.status(401).json({
         success: false,
         error: {
           code: 'NO_AUTHENTICATION',

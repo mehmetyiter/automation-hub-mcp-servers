@@ -102,18 +102,20 @@ export class UniversalCredentialManager extends EventEmitter implements IUnivers
       }
 
       // Encrypt credential data
-      const encryptionContext: IEncryptionContext = {
+      const encryptionContext = {
         securityLevel: credential.securityLevel,
         platform: credential.platform,
         provider: credential.provider,
         userId: credential.userId,
-        timestamp: now
+        timestamp: now,
+        dataClassification: 'confidential' as const,
+        complianceRequirements: [] as string[],
+        purpose: 'storage' as const
       };
 
       const encrypted = await this.config.encryption.encryptWithContext(
         JSON.stringify(data),
-        encryptionContext,
-        credential.securityLevel
+        encryptionContext
       );
 
       // Store in database using underlying credential manager
@@ -135,7 +137,7 @@ export class UniversalCredentialManager extends EventEmitter implements IUnivers
           JSON.stringify(fullCredential.metadata),
           fullCredential.createdAt,
           fullCredential.updatedAt,
-          encrypted.encryptedData,
+          encrypted.data,
           JSON.stringify(encryptionContext),
           encrypted.keyVersion
         ]
@@ -147,14 +149,15 @@ export class UniversalCredentialManager extends EventEmitter implements IUnivers
 
       // Record security event
       await this.config.security.recordSecurityEvent({
-        type: 'credential_created',
+        type: 'credential_access',
+        subType: 'credential_created',
         severity: 'info',
         userId: credential.userId,
-        resourceId: fullCredential.id,
-        resourceType: 'credential',
-        platform: credential.platform,
-        action: 'create',
-        metadata: {
+        details: {
+          resourceId: fullCredential.id,
+          resourceType: 'credential',
+          platform: credential.platform,
+          action: 'create',
           provider: credential.provider,
           securityLevel: credential.securityLevel
         }
@@ -177,13 +180,14 @@ export class UniversalCredentialManager extends EventEmitter implements IUnivers
       this.config.monitoring.recordCredentialOperation('create', credential.provider, 'failure', duration / 1000);
 
       await this.config.security.recordSecurityEvent({
-        type: 'credential_creation_failed',
+        type: 'credential_access',
+        subType: 'credential_creation_failed',
         severity: 'warning',
         userId: credential.userId,
-        resourceType: 'credential',
-        platform: credential.platform,
-        action: 'create',
-        metadata: {
+        details: {
+          resourceType: 'credential',
+          platform: credential.platform,
+          action: 'create',
           error: error.message,
           provider: credential.provider
         }
@@ -283,18 +287,20 @@ export class UniversalCredentialManager extends EventEmitter implements IUnivers
         }
 
         // Re-encrypt with new data
-        const encryptionContext: IEncryptionContext = {
+        const encryptionContext = {
           securityLevel: updated.securityLevel,
           platform: updated.platform,
           provider: updated.provider,
           userId: updated.userId,
-          timestamp: updated.updatedAt
+          timestamp: updated.updatedAt,
+          dataClassification: 'confidential' as const,
+          complianceRequirements: [] as string[],
+          purpose: 'storage' as const
         };
 
         const encrypted = await this.config.encryption.encryptWithContext(
           JSON.stringify(mergedData),
-          encryptionContext,
-          updated.securityLevel
+          encryptionContext
         );
 
         // Update with new encrypted data
@@ -311,7 +317,7 @@ export class UniversalCredentialManager extends EventEmitter implements IUnivers
             updated.description,
             JSON.stringify(updated.metadata),
             updated.updatedAt,
-            encrypted.encryptedData,
+            encrypted.data,
             JSON.stringify(encryptionContext),
             encrypted.keyVersion,
             updated.securityLevel
@@ -352,14 +358,15 @@ export class UniversalCredentialManager extends EventEmitter implements IUnivers
 
       // Record security event
       await this.config.security.recordSecurityEvent({
-        type: 'credential_updated',
+        type: 'credential_access',
+        subType: 'credential_updated',
         severity: 'info',
         userId: updated.userId,
-        resourceId: credentialId,
-        resourceType: 'credential',
-        platform: updated.platform,
-        action: 'update',
-        metadata: {
+        details: {
+          resourceId: credentialId,
+          resourceType: 'credential',
+          platform: updated.platform,
+          action: 'update',
           changes: Object.keys(updates)
         }
       });
@@ -398,14 +405,15 @@ export class UniversalCredentialManager extends EventEmitter implements IUnivers
 
       // Record security event
       await this.config.security.recordSecurityEvent({
-        type: 'credential_deleted',
+        type: 'credential_access',
+        subType: 'credential_deleted',
         severity: 'warning',
         userId: credential.userId,
-        resourceId: credentialId,
-        resourceType: 'credential',
-        platform: credential.platform,
-        action: 'delete',
-        metadata: {
+        details: {
+          resourceId: credentialId,
+          resourceType: 'credential',
+          platform: credential.platform,
+          action: 'delete',
           provider: credential.provider,
           name: credential.name
         }
@@ -713,14 +721,15 @@ export class UniversalCredentialManager extends EventEmitter implements IUnivers
 
       // Record security event
       await this.config.security.recordSecurityEvent({
-        type: 'credential_migrated',
+        type: 'credential_access',
+        subType: 'credential_migrated',
         severity: 'info',
         userId: sourceCredential.userId,
-        resourceId: credentialId,
-        resourceType: 'credential',
-        platform: sourceCredential.platform,
-        action: 'migrate',
-        metadata: {
+        details: {
+          resourceId: credentialId,
+          resourceType: 'credential',
+          platform: sourceCredential.platform,
+          action: 'migrate',
           sourcePlatform: sourceCredential.platform,
           targetPlatform,
           success: validationResult.status === 'valid'
@@ -831,12 +840,12 @@ export class UniversalCredentialManager extends EventEmitter implements IUnivers
     const encryptionContext = JSON.parse(row.encryption_context);
 
     // Decrypt data
-    const decrypted = await this.config.encryption.decryptWithContext(
-      row.encrypted_data,
+    const decrypted = await this.config.encryption.decrypt(
+      { data: row.encrypted_data, iv: row.iv || '', tag: row.tag || '', keyVersion: row.key_version, algorithm: row.algorithm || '' },
       encryptionContext
     );
 
-    return JSON.parse(decrypted);
+    return JSON.parse(decrypted as string);
   }
 
   private async getPlatformConfig(platform: PlatformType): Promise<any> {
@@ -858,10 +867,10 @@ export class UniversalCredentialManager extends EventEmitter implements IUnivers
     ];
 
     // Add platform-specific mappings
-    if (source === 'openai' && target === 'anthropic') {
+    if (source === 'n8n' && target === 'zapier') {
       commonMappings.push({
-        sourceField: 'organizationId',
-        targetField: 'workspaceId',
+        sourceField: 'workflowId',
+        targetField: 'zapId',
         required: false
       });
     }
@@ -874,9 +883,9 @@ export class UniversalCredentialManager extends EventEmitter implements IUnivers
     const transformations = [];
 
     // Example transformation
-    if (source === 'openai' && target === 'anthropic') {
+    if (source === 'n8n' && target === 'zapier') {
       transformations.push({
-        sourceField: 'model',
+        sourceField: 'nodeType',
         targetField: 'model',
         transform: (value: string) => {
           // Map OpenAI models to Anthropic models
@@ -1061,12 +1070,13 @@ export class UniversalCredentialManager extends EventEmitter implements IUnivers
 
       // Record security event
       await this.config.security.recordSecurityEvent({
-        type: 'credentials_rotated',
+        type: 'credential_access',
+        subType: 'rotate',
         severity: 'info',
         userId,
-        resourceType: 'credential',
-        action: 'rotate',
-        metadata: {
+        details: {
+          action: 'rotate',
+          resourceType: 'credential',
           count: credentials.length
         }
       });

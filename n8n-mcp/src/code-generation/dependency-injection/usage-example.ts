@@ -2,10 +2,10 @@
  * Example usage of the Dependency Injection system
  */
 
-import { globalContainer, ServiceTokens } from './container';
-import { initializeServices, getService } from './service-registry';
-import { DynamicCodeGeneratorDI } from '../dynamic-code-generator-di';
-import { CodeGenerationRequest } from '../types';
+import { globalContainer, ServiceTokens } from './container.js';
+import { initializeServices, getService } from './service-registry.js';
+import { DynamicCodeGeneratorDI } from '../dynamic-code-generator-di.js';
+import { CodeGenerationRequest } from '../types.js';
 
 // Example 1: Basic usage with global container
 export async function example1() {
@@ -108,7 +108,7 @@ export async function example5() {
   // Register services with lazy loading
   globalContainer.singleton(ServiceTokens.DYNAMIC_CODE_GENERATOR, async () => {
     // Dynamically import the module
-    const module = await import('../dynamic-code-generator-di');
+    const module = await import('../dynamic-code-generator-di.js');
     return module.DynamicCodeGeneratorDI.create(globalContainer);
   });
 

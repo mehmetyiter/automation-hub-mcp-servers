@@ -745,18 +745,21 @@ export class APMMonitor extends EventEmitter {
 
   private async storeTransaction(transaction: Transaction): Promise<void> {
     try {
-      await this.database.storeTrainingData({
-        id: transaction.id,
-        timestamp: new Date(transaction.startTime),
-        type: 'apm_transaction',
-        input: transaction.name,
-        output: JSON.stringify(transaction),
-        metadata: {
-          duration: transaction.duration,
-          status: transaction.status,
-          errorCount: transaction.errors.length,
-          spanCount: transaction.spans.length
-        }
+      await this.database.saveLearningData({
+        request: {
+          description: transaction.name,
+          nodeType: 'apm_transaction',
+          workflowContext: {},
+          requirements: {}
+        },
+        generatedCode: JSON.stringify(transaction),
+        executionResult: {
+          success: transaction.status === 'completed',
+          executionTime: transaction.duration,
+          memoryUsed: 0
+        },
+        patterns: [],
+        timestamp: new Date(transaction.startTime).toISOString()
       });
     } catch (error) {
       console.error('Failed to store transaction:', error);

@@ -1,15 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { Pool } from 'pg';
-import { Logger } from '../utils/logger';
-import { SecurityMonitoringService } from '../security/security-monitoring-service';
-import { ThreatDetectionEngine } from '../security/threat-detection-engine';
-import { IncidentResponseService } from '../security/incident-response-service';
-import { ComplianceReportingService } from '../security/compliance-reporting-service';
-import { SecurityAuditManager } from '../security/security-audit-manager';
+import { logger } from '../utils/logger.js';
+import { SecurityMonitoringService } from '../security/security-monitoring-service.js';
+import { ThreatDetectionEngine } from '../security/threat-detection-engine.js';
+import { IncidentResponseService } from '../security/incident-response-service.js';
+import { ComplianceReportingService } from '../security/compliance-reporting-service.js';
+import { SecurityAuditManager } from '../security/security-audit-manager.js';
 
 export function createSecurityMonitoringAPI(
   db: Pool,
-  logger: Logger,
+  loggerInstance: typeof logger,
   securityService: SecurityMonitoringService,
   threatEngine: ThreatDetectionEngine,
   incidentService: IncidentResponseService,

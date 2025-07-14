@@ -1,6 +1,6 @@
-import { CodeGenerationRequest, CodePattern } from '../types';
-import { CodeGenerationDatabase } from '../database/code-generation-db';
-import { AIService } from '../../ai-service';
+import { CodeGenerationRequest, CodePattern } from '../types.js';
+import { CodeGenerationDatabase } from '../database/code-generation-db.js';
+import { AIService } from '../../ai-service.js';
 
 export interface HistoricalPatterns {
   successfulPatterns: CodePattern[];

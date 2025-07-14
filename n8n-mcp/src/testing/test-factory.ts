@@ -2,7 +2,7 @@ import { faker } from '@faker-js/faker';
 import { Pool } from 'pg';
 import { Redis } from 'ioredis';
 import { DeepPartial } from 'utility-types';
-import { LoggingService } from '../observability/logging';
+import { LoggingService } from '../observability/logging.js';
 
 const logger = LoggingService.getInstance();
 
@@ -15,7 +15,7 @@ export interface FactoryDefinition<T> {
 
 export interface FactoryContext {
   sequence: number;
-  faker: typeof faker;
+  faker: typeof import('@faker-js/faker').faker;
   factory: TestFactory;
   associations?: Record<string, any>;
 }
@@ -188,7 +188,7 @@ export class TestFactory {
     options?: FactoryOptions
   ): Promise<T[]> {
     const promises = Array(count).fill(null).map((_, index) =>
-      this.create(name, { ...overrides, _index: index }, options)
+      this.create(name, overrides, options)
     );
 
     return Promise.all(promises);
@@ -490,28 +490,51 @@ export class TestFactory {
       }),
 
       traits: {
-        webhook: () => ({
-          type: 'webhook',
+        webhook: ({ sequence, faker }) => ({
+          id: `node-${sequence}`,
+          type: 'webhook' as const,
+          name: `${faker.hacker.verb()} ${faker.hacker.noun()}`,
+          position: {
+            x: faker.number.int({ min: 0, max: 1000 }),
+            y: faker.number.int({ min: 0, max: 800 })
+          },
           parameters: {
             path: '/webhook/test',
             method: 'POST',
             responseMode: 'onReceived'
           }
         }),
-        httpRequest: ({ faker }) => ({
-          type: 'http-request',
+        httpRequest: ({ sequence, faker }) => ({
+          id: `node-${sequence}`,
+          type: 'http-request' as const,
+          name: `${faker.hacker.verb()} ${faker.hacker.noun()}`,
+          position: {
+            x: faker.number.int({ min: 0, max: 1000 }),
+            y: faker.number.int({ min: 0, max: 800 })
+          },
           parameters: {
             url: faker.internet.url(),
             method: faker.helpers.arrayElement(['GET', 'POST', 'PUT']),
-            headers: {}
-          }
+            headers: {},
+            path: '', // Add missing properties to match webhook structure
+            responseMode: 'onReceived'
+          } as any
         }),
-        transform: () => ({
-          type: 'transform',
+        transform: ({ sequence, faker }) => ({
+          id: `node-${sequence}`,
+          type: 'transform' as const,
+          name: `${faker.hacker.verb()} ${faker.hacker.noun()}`,
+          position: {
+            x: faker.number.int({ min: 0, max: 1000 }),
+            y: faker.number.int({ min: 0, max: 800 })
+          },
           parameters: {
             code: 'return items;',
-            workflowMode: 'manual'
-          }
+            workflowMode: 'manual',
+            path: '', // Add missing properties to match webhook structure
+            method: 'POST',
+            responseMode: 'onReceived'
+          } as any
         })
       }
     });
@@ -538,14 +561,16 @@ export class TestFactory {
 
       traits: {
         http: ({ faker }) => ({
-          type: 'http',
+          type: 'http' as const,
           data: {
             url: faker.internet.url(),
-            apiKey: faker.string.alphanumeric(32)
-          }
+            apiKey: faker.string.alphanumeric(32),
+            username: '', // Add missing properties
+            password: ''
+          } as any
         }),
         database: ({ faker }) => ({
-          type: 'database',
+          type: 'database' as const,
           data: {
             host: faker.internet.ip(),
             port: 5432,
@@ -653,7 +678,7 @@ function isObject(item: any): boolean {
   return item && typeof item === 'object' && !Array.isArray(item);
 }
 
-function generateNodeParameters(faker: typeof faker): any {
+function generateNodeParameters(faker: any): any {
   return {
     value: faker.helpers.maybe(() => faker.lorem.word()),
     expression: faker.helpers.maybe(() => '={{$json.data}}'),

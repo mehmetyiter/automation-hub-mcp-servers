@@ -338,8 +338,7 @@ export class ZapierPlatformAdapter extends BasePlatformAdapter {
         return {
           ...data,
           token: newTokens.accessToken,
-          refreshToken: newTokens.refreshToken || data.refreshToken,
-          expiresAt: newTokens.expiresAt
+          refreshToken: newTokens.refreshToken || data.refreshToken
         };
       }
 

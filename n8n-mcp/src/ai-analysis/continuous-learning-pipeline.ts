@@ -1,6 +1,5 @@
 import { EventEmitter } from 'events';
 import { AIService } from '../ai-service.js';
-import { BusinessLogicImplementation, BusinessDomain } from './business-logic-generator.js';
 import { AdaptivePromptEngine } from './adaptive-prompt-engine.js';
 import { BusinessLogicLearningEngine } from './business-logic-learning.js';
 
@@ -256,6 +255,7 @@ Analyze the feedback and extract actionable learning patterns. Return JSON:
             success: false,
             confidence: 0.3,
             executionTime: metrics.avgExecutionTime,
+            output: null,
             errors: [pattern.description]
           });
         }
@@ -815,7 +815,7 @@ export function createContinuousLearningPipeline(
 ): ContinuousLearningPipeline {
   const aiService = new AIService(aiProvider);
   const _promptEngine = promptEngine || new AdaptivePromptEngine(aiService);
-  const _learningEngine = learningEngine || new BusinessLogicLearningEngine(aiService);
+  const _learningEngine = learningEngine || new BusinessLogicLearningEngine(aiProvider);
   
   return new ContinuousLearningPipeline(aiService, _promptEngine, _learningEngine);
 }

@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { ModelPricing, ProviderPricing, PricingComparison } from './intelligent-cost-manager.js';
 
 export interface PricingProvider {

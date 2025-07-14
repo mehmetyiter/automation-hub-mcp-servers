@@ -3,8 +3,8 @@ import {
   CodeContext, 
   ValidationResult,
   ValidationIssue 
-} from '../types';
-import { AIService } from '../../ai-service';
+} from '../types.js';
+import { AIService } from '../../ai-service.js';
 
 export class PythonCodeAdapter {
   private aiService: AIService;

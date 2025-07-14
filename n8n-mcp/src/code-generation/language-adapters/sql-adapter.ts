@@ -1,14 +1,14 @@
-import { CodeGenerationRequest, CodeContext } from '../types';
-import { AIService } from '../../ai-service';
+import { CodeGenerationRequest, CodeContext } from '../types.js';
+import { AIService } from '../../ai-service.js';
 import { 
   LanguageAdapterError, 
   ValidationError,
   SecurityError 
-} from '../errors/custom-errors';
+} from '../errors/custom-errors.js';
 import * as crypto from 'crypto';
 import { EventEmitter } from 'events';
-import { QueryOptimizationEngine } from './query-optimization-engine';
-import { SQLQueryParams, SQLDialectInfo } from '../types/common-types';
+import { QueryOptimizationEngine } from './query-optimization-engine.js';
+import { SQLQueryParams, SQLDialectInfo } from '../types/common-types.js';
 
 export interface SQLCodeGenerationOptions {
   dialect?: 'mysql' | 'postgresql' | 'sqlite' | 'mssql' | 'oracle';
@@ -94,12 +94,12 @@ export interface ParameterSchema {
 
 export interface ValidationResult {
   isValid: boolean;
-  errors: ValidationError[];
+  errors: SQLValidationError[];
   warnings: ValidationWarning[];
   suggestions: SchemaSuggestion[];
 }
 
-export interface ValidationError {
+export interface SQLValidationError {
   type: 'SYNTAX' | 'SCHEMA' | 'SECURITY' | 'PERFORMANCE';
   message: string;
   line?: number;
@@ -279,7 +279,7 @@ export class SQLCodeAdapter {
           typeof value !== 'string' && 
           typeof value !== 'number' && 
           typeof value !== 'boolean' && 
-          !(value instanceof Date)) {
+          !((value as any) instanceof Date)) {
         throw new ValidationError(
           `Invalid parameter type for '${key}'`,
           { field: key, value, rule: 'type' }
@@ -1250,7 +1250,7 @@ Return validation result:
     if (!pool) {
       throw new SecurityError(
         'Connection pool not found and no configuration provided',
-        { connectionId }
+        [`connectionId: ${connectionId}`]
       );
     }
     
@@ -1521,7 +1521,7 @@ export class AdaptiveConnectionPool extends DatabaseConnectionPool {
   }[] = [];
   
   private lastScalingTime: Date = new Date();
-  private evaluationInterval?: NodeJS.Timer;
+  private evaluationInterval?: NodeJS.Timeout;
   private adaptiveConfig: Required<ConnectionPoolConfig['adaptive']>;
   
   constructor(config: ConnectionPoolConfig) {
@@ -1891,7 +1891,7 @@ export class SmartQueryBatcher {
   };
   
   constructor(
-    private connectionManager: ConnectionPoolManager,
+    private connectionManager: ConnectionPool,
     private config: {
       defaultBatchSize: number;
       defaultMaxWaitTime: number;
@@ -2112,12 +2112,10 @@ export class SmartQueryBatcher {
   
   private async executeSingleQuery(connectionId: string, query: QueuedQuery): Promise<void> {
     try {
-      const result = await this.connectionManager.executeBatch(
-        [{ id: query.id, sql: query.sql, params: query.params }],
-        connectionId
-      );
+      // Execute single query - ConnectionPool doesn't have executeBatch
+      const result = await (this.connectionManager as any).query(query.sql, query.params);
       
-      query.callback.resolve(result[0]);
+      query.callback.resolve(result);
     } catch (error) {
       this.handleQueryError(connectionId, query, error as Error);
     }
@@ -2131,15 +2129,18 @@ export class SmartQueryBatcher {
         params: q.params
       }));
       
-      const results = await this.connectionManager.executeBatch(batchQueries, connectionId);
+      // Execute batch queries - ConnectionPool doesn't have executeBatch
+      const results = await Promise.all(
+        batchQueries.map(q => (this.connectionManager as any).query(q.sql, q.params))
+      );
       
       // Map results back to queries
       queries.forEach((query, index) => {
-        const result = results.find(r => r.queryId === query.id);
-        if (result?.success) {
-          query.callback.resolve(result.result);
+        const result = results[index];
+        if (result) {
+          query.callback.resolve(result);
         } else {
-          query.callback.reject(new Error(result?.error || 'Unknown error'));
+          query.callback.reject(new Error('Query execution failed'));
         }
       });
       
@@ -2334,8 +2335,6 @@ export class EnhancedSQLAdapter extends SQLCodeAdapter {
     
     console.log('✅ Large result set processing completed');
   }
-}
-
 }
 
 // Fluent Query Builder Implementation

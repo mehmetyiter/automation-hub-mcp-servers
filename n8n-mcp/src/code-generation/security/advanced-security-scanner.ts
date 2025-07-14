@@ -1,6 +1,6 @@
-import { CodeContext } from '../types';
-import { AIService } from '../../ai-service';
-import { CodeGenerationDatabase } from '../database/code-generation-db';
+import { CodeContext } from '../types.js';
+import { AIService } from '../../ai-service.js';
+import { CodeGenerationDatabase } from '../database/code-generation-db.js';
 
 export interface SecurityScanResult {
   overallScore: number; // 0-100 (100 = most secure)
@@ -179,7 +179,7 @@ export class AdvancedSecurityScanner {
       [/document\.write/g.source, VulnerabilityType.XSS],
       [/exec\s*\(/g.source, VulnerabilityType.COMMAND_INJECTION],
       [/require\s*\(\s*[^'"]/g.source, VulnerabilityType.PATH_TRAVERSAL],
-      [/\.\.\/|\.\.\\\/g.source, VulnerabilityType.PATH_TRAVERSAL],
+      [/\.\.\/|\.\.\\/g.source, VulnerabilityType.PATH_TRAVERSAL],
       [/process\.env\./g.source, VulnerabilityType.SENSITIVE_DATA_EXPOSURE],
       [/password\s*[:=]\s*['"][^'"]+['"]/gi.source, VulnerabilityType.SENSITIVE_DATA_EXPOSURE],
       [/api[_-]?key\s*[:=]\s*['"][^'"]+['"]/gi.source, VulnerabilityType.SENSITIVE_DATA_EXPOSURE],
@@ -683,12 +683,24 @@ Return analysis:
     const severityMap: Record<VulnerabilityType, 'critical' | 'high' | 'medium' | 'low'> = {
       [VulnerabilityType.CODE_INJECTION]: 'critical',
       [VulnerabilityType.COMMAND_INJECTION]: 'critical',
-      [VulnerabilityType.SQL_INJECTION]: 'critical',
+      [VulnerabilityType.INJECTION]: 'critical',
+      [VulnerabilityType.NOSQL_INJECTION]: 'critical',
+      [VulnerabilityType.OS_COMMAND_INJECTION]: 'critical',
+      [VulnerabilityType.LDAP_INJECTION]: 'critical',
+      [VulnerabilityType.XPATH_INJECTION]: 'critical',
+      [VulnerabilityType.BUFFER_OVERFLOW]: 'critical',
       [VulnerabilityType.XSS]: 'high',
       [VulnerabilityType.SENSITIVE_DATA_EXPOSURE]: 'high',
       [VulnerabilityType.PATH_TRAVERSAL]: 'high',
+      [VulnerabilityType.CSRF]: 'high',
+      [VulnerabilityType.MISSING_ACCESS_CONTROL]: 'high',
       [VulnerabilityType.INSECURE_CRYPTO]: 'medium',
-      [VulnerabilityType.UNVALIDATED_REDIRECT]: 'medium'
+      [VulnerabilityType.UNVALIDATED_REDIRECT]: 'medium',
+      [VulnerabilityType.INSECURE_DIRECT_OBJECT_REFERENCE]: 'medium',
+      [VulnerabilityType.SECURITY_MISCONFIGURATION]: 'medium',
+      [VulnerabilityType.INSUFFICIENT_TRANSPORT_PROTECTION]: 'medium',
+      [VulnerabilityType.FORMAT_STRING]: 'medium',
+      [VulnerabilityType.INTEGER_OVERFLOW]: 'low'
     };
     
     return severityMap[type] || 'medium';
@@ -701,7 +713,7 @@ Return analysis:
   }
 
   private getVulnerabilityDescription(type: VulnerabilityType): string {
-    const descriptions: Record<VulnerabilityType, string> = {
+    const partialDescriptions = {
       [VulnerabilityType.CODE_INJECTION]: 'Code injection vulnerability allows attackers to execute arbitrary code',
       [VulnerabilityType.XSS]: 'Cross-site scripting vulnerability allows injection of malicious scripts',
       [VulnerabilityType.COMMAND_INJECTION]: 'Command injection allows execution of system commands',
@@ -709,11 +721,12 @@ Return analysis:
       [VulnerabilityType.SENSITIVE_DATA_EXPOSURE]: 'Sensitive data is exposed in the code'
     };
     
-    return descriptions[type] || 'Security vulnerability detected';
+    const descriptions = this.createCompleteMap(partialDescriptions, 'Security vulnerability detected');
+    return descriptions[type];
   }
 
   private getVulnerabilityImpact(type: VulnerabilityType): string {
-    const impacts: Record<VulnerabilityType, string> = {
+    const partialImpacts = {
       [VulnerabilityType.CODE_INJECTION]: 'Complete system compromise possible',
       [VulnerabilityType.XSS]: 'User session hijacking and data theft',
       [VulnerabilityType.COMMAND_INJECTION]: 'Server compromise and data breach',
@@ -721,11 +734,12 @@ Return analysis:
       [VulnerabilityType.SENSITIVE_DATA_EXPOSURE]: 'Credential theft and unauthorized access'
     };
     
-    return impacts[type] || 'Security breach possible';
+    const impacts = this.createCompleteMap(partialImpacts, 'Security breach possible');
+    return impacts[type];
   }
 
   private getVulnerabilityFix(type: VulnerabilityType): any {
-    const fixes: Record<VulnerabilityType, any> = {
+    const partialFixes = {
       [VulnerabilityType.CODE_INJECTION]: {
         description: 'Never use eval() or Function constructor with user input',
         code: '// Use safer alternatives like JSON.parse() or specific parsing functions',
@@ -752,11 +766,12 @@ Return analysis:
       }
     };
     
-    return fixes[type] || { description: 'Apply security best practices', effort: 'moderate' };
+    const fixes = this.createCompleteMap(partialFixes, { description: 'Apply security best practices', effort: 'moderate' });
+    return fixes[type];
   }
 
   private getCWE(type: VulnerabilityType): string {
-    const cweMap: Record<VulnerabilityType, string> = {
+    const partialCweMap = {
       [VulnerabilityType.CODE_INJECTION]: 'CWE-94',
       [VulnerabilityType.XSS]: 'CWE-79',
       [VulnerabilityType.COMMAND_INJECTION]: 'CWE-77',
@@ -764,11 +779,12 @@ Return analysis:
       [VulnerabilityType.SENSITIVE_DATA_EXPOSURE]: 'CWE-200'
     };
     
-    return cweMap[type] || '';
+    const cweMap = this.createCompleteMap(partialCweMap, '');
+    return cweMap[type];
   }
 
   private getOWASP(type: VulnerabilityType): string {
-    const owaspMap: Record<VulnerabilityType, string> = {
+    const partialOwaspMap = {
       [VulnerabilityType.CODE_INJECTION]: 'A03:2021',
       [VulnerabilityType.XSS]: 'A03:2021',
       [VulnerabilityType.COMMAND_INJECTION]: 'A03:2021',
@@ -776,7 +792,20 @@ Return analysis:
       [VulnerabilityType.SENSITIVE_DATA_EXPOSURE]: 'A02:2021'
     };
     
-    return owaspMap[type] || '';
+    const owaspMap = this.createCompleteMap(partialOwaspMap, '');
+    return owaspMap[type];
+  }
+
+  private getAllVulnerabilityTypes(): VulnerabilityType[] {
+    return Object.values(VulnerabilityType);
+  }
+
+  private createCompleteMap<T>(partialMap: Partial<Record<VulnerabilityType, T>>, defaultValue: T): Record<VulnerabilityType, T> {
+    const completeMap = {} as Record<VulnerabilityType, T>;
+    for (const type of this.getAllVulnerabilityTypes()) {
+      completeMap[type] = partialMap[type] ?? defaultValue;
+    }
+    return completeMap;
   }
 
   private mapToVulnerabilityType(type: string): VulnerabilityType {

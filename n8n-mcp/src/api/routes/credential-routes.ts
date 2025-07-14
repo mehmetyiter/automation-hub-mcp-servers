@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import { Pool } from 'pg';
-import { CredentialController } from '../controllers/credential-controller';
-import { AuthenticationMiddleware } from '../middleware/authentication';
-import { AuthorizationMiddleware } from '../middleware/authorization';
-import { ValidationMiddleware } from '../middleware/validation';
-import { RateLimitingMiddleware } from '../middleware/rate-limiting';
+import { CredentialController } from '../controllers/credential-controller.js';
+import { AuthenticationMiddleware } from '../middleware/authentication.js';
+import { AuthorizationMiddleware } from '../middleware/authorization.js';
+import { ValidationMiddleware } from '../middleware/validation.js';
+import { RateLimitingMiddleware } from '../middleware/rate-limiting.js';
 
 export function createCredentialRoutes(db: Pool): Router {
   const router = Router();
@@ -115,11 +115,4 @@ export function createCredentialRoutes(db: Pool): Router {
   return router;
 }
 
-// Extend validation schemas
-declare module '../middleware/validation' {
-  namespace ValidationMiddleware {
-    namespace SCHEMAS {
-      const CREDENTIAL_STATUS: any;
-    }
-  }
-}
+// CREDENTIAL_STATUS schema is already defined in validation middleware

@@ -7,10 +7,10 @@ import {
   LearningData,
   CodeGenerationRequest,
   GeneratedCode
-} from '../types';
+} from '../types.js';
 import { 
   DatabaseError 
-} from '../errors/custom-errors';
+} from '../errors/custom-errors.js';
 import { 
   CodePatternRow,
   ExecutionMetricsRow,
@@ -18,7 +18,7 @@ import {
   CodeVersionRow,
   UserFeedbackRow,
   DatabaseRow 
-} from '../types/common-types';
+} from '../types/common-types.js';
 
 export interface PatternCriteria {
   type?: string;
@@ -284,10 +284,10 @@ export class CodeGenerationDatabase {
       name: row.name,
       description: row.description,
       pattern: row.pattern,
-      usage: JSON.parse(row.metadata || '[]'),
+      usage: JSON.parse(row.metadata || '[]') as string[],
       performance: row.performance_score,
       reliability: row.reliability_score,
-      category: row.category
+      category: row.category as 'validation' | 'calculation' | 'transformation' | 'integration'
     }));
   }
 
@@ -568,5 +568,32 @@ export class CodeGenerationDatabase {
 
   close(): void {
     this.db.close();
+  }
+
+  async storeCodeRequest(data: any): Promise<void> {
+    // Store business logic generation request
+    const stmt = this.db.prepare(`
+      INSERT INTO code_requests (
+        id, timestamp, request_data, domain_data, math_model_data, 
+        implementation_data, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `);
+
+    try {
+      stmt.run(
+        data.id,
+        data.timestamp,
+        JSON.stringify(data.request),
+        JSON.stringify(data.domain),
+        JSON.stringify(data.mathModel),
+        JSON.stringify(data.implementation)
+      );
+    } catch (error) {
+      throw new DatabaseError(
+        'Failed to store code request',
+        error
+      );
+    }
   }
 }

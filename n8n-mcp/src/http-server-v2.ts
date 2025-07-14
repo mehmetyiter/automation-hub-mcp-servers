@@ -381,6 +381,210 @@ app.post('/tools/n8n_generate_workflow', async (req, res) => {
   }
 });
 
+// AI Analysis endpoints (mock for now)
+app.get('/api/ai-analysis/feedback', async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit as string) || 100;
+    res.json({
+      feedback: [],
+      total: 0,
+      limit
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/ai-analysis/performance-metrics', async (_req, res) => {
+  try {
+    res.json({
+      metrics: {
+        overall: {
+          successRate: 0.95,
+          avgExecutionTime: 5000,
+          totalExecutions: 0
+        }
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Pattern recognition endpoint
+app.get('/api/ai-analysis/patterns', async (req, res) => {
+  try {
+    const { domain, status } = req.query;
+    
+    // Mock successful patterns
+    const patterns = [
+      {
+        id: '1',
+        pattern: 'Webhook trigger for real-time processing',
+        domain: domain || 'general',
+        confidence: 0.95,
+        usage_count: 15,
+        success_rate: 0.92
+      },
+      {
+        id: '2',
+        pattern: 'API integration for data retrieval',
+        domain: domain || 'general',
+        confidence: 0.88,
+        usage_count: 12,
+        success_rate: 0.85
+      }
+    ];
+    
+    res.json({
+      patterns,
+      total: patterns.length,
+      status: status || 'all'
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Deep analysis search endpoint
+app.get('/api/ai-analysis/deep-analyses/search', async (req, res) => {
+  try {
+    const { query, domain, status } = req.query;
+    
+    // Mock deep analyses based on search query
+    const analyses = [
+      {
+        id: '1',
+        workflow_id: 'wf-123',
+        analysis_type: 'complexity',
+        domain: domain || 'e-commerce',
+        status: status || 'completed',
+        insights: {
+          complexity_score: 0.85,
+          optimization_suggestions: [
+            'Consider adding error handling nodes',
+            'Implement retry logic for API calls'
+          ],
+          pattern_matches: ['webhook-api-integration', 'parallel-processing']
+        },
+        created_at: new Date(Date.now() - 86400000).toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      {
+        id: '2',
+        workflow_id: 'wf-456',
+        analysis_type: 'performance',
+        domain: domain || 'sales',
+        status: status || 'completed',
+        insights: {
+          execution_time_avg: 5200,
+          bottlenecks: ['PDF generation', 'Email sending'],
+          optimization_potential: 0.72
+        },
+        created_at: new Date(Date.now() - 172800000).toISOString(),
+        updated_at: new Date(Date.now() - 86400000).toISOString()
+      }
+    ];
+    
+    // Filter by query if provided
+    const filteredAnalyses = query 
+      ? analyses.filter(a => 
+          a.workflow_id.includes(query as string) || 
+          a.analysis_type.includes(query as string) ||
+          (typeof a.domain === 'string' && a.domain.includes(query as string))
+        )
+      : analyses;
+    
+    res.json({
+      analyses: filteredAnalyses,
+      total: filteredAnalyses.length,
+      query: query || ''
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create deep analysis endpoint
+app.post('/api/ai-analysis/deep-analyses', async (req, res) => {
+  try {
+    const { workflow_id, analysis_type, domain, options } = req.body;
+    
+    if (!workflow_id) {
+      res.status(400).json({ error: 'workflow_id is required' });
+      return;
+    }
+    
+    // Mock creating a deep analysis
+    const analysis = {
+      id: Date.now().toString(),
+      workflow_id,
+      analysis_type: analysis_type || 'comprehensive',
+      domain: domain || 'general',
+      status: 'processing',
+      insights: null,
+      options: options || {},
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    // Simulate async processing
+    setTimeout(() => {
+      // In a real implementation, this would update the analysis status
+      console.log(`Analysis ${analysis.id} completed`);
+    }, 5000);
+    
+    res.status(201).json({
+      success: true,
+      analysis
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Submit feedback endpoint
+app.post('/api/ai-analysis/feedback', async (req, res) => {
+  try {
+    const { workflow_id, feedback_type, rating, comments, metadata } = req.body;
+    
+    if (!workflow_id || !feedback_type || rating === undefined) {
+      res.status(400).json({ 
+        error: 'workflow_id, feedback_type, and rating are required' 
+      });
+      return;
+    }
+    
+    // Validate rating
+    if (rating < 1 || rating > 5) {
+      res.status(400).json({ 
+        error: 'rating must be between 1 and 5' 
+      });
+      return;
+    }
+    
+    // Mock feedback submission
+    const feedback = {
+      id: Date.now().toString(),
+      workflow_id,
+      feedback_type,
+      rating,
+      comments: comments || '',
+      metadata: metadata || {},
+      created_at: new Date().toISOString(),
+      user_id: 'anonymous' // In real implementation, get from auth
+    };
+    
+    res.status(201).json({
+      success: true,
+      feedback,
+      message: 'Feedback submitted successfully'
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`n8n MCP HTTP Server V2 running on http://localhost:${PORT}`);
 });

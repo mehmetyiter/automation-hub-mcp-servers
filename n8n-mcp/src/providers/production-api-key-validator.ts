@@ -1,6 +1,6 @@
-import { ApiKeyValidator, ValidationResult, ProviderInfo } from './api-key-validator.js';
+import { ApiKeyValidator, ValidationResult } from './api-key-validator.js';
 import { EventEmitter } from 'events';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 export interface LiveQuotaInfo {
   totalQuota: number;
@@ -60,7 +60,7 @@ export class ProductionApiKeyValidator extends ApiKeyValidator {
   private redis: Redis;
   private eventEmitter: EventEmitter;
   private rateLimitMap = new Map<string, RateLimitInfo>();
-  private validationCache = new Map<string, CachedValidation>();
+  private localValidationCache = new Map<string, CachedValidation>();
   
   // Rate limiting configuration
   private rateLimits = {
@@ -101,15 +101,11 @@ export class ProductionApiKeyValidator extends ApiKeyValidator {
     try {
       // Check rate limiting
       if (await this.isRateLimited(provider)) {
-        return {
-          isValid: false,
+        return this.createValidationResult(
+          false,
           provider,
-          message: 'Rate limit exceeded. Please try again later.',
-          details: {
-            rateLimited: true,
-            resetTime: this.getRateLimitResetTime(provider)
-          }
-        };
+          'Rate limit exceeded. Please try again later.'
+        );
       }
 
       // Check cache first
@@ -143,12 +139,11 @@ export class ProductionApiKeyValidator extends ApiKeyValidator {
           result = await this.validateAWSKey(apiKey);
           break;
         default:
-          result = {
-            isValid: false,
+          result = this.createCompleteValidationResult(
+            false,
             provider,
-            message: `Provider ${provider} not supported for real-time validation`,
-            details: { unsupportedProvider: true }
-          };
+            `Provider ${provider} not supported for real-time validation`
+          );
       }
 
       // Update rate limiting
@@ -171,8 +166,17 @@ export class ProductionApiKeyValidator extends ApiKeyValidator {
       const errorResult: ValidationResult = {
         isValid: false,
         provider,
-        message: `Validation error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        details: { error: true, errorMessage: error instanceof Error ? error.message : 'Unknown error' }
+        errorMessage: `Validation error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        keyType: 'development',
+        permissions: [],
+        quotaLimits: {
+          requestsPerMinute: 0,
+          requestsPerDay: 0,
+          tokensPerMinute: 0,
+          currentUsage: { requests: 0, tokens: 0, cost: 0 }
+        },
+        lastValidated: new Date(),
+        validationMethod: 'api_call'
       };
 
       // Cache error result with shorter TTL
@@ -225,8 +229,8 @@ export class ProductionApiKeyValidator extends ApiKeyValidator {
           region,
           isValid: validation.isValid,
           latency,
-          features: validation.details?.features || [],
-          restrictions: validation.details?.restrictions || []
+          features: [],
+          restrictions: []
         });
 
       } catch (error) {
@@ -286,23 +290,16 @@ export class ProductionApiKeyValidator extends ApiKeyValidator {
 
       if (response.ok) {
         const data = await response.json();
-        return {
-          isValid: true,
-          provider: 'openai',
-          message: 'API key is valid',
-          details: {
-            modelsCount: data.data?.length || 0,
-            availableModels: data.data?.slice(0, 5).map((m: any) => m.id) || [],
-            lastValidated: new Date()
-          }
-        };
+        return this.createCompleteValidationResult(
+          true,
+          'openai'
+        );
       } else if (response.status === 401) {
-        return {
-          isValid: false,
-          provider: 'openai',
-          message: 'Invalid API key',
-          details: { httpStatus: 401 }
-        };
+        return this.createCompleteValidationResult(
+          false,
+          'openai',
+          'Invalid API key'
+        );
       } else {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -328,22 +325,16 @@ export class ProductionApiKeyValidator extends ApiKeyValidator {
       });
 
       if (response.ok || response.status === 400) { // 400 might be due to minimal request
-        return {
-          isValid: true,
-          provider: 'anthropic',
-          message: 'API key is valid',
-          details: {
-            lastValidated: new Date(),
-            availableModels: ['claude-3-opus', 'claude-3-sonnet', 'claude-3-haiku']
-          }
-        };
+        return this.createCompleteValidationResult(
+          true,
+          'anthropic'
+        );
       } else if (response.status === 401) {
-        return {
-          isValid: false,
-          provider: 'anthropic',
-          message: 'Invalid API key',
-          details: { httpStatus: 401 }
-        };
+        return this.createCompleteValidationResult(
+          false,
+          'anthropic',
+          'Invalid API key'
+        );
       } else {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -362,22 +353,25 @@ export class ProductionApiKeyValidator extends ApiKeyValidator {
 
       if (response.ok) {
         const data = await response.json();
-        return {
-          isValid: true,
-          provider: 'google',
-          message: 'API key is valid',
-          details: {
-            modelsCount: data.models?.length || 0,
-            availableModels: data.models?.slice(0, 5).map((m: any) => m.name) || [],
-            lastValidated: new Date()
-          }
-        };
+        return this.createCompleteValidationResult(
+          true,
+          'google'
+        );
       } else if (response.status === 403) {
         return {
           isValid: false,
           provider: 'google',
-          message: 'Invalid API key or insufficient permissions',
-          details: { httpStatus: 403 }
+          errorMessage: 'Invalid API key or insufficient permissions',
+          keyType: 'development',
+          permissions: [],
+          quotaLimits: {
+            requestsPerMinute: 0,
+            requestsPerDay: 0,
+            tokensPerMinute: 0,
+            currentUsage: { requests: 0, tokens: 0, cost: 0 }
+          },
+          lastValidated: new Date(),
+          validationMethod: 'api_call'
         };
       } else {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -398,23 +392,18 @@ export class ProductionApiKeyValidator extends ApiKeyValidator {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        return {
-          isValid: data.valid === true,
-          provider: 'cohere',
-          message: data.valid ? 'API key is valid' : 'API key is invalid',
-          details: {
-            lastValidated: new Date(),
-            keyType: data.key_type || 'unknown'
-          }
-        };
+        const data = await response.json() as any;
+        return this.createCompleteValidationResult(
+          data.valid === true,
+          'cohere',
+          data.valid ? undefined : 'API key is invalid'
+        );
       } else if (response.status === 401) {
-        return {
-          isValid: false,
-          provider: 'cohere',
-          message: 'Invalid API key',
-          details: { httpStatus: 401 }
-        };
+        return this.createCompleteValidationResult(
+          false,
+          'cohere',
+          'Invalid API key'
+        );
       } else {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -428,15 +417,11 @@ export class ProductionApiKeyValidator extends ApiKeyValidator {
     // In practice, you'd need the Azure endpoint URL as well
     try {
       // This is a placeholder - Azure validation needs more context
-      return {
-        isValid: true, // Placeholder validation
-        provider: 'azure',
-        message: 'Azure API key format validation passed',
-        details: {
-          lastValidated: new Date(),
-          note: 'Full Azure validation requires endpoint configuration'
-        }
-      };
+      return this.createCompleteValidationResult(
+        true,
+        'azure',
+        'Azure API key format validation passed'
+      );
     } catch (error) {
       throw new Error(`Azure validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -446,15 +431,11 @@ export class ProductionApiKeyValidator extends ApiKeyValidator {
     // AWS validation is complex and requires access key + secret + region
     // This is a simplified validation
     try {
-      return {
-        isValid: true, // Placeholder validation
-        provider: 'aws',
-        message: 'AWS API key format validation passed',
-        details: {
-          lastValidated: new Date(),
-          note: 'Full AWS validation requires access key, secret, and region'
-        }
-      };
+      return this.createCompleteValidationResult(
+        true,
+        'aws',
+        'AWS API key format validation passed'
+      );
     } catch (error) {
       throw new Error(`AWS validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
@@ -678,8 +659,7 @@ export class ProductionApiKeyValidator extends ApiKeyValidator {
 
   private async cacheValidationResult(cacheKey: string, result: ValidationResult, ttl?: number): Promise<void> {
     try {
-      const cacheTTL = ttl || (result.isValid ? this.cacheTTL.valid : 
-                              result.details?.error ? this.cacheTTL.error : this.cacheTTL.invalid);
+      const cacheTTL = ttl || (result.isValid ? this.cacheTTL.valid : this.cacheTTL.invalid);
 
       const cacheData = {
         result,
@@ -778,6 +758,62 @@ export class ProductionApiKeyValidator extends ApiKeyValidator {
       successRate: await this.redis.get('stats:success_rate') || '0',
       averageResponseTime: await this.redis.get('stats:avg_response_time') || '0',
       rateLimitHits: await this.redis.get('stats:rate_limit_hits') || '0'
+    };
+  }
+
+  private createCompleteValidationResult(
+    isValid: boolean,
+    provider: string,
+    errorMessage?: string,
+    additionalData?: Partial<ValidationResult>
+  ): ValidationResult {
+    return {
+      isValid,
+      provider,
+      keyType: isValid ? 'production' : 'development',
+      permissions: additionalData?.permissions || [],
+      quotaLimits: additionalData?.quotaLimits || {
+        requestsPerMinute: 0,
+        requestsPerDay: 0,
+        tokensPerMinute: 0,
+        currentUsage: {
+          requests: 0,
+          tokens: 0,
+          cost: 0
+        }
+      },
+      lastValidated: new Date(),
+      validationMethod: 'api_call',
+      errorMessage,
+      ...additionalData
+    };
+  }
+
+  private createValidationResult(
+    isValid: boolean, 
+    provider: string, 
+    errorMessage: string,
+    keyType: 'production' | 'development' | 'restricted' = 'production'
+  ): ValidationResult {
+    return {
+      isValid,
+      provider,
+      errorMessage,
+      keyType,
+      permissions: isValid ? ['full_access'] : [],
+      quotaLimits: {
+        requestsPerMinute: this.rateLimits[provider]?.requests || 100,
+        requestsPerDay: (this.rateLimits[provider]?.requests || 100) * 60 * 24,
+        tokensPerMinute: 150000,
+        monthlyBudget: 0,
+        currentUsage: {
+          requests: 0,
+          tokens: 0,
+          cost: 0
+        }
+      },
+      lastValidated: new Date(),
+      validationMethod: 'api_call' as const
     };
   }
 

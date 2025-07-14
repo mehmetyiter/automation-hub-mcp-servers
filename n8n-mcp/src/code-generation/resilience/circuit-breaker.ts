@@ -40,7 +40,7 @@ export class CircuitBreaker extends EventEmitter {
   private lastFailureTime = 0;
   private lastSuccessTime = 0;
   private nextAttempt = 0;
-  private config: CircuitBreakerConfig;
+  protected config: CircuitBreakerConfig;
   private name: string;
   private requestTimestamps: number[] = [];
   private stats: Map<string, number> = new Map();
@@ -189,10 +189,304 @@ export class CircuitBreaker extends EventEmitter {
     this.emit('stateChange', oldState, this.state);
   }
 
-  private transitionToOpen(): void {
+  protected transitionToOpen(): void {
     const oldState = this.state;
     this.state = CircuitState.OPEN;
     this.nextAttempt = Date.now() + this.config.timeout;
     this.successes = 0;
     
-    console.log(`🔓 ${this.name}: Circuit breaker OPEN (next attempt: ${new Date(this.nextAttempt).toISOString()})`);\n    this.emit('stateChange', oldState, this.state);\n  }\n\n  private transitionToHalfOpen(): void {\n    const oldState = this.state;\n    this.state = CircuitState.HALF_OPEN;\n    this.successes = 0;\n    \n    console.log(`🔄 ${this.name}: Circuit breaker HALF_OPEN`);\n    this.emit('stateChange', oldState, this.state);\n  }\n\n  private recordRequest(): void {\n    this.requests++;\n    this.requestTimestamps.push(Date.now());\n  }\n\n  private recordResponseTime(responseTime: number): void {\n    // Update response time statistics\n    const current = this.stats.get('totalResponseTime') || 0;\n    const count = this.stats.get('responseCount') || 0;\n    \n    this.stats.set('totalResponseTime', current + responseTime);\n    this.stats.set('responseCount', count + 1);\n    this.stats.set('lastResponseTime', responseTime);\n    \n    if (!this.stats.has('minResponseTime') || responseTime < this.stats.get('minResponseTime')!) {\n      this.stats.set('minResponseTime', responseTime);\n    }\n    \n    if (!this.stats.has('maxResponseTime') || responseTime > this.stats.get('maxResponseTime')!) {\n      this.stats.set('maxResponseTime', responseTime);\n    }\n  }\n\n  // Public API methods\n  getStats(): CircuitBreakerStats {\n    return {\n      state: this.state,\n      failures: this.failures,\n      successes: this.successes,\n      requests: this.requests,\n      lastFailureTime: this.lastFailureTime || undefined,\n      lastSuccessTime: this.lastSuccessTime || undefined,\n      nextAttempt: this.state === CircuitState.OPEN ? this.nextAttempt : undefined\n    };\n  }\n\n  getDetailedStats(): any {\n    const stats = this.getStats();\n    const responseCount = this.stats.get('responseCount') || 0;\n    const totalResponseTime = this.stats.get('totalResponseTime') || 0;\n    \n    return {\n      ...stats,\n      responseTime: {\n        average: responseCount > 0 ? totalResponseTime / responseCount : 0,\n        min: this.stats.get('minResponseTime') || 0,\n        max: this.stats.get('maxResponseTime') || 0,\n        last: this.stats.get('lastResponseTime') || 0\n      },\n      recentRequests: this.getRecentRequests(),\n      failureRate: this.requests > 0 ? (this.failures / this.requests) * 100 : 0,\n      config: this.config\n    };\n  }\n\n  reset(): void {\n    console.log(`🔄 ${this.name}: Circuit breaker reset`);\n    \n    const oldState = this.state;\n    this.state = CircuitState.CLOSED;\n    this.failures = 0;\n    this.successes = 0;\n    this.requests = 0;\n    this.lastFailureTime = 0;\n    this.lastSuccessTime = 0;\n    this.nextAttempt = 0;\n    this.requestTimestamps = [];\n    this.stats.clear();\n    \n    this.emit('reset');\n    if (oldState !== this.state) {\n      this.emit('stateChange', oldState, this.state);\n    }\n  }\n\n  forceOpen(): void {\n    console.log(`🔒 ${this.name}: Circuit breaker forced OPEN`);\n    const oldState = this.state;\n    this.transitionToOpen();\n  }\n\n  forceClosed(): void {\n    console.log(`🔓 ${this.name}: Circuit breaker forced CLOSED`);\n    const oldState = this.state;\n    this.transitionToClosed();\n  }\n\n  getName(): string {\n    return this.name;\n  }\n\n  getState(): CircuitState {\n    return this.state;\n  }\n\n  isOpen(): boolean {\n    return this.state === CircuitState.OPEN;\n  }\n\n  isClosed(): boolean {\n    return this.state === CircuitState.CLOSED;\n  }\n\n  isHalfOpen(): boolean {\n    return this.state === CircuitState.HALF_OPEN;\n  }\n}\n\n// Circuit Breaker Manager for handling multiple circuit breakers\nexport class CircuitBreakerManager {\n  private breakers: Map<string, CircuitBreaker> = new Map();\n  private globalStats = {\n    totalRequests: 0,\n    totalFailures: 0,\n    totalSuccesses: 0\n  };\n\n  constructor() {\n    console.log('🏗️ Circuit Breaker Manager initialized');\n  }\n\n  create(name: string, options: CircuitBreakerOptions = {}): CircuitBreaker {\n    if (this.breakers.has(name)) {\n      throw new Error(`Circuit breaker '${name}' already exists`);\n    }\n\n    const breaker = new CircuitBreaker({\n      ...options,\n      name\n    });\n\n    // Track global stats\n    breaker.on('success', () => {\n      this.globalStats.totalRequests++;\n      this.globalStats.totalSuccesses++;\n    });\n\n    breaker.on('failure', () => {\n      this.globalStats.totalRequests++;\n      this.globalStats.totalFailures++;\n    });\n\n    this.breakers.set(name, breaker);\n    console.log(`🔌 Created circuit breaker: ${name}`);\n    \n    return breaker;\n  }\n\n  get(name: string): CircuitBreaker | undefined {\n    return this.breakers.get(name);\n  }\n\n  getOrCreate(name: string, options: CircuitBreakerOptions = {}): CircuitBreaker {\n    return this.get(name) || this.create(name, options);\n  }\n\n  remove(name: string): boolean {\n    const breaker = this.breakers.get(name);\n    if (breaker) {\n      breaker.removeAllListeners();\n      this.breakers.delete(name);\n      console.log(`🗑️ Removed circuit breaker: ${name}`);\n      return true;\n    }\n    return false;\n  }\n\n  reset(name?: string): void {\n    if (name) {\n      const breaker = this.get(name);\n      if (breaker) {\n        breaker.reset();\n      }\n    } else {\n      // Reset all breakers\n      this.breakers.forEach(breaker => breaker.reset());\n      this.globalStats = {\n        totalRequests: 0,\n        totalFailures: 0,\n        totalSuccesses: 0\n      };\n      console.log('🔄 All circuit breakers reset');\n    }\n  }\n\n  getAllStats(): any {\n    const breakerStats: Record<string, any> = {};\n    \n    this.breakers.forEach((breaker, name) => {\n      breakerStats[name] = breaker.getDetailedStats();\n    });\n\n    return {\n      global: this.globalStats,\n      breakers: breakerStats,\n      summary: {\n        total: this.breakers.size,\n        open: Array.from(this.breakers.values()).filter(b => b.isOpen()).length,\n        halfOpen: Array.from(this.breakers.values()).filter(b => b.isHalfOpen()).length,\n        closed: Array.from(this.breakers.values()).filter(b => b.isClosed()).length\n      }\n    };\n  }\n\n  getHealthStatus(): {\n    healthy: boolean;\n    details: Record<string, { state: string; healthy: boolean }>\n  } {\n    const details: Record<string, { state: string; healthy: boolean }> = {};\n    let allHealthy = true;\n\n    this.breakers.forEach((breaker, name) => {\n      const healthy = !breaker.isOpen();\n      details[name] = {\n        state: breaker.getState(),\n        healthy\n      };\n      \n      if (!healthy) {\n        allHealthy = false;\n      }\n    });\n\n    return {\n      healthy: allHealthy,\n      details\n    };\n  }\n\n  // Utility methods for common patterns\n  async executeWithCircuitBreaker<T>(\n    breakerName: string,\n    operation: () => Promise<T>,\n    options: CircuitBreakerOptions = {}\n  ): Promise<T> {\n    const breaker = this.getOrCreate(breakerName, options);\n    return breaker.execute(operation);\n  }\n\n  // Decorator function for automatic circuit breaker wrapping\n  circuitBreakerDecorator(breakerName: string, options: CircuitBreakerOptions = {}) {\n    return (target: any, propertyName: string, descriptor: PropertyDescriptor) => {\n      const method = descriptor.value;\n      \n      descriptor.value = async function(...args: any[]) {\n        const breaker = this.getOrCreate(breakerName, options);\n        return breaker.execute(() => method.apply(this, args));\n      }.bind(this);\n      \n      return descriptor;\n    };\n  }\n\n  cleanup(): void {\n    console.log('🧹 Cleaning up Circuit Breaker Manager...');\n    \n    this.breakers.forEach((breaker, name) => {\n      breaker.removeAllListeners();\n    });\n    \n    this.breakers.clear();\n    this.globalStats = {\n      totalRequests: 0,\n      totalFailures: 0,\n      totalSuccesses: 0\n    };\n    \n    console.log('✅ Circuit Breaker Manager cleanup completed');\n  }\n}\n\n// Singleton instance for global use\nexport const circuitBreakerManager = new CircuitBreakerManager();\n\n// Helper function for quick circuit breaker execution\nexport async function withCircuitBreaker<T>(\n  name: string,\n  operation: () => Promise<T>,\n  options: CircuitBreakerOptions = {}\n): Promise<T> {\n  return circuitBreakerManager.executeWithCircuitBreaker(name, operation, options);\n}
+    console.log(`🔓 ${this.name}: Circuit breaker OPEN (next attempt: ${new Date(this.nextAttempt).toISOString()})`);
+    this.emit('stateChange', oldState, this.state);
+  }
+
+  private transitionToHalfOpen(): void {
+    const oldState = this.state;
+    this.state = CircuitState.HALF_OPEN;
+    this.successes = 0;
+    
+    console.log(`🔄 ${this.name}: Circuit breaker HALF_OPEN`);
+    this.emit('stateChange', oldState, this.state);
+  }
+
+  private recordRequest(): void {
+    this.requests++;
+    this.requestTimestamps.push(Date.now());
+  }
+
+  private recordResponseTime(responseTime: number): void {
+    // Update response time statistics
+    const current = this.stats.get('totalResponseTime') || 0;
+    const count = this.stats.get('responseCount') || 0;
+    
+    this.stats.set('totalResponseTime', current + responseTime);
+    this.stats.set('responseCount', count + 1);
+    this.stats.set('lastResponseTime', responseTime);
+    
+    if (!this.stats.has('minResponseTime') || responseTime < this.stats.get('minResponseTime')!) {
+      this.stats.set('minResponseTime', responseTime);
+    }
+    
+    if (!this.stats.has('maxResponseTime') || responseTime > this.stats.get('maxResponseTime')!) {
+      this.stats.set('maxResponseTime', responseTime);
+    }
+  }
+
+  // Public API methods
+  getStats(): CircuitBreakerStats {
+    return {
+      state: this.state,
+      failures: this.failures,
+      successes: this.successes,
+      requests: this.requests,
+      lastFailureTime: this.lastFailureTime || undefined,
+      lastSuccessTime: this.lastSuccessTime || undefined,
+      nextAttempt: this.state === CircuitState.OPEN ? this.nextAttempt : undefined
+    };
+  }
+
+  getDetailedStats(): any {
+    const stats = this.getStats();
+    const responseCount = this.stats.get('responseCount') || 0;
+    const totalResponseTime = this.stats.get('totalResponseTime') || 0;
+    
+    return {
+      ...stats,
+      responseTime: {
+        average: responseCount > 0 ? totalResponseTime / responseCount : 0,
+        min: this.stats.get('minResponseTime') || 0,
+        max: this.stats.get('maxResponseTime') || 0,
+        last: this.stats.get('lastResponseTime') || 0
+      },
+      recentRequests: this.getRecentRequests(),
+      failureRate: this.requests > 0 ? (this.failures / this.requests) * 100 : 0,
+      config: this.config
+    };
+  }
+
+  reset(): void {
+    console.log(`🔄 ${this.name}: Circuit breaker reset`);
+    
+    const oldState = this.state;
+    this.state = CircuitState.CLOSED;
+    this.failures = 0;
+    this.successes = 0;
+    this.requests = 0;
+    this.lastFailureTime = 0;
+    this.lastSuccessTime = 0;
+    this.nextAttempt = 0;
+    this.requestTimestamps = [];
+    this.stats.clear();
+    
+    this.emit('reset');
+    if (oldState !== this.state) {
+      this.emit('stateChange', oldState, this.state);
+    }
+  }
+
+  forceOpen(): void {
+    console.log(`🔒 ${this.name}: Circuit breaker forced OPEN`);
+    const oldState = this.state;
+    this.transitionToOpen();
+  }
+
+  forceClosed(): void {
+    console.log(`🔓 ${this.name}: Circuit breaker forced CLOSED`);
+    const oldState = this.state;
+    this.transitionToClosed();
+  }
+
+  getName(): string {
+    return this.name;
+  }
+
+  getState(): CircuitState {
+    return this.state;
+  }
+
+  isOpen(): boolean {
+    return this.state === CircuitState.OPEN;
+  }
+
+  isClosed(): boolean {
+    return this.state === CircuitState.CLOSED;
+  }
+
+  isHalfOpen(): boolean {
+    return this.state === CircuitState.HALF_OPEN;
+  }
+}
+
+// Circuit Breaker Manager for handling multiple circuit breakers
+export class CircuitBreakerManager {
+  private breakers: Map<string, CircuitBreaker> = new Map();
+  private globalStats = {
+    totalRequests: 0,
+    totalFailures: 0,
+    totalSuccesses: 0
+  };
+
+  constructor() {
+    console.log('🏗️ Circuit Breaker Manager initialized');
+  }
+
+  create(name: string, options: CircuitBreakerOptions = {}): CircuitBreaker {
+    if (this.breakers.has(name)) {
+      throw new Error(`Circuit breaker '${name}' already exists`);
+    }
+
+    const breaker = new CircuitBreaker({
+      ...options,
+      name
+    });
+
+    // Track global stats
+    breaker.on('success', () => {
+      this.globalStats.totalRequests++;
+      this.globalStats.totalSuccesses++;
+    });
+
+    breaker.on('failure', () => {
+      this.globalStats.totalRequests++;
+      this.globalStats.totalFailures++;
+    });
+
+    this.breakers.set(name, breaker);
+    console.log(`🔌 Created circuit breaker: ${name}`);
+    
+    return breaker;
+  }
+
+  get(name: string): CircuitBreaker | undefined {
+    return this.breakers.get(name);
+  }
+
+  getOrCreate(name: string, options: CircuitBreakerOptions = {}): CircuitBreaker {
+    return this.get(name) || this.create(name, options);
+  }
+
+  remove(name: string): boolean {
+    const breaker = this.breakers.get(name);
+    if (breaker) {
+      breaker.removeAllListeners();
+      this.breakers.delete(name);
+      console.log(`🗑️ Removed circuit breaker: ${name}`);
+      return true;
+    }
+    return false;
+  }
+
+  reset(name?: string): void {
+    if (name) {
+      const breaker = this.get(name);
+      if (breaker) {
+        breaker.reset();
+      }
+    } else {
+      // Reset all breakers
+      this.breakers.forEach(breaker => breaker.reset());
+      this.globalStats = {
+        totalRequests: 0,
+        totalFailures: 0,
+        totalSuccesses: 0
+      };
+      console.log('🔄 All circuit breakers reset');
+    }
+  }
+
+  getAllStats(): any {
+    const breakerStats: Record<string, any> = {};
+    
+    this.breakers.forEach((breaker, name) => {
+      breakerStats[name] = breaker.getDetailedStats();
+    });
+
+    return {
+      global: this.globalStats,
+      breakers: breakerStats,
+      summary: {
+        total: this.breakers.size,
+        open: Array.from(this.breakers.values()).filter(b => b.isOpen()).length,
+        halfOpen: Array.from(this.breakers.values()).filter(b => b.isHalfOpen()).length,
+        closed: Array.from(this.breakers.values()).filter(b => b.isClosed()).length
+      }
+    };
+  }
+
+  getHealthStatus(): {
+    healthy: boolean;
+    details: Record<string, { state: string; healthy: boolean }>
+  } {
+    const details: Record<string, { state: string; healthy: boolean }> = {};
+    let allHealthy = true;
+
+    this.breakers.forEach((breaker, name) => {
+      const healthy = !breaker.isOpen();
+      details[name] = {
+        state: breaker.getState(),
+        healthy
+      };
+      
+      if (!healthy) {
+        allHealthy = false;
+      }
+    });
+
+    return {
+      healthy: allHealthy,
+      details
+    };
+  }
+
+  // Utility methods for common patterns
+  async executeWithCircuitBreaker<T>(
+    breakerName: string,
+    operation: () => Promise<T>,
+    options: CircuitBreakerOptions = {}
+  ): Promise<T> {
+    const breaker = this.getOrCreate(breakerName, options);
+    return breaker.execute(operation);
+  }
+
+  // Decorator function for automatic circuit breaker wrapping
+  circuitBreakerDecorator(breakerName: string, options: CircuitBreakerOptions = {}) {
+    return (target: any, propertyName: string, descriptor: PropertyDescriptor) => {
+      const method = descriptor.value;
+      
+      descriptor.value = async function(...args: any[]) {
+        const breaker = this.getOrCreate(breakerName, options);
+        return breaker.execute(() => method.apply(this, args));
+      }.bind(this);
+      
+      return descriptor;
+    };
+  }
+
+  cleanup(): void {
+    console.log('🧹 Cleaning up Circuit Breaker Manager...');
+    
+    this.breakers.forEach((breaker, name) => {
+      breaker.removeAllListeners();
+    });
+    
+    this.breakers.clear();
+    this.globalStats = {
+      totalRequests: 0,
+      totalFailures: 0,
+      totalSuccesses: 0
+    };
+    
+    console.log('✅ Circuit Breaker Manager cleanup completed');
+  }
+}
+
+// Singleton instance for global use
+export const circuitBreakerManager = new CircuitBreakerManager();
+
+// Helper function for quick circuit breaker execution
+export async function withCircuitBreaker<T>(
+  name: string,
+  operation: () => Promise<T>,
+  options: CircuitBreakerOptions = {}
+): Promise<T> {
+  return circuitBreakerManager.executeWithCircuitBreaker(name, operation, options);
+}

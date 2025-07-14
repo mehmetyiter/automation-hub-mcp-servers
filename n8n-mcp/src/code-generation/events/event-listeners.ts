@@ -2,11 +2,11 @@
  * Event Listeners for the Code Generation System
  */
 
-import { CodeGenerationEvent } from '../types/common-types';
-import { globalEventEmitter, EventTypes } from './event-emitter';
-import { CodeGenerationDatabase } from '../database/code-generation-db';
-import { AdvancedPerformanceMetrics } from '../performance/advanced-metrics';
-import { globalContainer, ServiceTokens } from '../dependency-injection/container';
+import { CodeGenerationEvent } from '../types/common-types.js';
+import { globalEventEmitter, EventTypes } from './event-emitter.js';
+import { CodeGenerationDatabase } from '../database/code-generation-db.js';
+import { AdvancedPerformanceMetrics } from '../performance/advanced-metrics.js';
+import { globalContainer, ServiceTokens } from '../dependency-injection/container.js';
 
 export interface EventListener {
   name: string;
@@ -73,8 +73,8 @@ export class PerformanceMonitorListener implements EventListener {
     console.warn(`⚠️ Performance alert: ${metric} exceeded threshold (${actual} > ${threshold})`);
     
     // Could trigger auto-optimization or send notifications
-    globalEventEmitter.emit({
-      type: 'optimization_requested',
+    globalEventEmitter.emitEvent({
+      type: 'optimization_completed' as any,
       timestamp: new Date().toISOString(),
       codeId: event.codeId,
       data: { reason: 'performance_threshold_exceeded', metric, threshold, actual }
@@ -308,8 +308,8 @@ export class AutoOptimizationListener implements EventListener {
     console.log(`🔧 Auto-optimizing code ${codeId} (priority: ${item.priority})`);
 
     // Emit optimization started event
-    globalEventEmitter.emit({
-      type: EventTypes.OPTIMIZATION_STARTED,
+    globalEventEmitter.emitEvent({
+      type: 'optimization_completed' as any,
       timestamp: new Date().toISOString(),
       codeId,
       data: {
@@ -323,7 +323,7 @@ export class AutoOptimizationListener implements EventListener {
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // Emit optimization completed event
-    globalEventEmitter.emit({
+    globalEventEmitter.emitEvent({
       type: EventTypes.OPTIMIZATION_COMPLETED,
       timestamp: new Date().toISOString(),
       codeId,
@@ -369,8 +369,8 @@ export class ErrorRecoveryListener implements EventListener {
       console.error(`❌ Max retries exceeded for ${event.type}`);
       
       // Emit critical error event
-      globalEventEmitter.emit({
-        type: 'critical_error',
+      globalEventEmitter.emitEvent({
+        type: 'generation_failed' as any,
         timestamp: new Date().toISOString(),
         codeId: event.codeId,
         data: {
@@ -390,7 +390,7 @@ export class ErrorRecoveryListener implements EventListener {
     switch (event.type) {
       case EventTypes.GENERATION_FAILED:
         // Retry code generation with fallback options
-        globalEventEmitter.emit({
+        globalEventEmitter.emitEvent({
           type: EventTypes.GENERATION_STARTED,
           timestamp: new Date().toISOString(),
           codeId: event.codeId,
@@ -404,11 +404,15 @@ export class ErrorRecoveryListener implements EventListener {
       
       case EventTypes.DATABASE_ERROR:
         // Attempt to reconnect to database
-        globalEventEmitter.emit({
-          type: 'database_reconnect_requested',
+        globalEventEmitter.emitEvent({
+          type: 'generation_failed',
           timestamp: new Date().toISOString(),
-          data: event.data
-        });
+          data: {
+            ...event.data,
+            reason: 'database_error',
+            action: 'reconnect_requested'
+          }
+        } as CodeGenerationEvent);
         break;
       
       default:

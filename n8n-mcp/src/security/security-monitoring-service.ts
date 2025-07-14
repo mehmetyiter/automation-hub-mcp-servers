@@ -1,11 +1,11 @@
 import { EventEmitter } from 'events';
 import { Pool } from 'pg';
-import { Logger } from '../utils/logger';
-import { ThreatDetectionEngine } from './threat-detection-engine';
-import { IncidentResponseService } from './incident-response-service';
-import { AnomalyDetector } from './anomaly-detector';
-import { ComplianceReportingService } from './compliance-reporting-service';
-import { SecurityAuditManager } from './security-audit-manager';
+import { logger } from '../utils/logger.js';
+import { ThreatDetectionEngine } from './threat-detection-engine.js';
+import { IncidentResponseService } from './incident-response-service.js';
+import { AnomalyDetector } from './anomaly-detector.js';
+import { ComplianceReportingService } from './compliance-reporting-service.js';
+import { SecurityAuditManager } from './security-audit-manager.js';
 import { createHash } from 'crypto';
 
 interface SecurityEvent {
@@ -61,7 +61,7 @@ interface SecurityConfiguration {
 
 export class SecurityMonitoringService extends EventEmitter {
   private db: Pool;
-  private logger: Logger;
+  private logger: typeof logger;
   private threatEngine: ThreatDetectionEngine;
   private incidentService: IncidentResponseService;
   private anomalyDetector: AnomalyDetector;
@@ -71,17 +71,17 @@ export class SecurityMonitoringService extends EventEmitter {
   private metricsBuffer: SecurityMetric[] = [];
   private metricsFlushInterval: NodeJS.Timeout | null = null;
 
-  constructor(db: Pool, logger: Logger) {
+  constructor(db: Pool, loggerInstance: typeof logger) {
     super();
     this.db = db;
-    this.logger = logger;
+    this.logger = loggerInstance;
 
     // Initialize sub-services
-    this.threatEngine = new ThreatDetectionEngine(db, logger);
-    this.incidentService = new IncidentResponseService(db, logger);
-    this.anomalyDetector = new AnomalyDetector(db, logger);
-    this.complianceService = new ComplianceReportingService(db, logger);
-    this.auditManager = new SecurityAuditManager(db, logger);
+    this.threatEngine = new ThreatDetectionEngine(db, loggerInstance);
+    this.incidentService = new IncidentResponseService(db, loggerInstance);
+    this.anomalyDetector = new AnomalyDetector(db, loggerInstance);
+    this.complianceService = new ComplianceReportingService(db, loggerInstance);
+    this.auditManager = new SecurityAuditManager(db, loggerInstance);
 
     // Load configuration
     this.config = {

@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import { Pool } from 'pg';
-import { AuthenticationMiddleware } from '../middleware/authentication';
-import { AuthorizationMiddleware } from '../middleware/authorization';
-import { ValidationMiddleware } from '../middleware/validation';
-import { RateLimitingMiddleware } from '../middleware/rate-limiting';
+import { AuthenticationMiddleware } from '../middleware/authentication.js';
+import { AuthorizationMiddleware } from '../middleware/authorization.js';
+import { ValidationMiddleware } from '../middleware/validation.js';
+import { RateLimitingMiddleware } from '../middleware/rate-limiting.js';
 
 export function createAuthRoutes(db: Pool): Router {
   const router = Router();
@@ -140,17 +140,4 @@ export function createAuthRoutes(db: Pool): Router {
   return router;
 }
 
-// Add missing validation schemas
-declare module '../middleware/validation' {
-  namespace ValidationMiddleware {
-    namespace SCHEMAS {
-      const LOGIN: any;
-      const REGISTER: any;
-      const FORGOT_PASSWORD: any;
-      const RESET_PASSWORD: any;
-      const UPDATE_PROFILE: any;
-      const CHANGE_PASSWORD: any;
-      const UPDATE_USER_ROLE: any;
-    }
-  }
-}
+// SCHEMAS are already defined in the validation middleware

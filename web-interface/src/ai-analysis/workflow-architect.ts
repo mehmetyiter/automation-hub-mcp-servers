@@ -105,7 +105,9 @@ CRITICAL: Consider all edge cases and failure scenarios.`;
     const result = await this.aiAnalyzer.callAI(architecturePrompt);
     
     try {
-      return JSON.parse(result);
+      // Remove markdown code blocks if present
+      const cleanedResult = result.replace(/```json\s*\n?/g, '').replace(/```\s*$/g, '').trim();
+      return JSON.parse(cleanedResult);
     } catch (error) {
       console.error('Failed to parse architecture design:', error);
       // Return a basic architecture if parsing fails

@@ -13,6 +13,19 @@ export interface CodeGenerationRequest {
     language?: 'javascript' | 'python';
     performanceLevel?: 'standard' | 'optimized' | 'extreme';
     errorHandling?: 'basic' | 'comprehensive' | 'enterprise';
+    // SQL specific
+    includeTransactions?: boolean;
+    outputFormat?: 'json' | 'table' | 'csv' | 'dataframe';
+    // TypeScript specific
+    strict?: boolean;
+    targetES?: 'ES2015' | 'ES2016' | 'ES2017' | 'ES2018' | 'ES2019' | 'ES2020' | 'ES2021' | 'ES2022' | 'ESNext';
+    moduleSystem?: 'commonjs' | 'es6' | 'amd' | 'umd' | 'system';
+    // R specific
+    libraries?: string[];
+    tidyverse?: boolean;
+    includeVisualization?: boolean;
+    statisticalAnalysis?: boolean;
+    parallel?: boolean;
   };
 }
 

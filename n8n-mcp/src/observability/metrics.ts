@@ -1,6 +1,6 @@
 import { MeterProvider, PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { PrometheusExporter } from '@opentelemetry/exporter-prometheus';
-import { Resource } from '@opentelemetry/resources';
+import { Resource, defaultResource, resourceFromAttributes } from '@opentelemetry/resources';
 import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
 import { Meter, Counter, Histogram, ObservableGauge, UpDownCounter } from '@opentelemetry/api';
 
@@ -28,8 +28,8 @@ export class MetricsService {
     });
 
     // Create meter provider with resource
-    const resource = Resource.default().merge(
-      new Resource({
+    const resource = defaultResource().merge(
+      resourceFromAttributes({
         [SemanticResourceAttributes.SERVICE_NAME]: 'n8n-mcp',
         [SemanticResourceAttributes.SERVICE_VERSION]: process.env.VERSION || '1.0.0',
         [SemanticResourceAttributes.SERVICE_NAMESPACE]: 'automation-hub',
@@ -117,10 +117,6 @@ export class MetricsService {
     const businessMetrics: MetricInstruments = {
       activeUsers: meter.createObservableGauge('active_users_total', {
         description: 'Total number of active users',
-      }, async (observableResult) => {
-        // This would be populated from actual data
-        const activeUsers = await this.getActiveUserCount();
-        observableResult.observe(activeUsers);
       }),
       credentialsCreated: meter.createCounter('credentials_created_total', {
         description: 'Total credentials created',
@@ -150,9 +146,6 @@ export class MetricsService {
       }),
       hitRate: meter.createObservableGauge('cache_hit_rate', {
         description: 'Cache hit rate percentage',
-      }, async (observableResult) => {
-        const hitRate = await this.calculateCacheHitRate();
-        observableResult.observe(hitRate);
       }),
     };
 
@@ -183,9 +176,6 @@ export class MetricsService {
       }),
       securityScore: meter.createObservableGauge('security_score', {
         description: 'Current security score (0-100)',
-      }, async (observableResult) => {
-        const score = await this.calculateSecurityScore();
-        observableResult.observe(score);
       }),
     };
 
@@ -193,20 +183,12 @@ export class MetricsService {
     const sloMetrics: MetricInstruments = {
       compliance: meter.createObservableGauge('slo_compliance_percentage', {
         description: 'SLO compliance percentage',
-      }, async (observableResult) => {
-        const compliance = await this.calculateSLOCompliance();
-        observableResult.observe(compliance);
       }),
       availabilityTarget: meter.createObservableGauge('slo_availability_target', {
         description: 'Availability SLO target percentage',
-      }, async (observableResult) => {
-        observableResult.observe(99.9);
       }),
       errorBudgetRemaining: meter.createObservableGauge('slo_error_budget_remaining', {
         description: 'Error budget remaining percentage',
-      }, async (observableResult) => {
-        const errorBudget = await this.calculateErrorBudget();
-        observableResult.observe(errorBudget);
       }),
     };
 
@@ -214,18 +196,10 @@ export class MetricsService {
     const systemMetrics: MetricInstruments = {
       cpuUsage: meter.createObservableGauge('system_cpu_usage_percent', {
         description: 'CPU usage percentage',
-      }, async (observableResult) => {
-        const cpuUsage = await this.getCPUUsage();
-        observableResult.observe(cpuUsage);
       }),
       memoryUsage: meter.createObservableGauge('system_memory_usage_bytes', {
         description: 'Memory usage in bytes',
         unit: 'bytes',
-      }, async (observableResult) => {
-        const memUsage = process.memoryUsage();
-        observableResult.observe(memUsage.heapUsed, { type: 'heap' });
-        observableResult.observe(memUsage.rss, { type: 'rss' });
-        observableResult.observe(memUsage.external, { type: 'external' });
       }),
       gcPauses: meter.createHistogram('system_gc_pause_ms', {
         description: 'Garbage collection pause duration',
@@ -245,6 +219,49 @@ export class MetricsService {
       slo: sloMetrics,
       system: systemMetrics,
     };
+
+    // Register callbacks for observable gauges
+    (businessMetrics.activeUsers as ObservableGauge).addCallback(async (observableResult) => {
+      // This would be populated from actual data
+      const activeUsers = await this.getActiveUserCount();
+      observableResult.observe(activeUsers);
+    });
+
+    (cacheMetrics.hitRate as ObservableGauge).addCallback(async (observableResult) => {
+      const hitRate = await this.calculateCacheHitRate();
+      observableResult.observe(hitRate);
+    });
+
+    (securityMetrics.securityScore as ObservableGauge).addCallback(async (observableResult) => {
+      const score = await this.calculateSecurityScore();
+      observableResult.observe(score);
+    });
+
+    (sloMetrics.compliance as ObservableGauge).addCallback(async (observableResult) => {
+      const compliance = await this.calculateSLOCompliance();
+      observableResult.observe(compliance);
+    });
+
+    (sloMetrics.availabilityTarget as ObservableGauge).addCallback(async (observableResult) => {
+      observableResult.observe(99.9);
+    });
+
+    (sloMetrics.errorBudgetRemaining as ObservableGauge).addCallback(async (observableResult) => {
+      const errorBudget = await this.calculateErrorBudget();
+      observableResult.observe(errorBudget);
+    });
+
+    (systemMetrics.cpuUsage as ObservableGauge).addCallback(async (observableResult) => {
+      const cpuUsage = await this.getCPUUsage();
+      observableResult.observe(cpuUsage);
+    });
+
+    (systemMetrics.memoryUsage as ObservableGauge).addCallback(async (observableResult) => {
+      const memUsage = process.memoryUsage();
+      observableResult.observe(memUsage.heapUsed, { type: 'heap' });
+      observableResult.observe(memUsage.rss, { type: 'rss' });
+      observableResult.observe(memUsage.external, { type: 'external' });
+    });
   }
 
   // Helper method to record metrics
@@ -328,6 +345,41 @@ export class MetricsService {
       case 'blocked_request':
         this.recordMetric('security', 'blockedRequests', 1, details);
         break;
+    }
+  }
+
+  // Record AI provider token usage
+  recordAIProviderTokens(provider: string, model: string, promptTokens: number, completionTokens: number): void {
+    const attributes = { provider, model };
+    const totalTokens = promptTokens + completionTokens;
+    
+    this.recordMetric('ai', 'tokens', totalTokens, attributes);
+    
+    // Also record prompt and completion tokens separately for detailed tracking
+    this.recordMetric('ai', 'tokens', promptTokens, { ...attributes, token_type: 'prompt' });
+    this.recordMetric('ai', 'tokens', completionTokens, { ...attributes, token_type: 'completion' });
+  }
+
+  // Record AI provider cost
+  recordAIProviderCost(provider: string, model: string, cost: number): void {
+    const attributes = { provider, model };
+    this.recordMetric('ai', 'cost', cost, attributes);
+  }
+
+  // Record AI provider error
+  recordAIProviderError(provider: string, model: string, errorCode: string): void {
+    const attributes = { provider, model, error_code: errorCode };
+    this.recordMetric('ai', 'errorRate', 1, attributes);
+  }
+
+  // Record database query
+  recordDatabaseQuery(operation: string, table: string, duration: number, success: boolean = true): void {
+    const attributes = { operation, table };
+    
+    this.recordMetric('db', 'queryDuration', duration, attributes);
+    
+    if (!success) {
+      this.recordMetric('db', 'queryErrors', 1, attributes);
     }
   }
 

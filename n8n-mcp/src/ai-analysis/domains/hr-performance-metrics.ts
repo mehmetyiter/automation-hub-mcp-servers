@@ -33,7 +33,7 @@ export interface PerformanceModel {
 
 export class HRPerformanceMetricsGenerator {
   private businessLogicGenerator: DynamicBusinessLogicGenerator;
-  private performanceModels: Map<string, PerformanceModel>;
+  private performanceModels: Map<string, PerformanceModel> = new Map();
   
   constructor(aiProvider?: string) {
     this.businessLogicGenerator = new DynamicBusinessLogicGenerator(aiProvider);

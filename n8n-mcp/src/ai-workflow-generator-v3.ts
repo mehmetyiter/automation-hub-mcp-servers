@@ -1,15 +1,17 @@
-import { AIWorkflowGenerator } from './ai-workflow-generator';
-import { DynamicCodeGenerator } from './code-generation/dynamic-code-generator';
-import { CodeGenerationLearningEngine } from './code-generation/code-generation-learning-engine';
-import { CodeGenerationRequest } from './code-generation/types';
+import { AIWorkflowGenerator } from './ai-workflow-generator.js';
+import { DynamicCodeGenerator } from './code-generation/dynamic-code-generator.js';
+import { CodeGenerationLearningEngine } from './code-generation/code-generation-learning-engine.js';
+import { CodeGenerationRequest } from './code-generation/types.js';
 
 export class AIWorkflowGeneratorV3 extends AIWorkflowGenerator {
   private learningEngine: CodeGenerationLearningEngine;
   private workflowGenerationStats: Map<string, any>;
+  declare protected codeGenerator: DynamicCodeGenerator;
 
   constructor(options?: any) {
     super(options);
-    this.learningEngine = new CodeGenerationLearningEngine(this.provider);
+    this.codeGenerator = new DynamicCodeGenerator(options?.provider);
+    this.learningEngine = new CodeGenerationLearningEngine(options?.provider);
     this.workflowGenerationStats = new Map();
   }
 

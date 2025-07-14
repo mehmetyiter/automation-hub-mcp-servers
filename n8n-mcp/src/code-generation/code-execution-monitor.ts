@@ -3,9 +3,9 @@ import {
   CodeGenerationRequest,
   ExecutionMetrics,
   PerformanceIssue 
-} from './types';
-import { CodeGenerationLearningEngine } from './code-generation-learning-engine';
-import { CodeGenerationDatabase } from './database/code-generation-db';
+} from './types.js';
+import { CodeGenerationLearningEngine } from './code-generation-learning-engine.js';
+import { CodeGenerationDatabase } from './database/code-generation-db.js';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 

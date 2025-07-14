@@ -46,7 +46,7 @@ export class ValidationMiddleware {
       }
 
       if (errors.length > 0) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           error: {
             code: 'VALIDATION_ERROR',
@@ -54,6 +54,7 @@ export class ValidationMiddleware {
             details: errors
           }
         });
+        return;
       }
 
       next();
@@ -124,6 +125,47 @@ export class ValidationMiddleware {
     SUBSCRIPTION_CREATE: Joi.object({
       events: Joi.array().items(Joi.string()).min(1).required(),
       filters: Joi.object().optional()
+    }),
+
+    // Auth schemas
+    LOGIN: Joi.object({
+      email: Joi.string().email().required(),
+      password: Joi.string().min(8).required()
+    }),
+
+    REGISTER: Joi.object({
+      email: Joi.string().email().required(),
+      password: Joi.string().min(8).required(),
+      name: Joi.string().min(2).max(100).required(),
+      organization: Joi.string().max(200).optional()
+    }),
+
+    FORGOT_PASSWORD: Joi.object({
+      email: Joi.string().email().required()
+    }),
+
+    RESET_PASSWORD: Joi.object({
+      token: Joi.string().required(),
+      password: Joi.string().min(8).required()
+    }),
+
+    UPDATE_PROFILE: Joi.object({
+      name: Joi.string().min(2).max(100).optional(),
+      organization: Joi.string().max(200).optional(),
+      email: Joi.string().email().optional()
+    }),
+
+    CHANGE_PASSWORD: Joi.object({
+      currentPassword: Joi.string().required(),
+      newPassword: Joi.string().min(8).required()
+    }),
+
+    UPDATE_USER_ROLE: Joi.object({
+      role: Joi.string().valid('user', 'admin', 'viewer').required()
+    }),
+
+    CREDENTIAL_STATUS: Joi.object({
+      status: Joi.string().valid('active', 'inactive', 'deleted').required()
     })
   };
 }

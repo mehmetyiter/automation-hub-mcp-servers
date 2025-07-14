@@ -1,8 +1,8 @@
 import { default as fetch } from 'node-fetch';
 import * as fs from 'fs';
 import * as path from 'path';
-import { DynamicCodeGenerator } from './code-generation/dynamic-code-generator';
-import { CodeGenerationRequest } from './code-generation/types';
+import { DynamicCodeGenerator } from './code-generation/dynamic-code-generator.js';
+import { CodeGenerationRequest } from './code-generation/types.js';
 
 export interface WorkflowGenerationOptions {
   apiKey?: string;
@@ -23,7 +23,7 @@ export class AIWorkflowGenerator {
   private apiKey?: string;
   private provider: 'openai' | 'anthropic';
   private trainingData: any;
-  private codeGenerator: DynamicCodeGenerator;
+  protected codeGenerator: DynamicCodeGenerator;
 
   constructor(options?: WorkflowGenerationOptions) {
     this.apiKey = options?.apiKey;
@@ -338,7 +338,7 @@ Important:
       const result = await this.callAIAPI(branchPrompt);
       
       // Validate and fix the branch before returning
-      const validatedBranch = this.validateBranchConnections(result, nodePrefix);
+      const validatedBranch = await this.validateBranchConnections(result, nodePrefix);
       
       return {
         stage: branch.name,
@@ -359,16 +359,16 @@ Important:
     }
   }
   
-  private validateBranchConnections(branch: any, nodePrefix: string): any {
+  private async validateBranchConnections(branch: any, nodePrefix: string): Promise<any> {
     console.log(`Validating branch connections for ${nodePrefix}`);
     
     const nodes = branch.nodes || [];
     let connections = this.normalizeConnectionFormat(branch.connections || {});
     
     // 1. Ensure all nodes have required parameters
-    nodes.forEach((node: any) => {
-      this.addMissingNodeParameters(node);
-    });
+    for (const node of nodes) {
+      await this.addMissingNodeParameters(node);
+    }
     
     // 2. If we have nodes but no connections, create a linear flow
     if (nodes.length > 0 && Object.keys(connections).length === 0) {
@@ -538,26 +538,39 @@ Important:
         return;
       }
       
-      normalized[sourceName] = {
-        main: targets.main.map((targetGroup: any) => {
-          // If it's already in the correct format, keep it
-          if (targetGroup.length > 0 && typeof targetGroup[0] === 'object' && targetGroup[0].node) {
-            return targetGroup;
-          }
-          
-          // Convert string format to object format
-          return targetGroup.map((target: any) => {
-            if (typeof target === 'string') {
-              return {
-                node: target,
-                type: 'main',
-                index: 0
-              };
+      // Check if we have the wrong format (single array instead of double array)
+      if (Array.isArray(targets.main) && targets.main.length > 0 && 
+          typeof targets.main[0] === 'object' && targets.main[0].node) {
+        // This is the incorrect format: main: [{"node": "...", "type": "main", "index": 0}]
+        // Convert to correct format: main: [[{"node": "...", "type": "main", "index": 0}]]
+        console.log(`Converting single array format to double array for ${sourceName}`);
+        normalized[sourceName] = {
+          main: [targets.main] // Wrap the single array in another array
+        };
+      } else {
+        // Normal processing for correct format or other edge cases
+        normalized[sourceName] = {
+          main: targets.main.map((targetGroup: any) => {
+            // If it's already in the correct format, keep it
+            if (Array.isArray(targetGroup) && targetGroup.length > 0 && 
+                typeof targetGroup[0] === 'object' && targetGroup[0].node) {
+              return targetGroup;
             }
-            return target;
-          });
-        })
-      };
+            
+            // Convert string format to object format
+            return targetGroup.map((target: any) => {
+              if (typeof target === 'string') {
+                return {
+                  node: target,
+                  type: 'main',
+                  index: 0
+                };
+              }
+              return target;
+            });
+          })
+        };
+      }
     });
     
     return normalized;
@@ -807,7 +820,7 @@ Important:
     return fixedConnections;
   }
   
-  private addMissingNodeParameters(node: any): void {
+  private async addMissingNodeParameters(node: any): Promise<void> {
     // Add missing parameters based on node type
     switch (node.type) {
       case 'n8n-nodes-base.set':
@@ -828,9 +841,9 @@ Important:
         
         // Generate code based on language
         if (node.parameters.language === 'python' && !node.parameters.pythonCode) {
-          node.parameters.pythonCode = this.generateDynamicCodeForNode(node, 'python');
+          node.parameters.pythonCode = await this.generateDynamicCodeForNode(node, 'python');
         } else if (!node.parameters.jsCode) {
-          node.parameters.jsCode = this.generateDynamicCodeForNode(node, 'javascript');
+          node.parameters.jsCode = await this.generateDynamicCodeForNode(node, 'javascript');
         }
         break;
         
@@ -1392,7 +1405,7 @@ IMPORTANT RULES:
 Return ONLY valid JSON with the exact structure shown above.`;
   }
 
-  private generateDynamicCodeForNode(node: any, language: string = 'javascript'): string {
+  private async generateDynamicCodeForNode(node: any, language: string = 'javascript'): Promise<string> {
     // Check if we have context about what this node should do
     const nodeName = node.name?.toLowerCase() || '';
     const nodeId = node.id || '';
@@ -1410,8 +1423,8 @@ Return ONLY valid JSON with the exact structure shown above.`;
         }
       };
       
-      // Use synchronous code generation based on patterns
-      const result = this.codeGenerator.generateCodeForNode('code', {
+      // Use asynchronous code generation based on patterns
+      const result = await this.codeGenerator.generateCodeForNode('code', {
         nodeName: node.name,
         purpose: this.extractCodePurposeFromNodeName(node.name)
       });

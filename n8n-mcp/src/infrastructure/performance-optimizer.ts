@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { Pool as PostgresPool, PoolConfig } from 'pg';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 import { LRUCache } from 'lru-cache';
 import { MonitoringService } from '../monitoring/monitoring-service.js';
 
@@ -639,7 +639,7 @@ export class PerformanceOptimizer extends EventEmitter {
     // Invalidate memory cache
     const keys = Array.from(this.memoryCache.keys());
     for (const key of keys) {
-      if (key.match(pattern)) {
+      if (typeof key === 'string' && key.match(pattern)) {
         this.memoryCache.delete(key);
       }
     }

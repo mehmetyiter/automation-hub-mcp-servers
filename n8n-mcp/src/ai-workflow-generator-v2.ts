@@ -82,6 +82,9 @@ export class AIWorkflowGeneratorV2 {
       workflow.connections = {};
     }
 
+    // First normalize the connection format in case AI generated wrong format
+    workflow.connections = this.normalizeConnectionFormat(workflow.connections);
+
     // Get all node IDs (removed unused vars)
 
     // Check each node has connections (except start nodes)
@@ -185,5 +188,51 @@ export class AIWorkflowGeneratorV2 {
 
     // Return any node that's to the left of the final node
     return this.findPotentialSourceNode(finalNode, workflow.nodes);
+  }
+
+  private normalizeConnectionFormat(connections: any): any {
+    const normalized: any = {};
+    
+    Object.entries(connections).forEach(([sourceName, targets]: [string, any]) => {
+      if (!targets || !targets.main) {
+        return;
+      }
+      
+      // Check if we have the wrong format (single array instead of double array)
+      if (Array.isArray(targets.main) && targets.main.length > 0 && 
+          typeof targets.main[0] === 'object' && targets.main[0].node) {
+        // This is the incorrect format: main: [{"node": "...", "type": "main", "index": 0}]
+        // Convert to correct format: main: [[{"node": "...", "type": "main", "index": 0}]]
+        console.log(`Converting single array format to double array for ${sourceName}`);
+        normalized[sourceName] = {
+          main: [targets.main] // Wrap the single array in another array
+        };
+      } else {
+        // Normal processing for correct format or other edge cases
+        normalized[sourceName] = {
+          main: targets.main.map((targetGroup: any) => {
+            // If it's already in the correct format, keep it
+            if (Array.isArray(targetGroup) && targetGroup.length > 0 && 
+                typeof targetGroup[0] === 'object' && targetGroup[0].node) {
+              return targetGroup;
+            }
+            
+            // Convert string format to object format
+            return targetGroup.map((target: any) => {
+              if (typeof target === 'string') {
+                return {
+                  node: target,
+                  type: 'main',
+                  index: 0
+                };
+              }
+              return target;
+            });
+          })
+        };
+      }
+    });
+    
+    return normalized;
   }
 }

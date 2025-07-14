@@ -61,7 +61,7 @@ export class PredictiveHealthMonitor extends EventEmitter {
   private healthChecker: HealthChecker;
   private config: PredictiveHealthConfig;
   private healthHistory: HealthMetricHistory[] = [];
-  private trendAnalysisInterval?: NodeJS.Timer;
+  private trendAnalysisInterval?: NodeJS.Timeout;
   private predictions: HealthPrediction[] = [];
   
   // Statistical models

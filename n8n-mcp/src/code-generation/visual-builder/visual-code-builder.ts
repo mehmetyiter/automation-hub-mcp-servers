@@ -1898,8 +1898,8 @@ ${performance.scalabilityAnalysis.recommendations.map((r: string) => `- ${r}`).j
     return await this.intelligentSuggester.suggestIntelligentBlocks(flow, request);
   }
 
-  // Performance prediction method
-  async predictFlowPerformance(flowId: string): Promise<PerformancePrediction> {
+  // Performance prediction method with detailed prediction
+  async predictFlowPerformanceDetailed(flowId: string): Promise<PerformancePrediction> {
     const flow = this.flowCache.get(flowId);
     if (!flow) {
       throw new WorkflowError('Flow not found', flowId);

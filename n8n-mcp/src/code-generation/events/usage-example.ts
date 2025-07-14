@@ -2,12 +2,12 @@
  * Example usage of the Event-Driven Architecture
  */
 
-import { globalEventEmitter, EventTypes, EventBuilder } from './event-emitter';
-import { registerEventListeners } from './event-listeners';
-import { DynamicCodeGeneratorWithEvents } from '../dynamic-code-generator-events';
-import { globalContainer } from '../dependency-injection/container';
-import { initializeServices } from '../dependency-injection/service-registry';
-import { CodeGenerationRequest } from '../types';
+import { globalEventEmitter, EventTypes, EventBuilder } from './event-emitter.js';
+import { registerEventListeners } from './event-listeners.js';
+import { DynamicCodeGeneratorWithEvents } from '../dynamic-code-generator-events.js';
+import { globalContainer } from '../dependency-injection/container.js';
+import { initializeServices } from '../dependency-injection/service-registry.js';
+import { CodeGenerationRequest } from '../types.js';
 
 // Example 1: Basic event handling
 export function example1BasicEvents() {

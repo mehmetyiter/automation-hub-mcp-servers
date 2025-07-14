@@ -328,7 +328,10 @@ export class MonitoringService extends EventEmitter {
       // Update Prometheus metrics
       this.metricsCollector.updateCpuUsage('total', metrics.system.cpu);
       this.metricsCollector.updateMemoryUsage('used', metrics.system.memory);
-      this.metricsCollector.updateUptime((Date.now() - this.metricsCollector['config'].defaultLabels?.startTime) / 1000);
+      const startTime = this.metricsCollector['config'].defaultLabels?.startTime;
+      if (typeof startTime === 'number') {
+        this.metricsCollector.updateUptime((Date.now() - startTime) / 1000);
+      }
 
       this.emit('metrics-collected', metrics);
 

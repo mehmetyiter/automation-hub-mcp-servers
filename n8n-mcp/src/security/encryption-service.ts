@@ -38,7 +38,7 @@ export class EncryptionService {
   private readonly iterations = 100000; // PBKDF2 iterations
   
   private masterKey: Buffer;
-  private keyVersion: number = 1;
+  protected keyVersion: number = 1;
   private keyCache = new Map<string, Buffer>();
   
   constructor(masterKeySecret?: string) {

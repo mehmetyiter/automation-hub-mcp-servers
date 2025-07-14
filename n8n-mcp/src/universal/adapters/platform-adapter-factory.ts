@@ -12,7 +12,13 @@ import { CustomPlatformAdapter } from './custom-platform-adapter.js';
  */
 export class PlatformAdapterFactory {
   private static adapters: Map<PlatformType, IPlatformAdapter> = new Map();
-  private static config: Record<PlatformType, any> = {};
+  private static config: Record<PlatformType, any> = {
+    n8n: {},
+    zapier: {},
+    make: {},
+    vapi: {},
+    custom: {}
+  };
 
   /**
    * Register platform configuration

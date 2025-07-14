@@ -1,5 +1,5 @@
 import { EventEmitter } from 'events';
-import { circuitBreakerManager } from './circuit-breaker';
+import { circuitBreakerManager } from './circuit-breaker.js';
 
 export interface HealthStatus {
   status: 'healthy' | 'degraded' | 'unhealthy';
@@ -693,6 +693,15 @@ export class HealthChecker extends EventEmitter {
     this.customCheckers.clear();
     
     console.log('✅ Health Checker cleanup completed');
+  }
+
+  // Missing methods for auto-scaler
+  getOverallHealth(): Promise<HealthStatus> {
+    return this.checkSystemHealth();
+  }
+
+  registerComponent(name: string, checker: () => Promise<HealthCheck>): void {
+    this.addCustomCheck(name, checker);
   }
 }
 

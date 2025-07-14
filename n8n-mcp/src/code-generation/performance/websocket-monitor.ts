@@ -1,6 +1,12 @@
 import { EventEmitter } from 'events';
-import * as WebSocket from 'ws';
-import { PerformanceProfile, RealTimeMetrics, TimestampedMetrics, PerformanceAlert } from './performance-profiler.js';
+import WebSocket from 'ws';
+import { WebSocketServer } from 'ws';
+import { PerformanceProfile, RealTimeMetrics, PerformanceAlert } from './performance-profiler.js';
+
+// Define TimestampedMetrics locally
+interface TimestampedMetrics extends RealTimeMetrics {
+  timestamp: number;
+}
 
 export interface MonitoringOptions {
   interval?: number;           // Metrics collection interval (ms)
@@ -62,7 +68,7 @@ export interface MemoryLeakAnalysis {
 }
 
 export class RealTimePerformanceMonitor extends EventEmitter {
-  private wsServer?: WebSocket.Server;
+  private wsServer?: WebSocketServer;
   private activeMonitors: Map<string, MonitoringSession> = new Map();
   private metricsHistory: Map<string, TimestampedMetrics[]> = new Map();
   private readonly MAX_HISTORY_SIZE = 1000;
@@ -75,14 +81,14 @@ export class RealTimePerformanceMonitor extends EventEmitter {
   async startWebSocketServer(port: number = 8081): Promise<void> {
     console.log(`🌐 Starting WebSocket server on port ${port}...`);
     
-    this.wsServer = new WebSocket.Server({ port });
+    this.wsServer = new WebSocketServer({ port });
     
     this.wsServer.on('connection', (ws: WebSocket, request: any) => {
       console.log('🔌 New WebSocket client connected');
       
-      ws.on('message', (message: string) => {
+      ws.addListener('message', (message: Buffer) => {
         try {
-          const data = JSON.parse(message);
+          const data = JSON.parse(message.toString());
           this.handleWebSocketMessage(ws, data);
         } catch (error) {
           this.sendError(ws, 'Invalid JSON message');

@@ -269,7 +269,8 @@ export class FlowPerformancePredictor extends EventEmitter {
   private async loadHistoricalData(): Promise<void> {
     try {
       // Load historical performance data from database
-      const recentFlows = await this.database.getRecentWorkflows(100);
+      // TODO: Implement getRecentWorkflows in CodeGenerationDatabase
+      const recentFlows: any[] = []; // await this.database.getRecentWorkflows(100);
       
       for (const flow of recentFlows) {
         if (flow.performanceMetrics) {

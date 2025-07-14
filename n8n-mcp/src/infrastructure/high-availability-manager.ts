@@ -1,8 +1,7 @@
 import { EventEmitter } from 'events';
-import Redis from 'ioredis';
-import RedisCluster from 'ioredis/built/cluster';
+import { Redis, Cluster as RedisCluster } from 'ioredis';
 import { Pool as PostgresPool } from 'pg';
-import { createPool, PoolConfig } from 'generic-pool';
+import { createPool, Options as PoolConfig } from 'generic-pool';
 
 export interface HAConfig {
   redis: {
@@ -181,10 +180,9 @@ export class HighAvailabilityManager extends EventEmitter {
       // Redis Cluster mode
       const cluster = new RedisCluster(this.config.redis.cluster, {
         redisOptions: {
-          password: this.config.redis.password,
-          retryStrategy: this.config.redis.retryStrategy || this.defaultRetryStrategy
+          password: this.config.redis.password
         },
-        clusterRetryStrategy: (times: number) => Math.min(times * 100, 3000)
+        clusterRetryStrategy: this.config.redis.retryStrategy || this.defaultRetryStrategy || ((times: number) => Math.min(times * 100, 3000))
       });
 
       cluster.on('error', (error) => this.handleRedisError('cluster', error));
@@ -955,21 +953,21 @@ export class HighAvailabilityManager extends EventEmitter {
     destroyer: (resource: T) => Promise<void>,
     validator?: (resource: T) => Promise<boolean>
   ): Promise<ConnectionPool<T>> {
-    const poolConfig: PoolConfig<T> = {
+    const poolFactory = {
       create: factory,
       destroy: destroyer,
-      validate: validator,
+      validate: validator
+    };
+
+    const poolConfig: PoolConfig = {
       min: 2,
       max: 10,
       acquireTimeoutMillis: 30000,
-      createTimeoutMillis: 30000,
-      destroyTimeoutMillis: 5000,
       idleTimeoutMillis: 30000,
-      createRetryIntervalMillis: 200,
-      reapIntervalMillis: 1000
+      evictionRunIntervalMillis: 1000
     };
 
-    const pool = createPool<T>(poolConfig);
+    const pool = createPool<T>(poolFactory, poolConfig);
 
     const connectionPool: ConnectionPool<T> = {
       async acquire(): Promise<T> {

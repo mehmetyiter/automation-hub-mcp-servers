@@ -4,20 +4,20 @@ import {
   CodeContext, 
   CodeEnvironment, 
   LogicPatterns 
-} from './types';
-import { CodeContextAnalyzer } from './code-context-analyzer';
-import { CodeValidationEngine } from './code-validation-engine';
-import { CodeOptimizationEngine } from './code-optimization-engine';
-import { CodeExecutionMonitor } from './code-execution-monitor';
-import { PythonCodeAdapter } from './language-adapters/python-adapter';
-import { SQLCodeAdapter } from './language-adapters/sql-adapter';
-import { TypeScriptCodeAdapter } from './language-adapters/typescript-adapter';
-import { RCodeAdapter } from './language-adapters/r-adapter';
-import { AdvancedPerformanceMetrics } from './performance/advanced-metrics';
-import { PerformanceProfiler } from './performance/performance-profiler';
-import { AdvancedPromptingEngine } from './prompting/advanced-prompting-engine';
-import { CodeVersionManager, VersionMetadata } from './versioning/code-version-manager';
-import { AIService } from '../ai-service';
+} from './types.js';
+import { CodeContextAnalyzer } from './code-context-analyzer.js';
+import { CodeValidationEngine } from './code-validation-engine.js';
+import { CodeOptimizationEngine } from './code-optimization-engine.js';
+import { CodeExecutionMonitor } from './code-execution-monitor.js';
+import { PythonCodeAdapter } from './language-adapters/python-adapter.js';
+import { SQLCodeAdapter } from './language-adapters/sql-adapter.js';
+import { TypeScriptCodeAdapter } from './language-adapters/typescript-adapter.js';
+import { RCodeAdapter } from './language-adapters/r-adapter.js';
+import { AdvancedPerformanceMetrics } from './performance/advanced-metrics.js';
+import { PerformanceProfiler } from './performance/performance-profiler.js';
+import { AdvancedPromptingEngine } from './prompting/advanced-prompting-engine.js';
+import { CodeVersionManager, VersionMetadata } from './versioning/code-version-manager.js';
+import { AIService } from '../ai-service.js';
 import { 
   CodeGenerationError, 
   ValidationError, 
@@ -26,14 +26,14 @@ import {
   LanguageAdapterError,
   VersioningError,
   ErrorHandler 
-} from './errors/custom-errors';
+} from './errors/custom-errors.js';
 import { 
   ExecutionContext, 
   ValidationContext,
   CodeMetadata,
   RequestParameters 
-} from './types/common-types';
-import { ProfilingOptions, PerformanceProfile } from './performance/performance-profiler';
+} from './types/common-types.js';
+import { ProfilingOptions, PerformanceProfile } from './performance/performance-profiler.js';
 
 export class DynamicCodeGenerator {
   private aiService: AIService;
@@ -111,8 +111,8 @@ export class DynamicCodeGenerator {
         description: `Generated code for: ${request.description}`,
         changeType: 'major',
         changes: ['Initial code generation'],
-        context,
-        request,
+        context: context as unknown as Record<string, unknown>,
+        request: request as unknown as Record<string, unknown>,
         improvements: [],
         regressions: []
       };
@@ -184,7 +184,7 @@ export class DynamicCodeGenerator {
           dialect: dialect as 'mysql' | 'postgresql' | 'sqlite' | 'mssql' | 'oracle',
           includeTransactions: request.requirements?.includeTransactions,
           includeErrorHandling: true,
-          outputFormat: (request.requirements?.outputFormat as 'json' | 'table' | 'csv') || 'json',
+          outputFormat: (request.requirements?.outputFormat === 'table' ? 'table' : request.requirements?.outputFormat as 'json' | 'table' | 'csv') || 'json',
           performanceOptimized: request.requirements?.performanceLevel === 'optimized'
         });
         
@@ -192,11 +192,11 @@ export class DynamicCodeGenerator {
       case 'ts':
         return this.typeScriptAdapter.generateTypeScriptCode(request, context, {
           strict: request.requirements?.strict ?? true,
-          targetES: (request.requirements?.targetES as 'ES2015' | 'ES2016' | 'ES2017' | 'ES2018' | 'ES2019' | 'ES2020' | 'ES2021' | 'ES2022' | 'ESNext') || 'ES2020',
-          moduleSystem: (request.requirements?.moduleSystem as 'commonjs' | 'es6' | 'amd' | 'umd' | 'system') || 'commonjs',
+          targetES: (['ES2020', 'ES2021', 'ES2022', 'ESNext'].includes(request.requirements?.targetES as string) ? request.requirements?.targetES as 'ES2020' | 'ES2021' | 'ES2022' | 'ESNext' : 'ES2020'),
+          moduleSystem: (request.requirements?.moduleSystem === 'es6' ? 'esm' : 'commonjs') as 'commonjs' | 'esm',
           includeTypes: true,
           asyncAwait: true,
-          errorHandling: (request.requirements?.errorHandling as 'try-catch' | 'promise' | 'async-await' | 'callback') || 'try-catch'
+          errorHandling: 'try-catch' as 'try-catch' | 'result-type' | 'promises'
         });
         
       case 'r':
@@ -204,7 +204,7 @@ export class DynamicCodeGenerator {
           libraries: request.requirements?.libraries,
           tidyverse: request.requirements?.tidyverse ?? true,
           includeVisualization: request.requirements?.includeVisualization,
-          outputFormat: (request.requirements?.outputFormat as 'json' | 'table' | 'csv') || 'json',
+          outputFormat: (request.requirements?.outputFormat === 'table' ? 'dataframe' : request.requirements?.outputFormat as 'json' | 'csv' | 'dataframe' | 'list') || 'json',
           statisticalAnalysis: request.requirements?.statisticalAnalysis,
           parallel: request.requirements?.parallel
         });
@@ -403,6 +403,7 @@ for (const item of inputItems) {
 return processedItems;`;
 
     return code;
+    }
   }
 
   async generateCodeForNode(nodeType: string, configuration: any): Promise<string> {
@@ -556,12 +557,31 @@ return processedItems;`;
       $input: {
         all: () => [
           { json: { id: 1, data: 'test' } }
-        ]
+        ],
+        first: () => ({ json: { id: 1, data: 'test' } }),
+        last: () => ({ json: { id: 1, data: 'test' } }),
+        item: (index: number) => ({ json: { id: 1, data: 'test' } })
       },
       $json: {},
-      $node: {},
-      $workflow: {},
-      $item: {}
+      $node: {
+        name: 'DefaultNode',
+        type: 'code',
+        typeVersion: 1,
+        position: [0, 0] as [number, number],
+        parameters: {}
+      },
+      $workflow: {
+        name: 'DefaultWorkflow',
+        active: true
+      },
+      $item: { index: 0 },
+      $: () => ({
+        name: 'DefaultNode',
+        type: 'code',
+        typeVersion: 1,
+        position: [0, 0] as [number, number],
+        parameters: {}
+      })
     };
   }
 
@@ -611,8 +631,8 @@ return processedItems;`;
         // Block dangerous globals
         eval: undefined,
         Function: undefined,
-        setTimeout: (fn: Function, ms: number) => setTimeout(fn, ms),
-        setInterval: (fn: Function, ms: number) => setInterval(fn, ms),
+        setTimeout: (fn: () => void, ms: number) => setTimeout(fn, ms),
+        setInterval: (fn: () => void, ms: number) => setInterval(fn, ms),
         require: undefined,
         process: undefined,
         __dirname: undefined,
@@ -782,8 +802,8 @@ Generate the improved code maintaining all existing functionality while addressi
       description: `Performance optimization based on profiling`,
       changeType: 'minor',
       changes: profile.optimizationSuggestions.map(s => s.description),
-      context: generatedCode.context,
-      request: { description: 'Performance optimization', nodeType: 'code', workflowContext: {} } as CodeGenerationRequest,
+      context: generatedCode.context as unknown as Record<string, unknown>,
+      request: { description: 'Performance optimization', nodeType: 'code', workflowContext: {} } as Record<string, unknown>,
       improvements: profile.optimizationSuggestions.map(s => 
         `${s.description} (${s.expectedImprovement}% improvement)`
       ),

@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { Pool } from 'pg';
-import { Logger } from '../utils/logger';
+import { logger } from '../utils/logger.js';
 
 interface UserBehaviorBaseline {
   userId: string;
@@ -67,7 +67,7 @@ interface AnomalyRule {
 
 export class AnomalyDetector extends EventEmitter {
   private db: Pool;
-  private logger: Logger;
+  private logger: typeof logger;
   private sensitivity: number = 0.7;
   private baselines: Map<string, UserBehaviorBaseline> = new Map();
   private anomalyRules: Map<string, AnomalyRule> = new Map();
@@ -75,10 +75,10 @@ export class AnomalyDetector extends EventEmitter {
   private minBaselineSampleSize: number = 100;
   private baselineUpdateInterval: NodeJS.Timeout | null = null;
 
-  constructor(db: Pool, logger: Logger) {
+  constructor(db: Pool, loggerInstance: typeof logger) {
     super();
     this.db = db;
-    this.logger = logger;
+    this.logger = loggerInstance;
 
     this.initializeAnomalyRules();
     this.loadBaselines();

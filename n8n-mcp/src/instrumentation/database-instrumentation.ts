@@ -1,6 +1,6 @@
 import { trace, SpanKind, SpanStatusCode, context } from '@opentelemetry/api';
-import { MetricsService } from '../observability/metrics';
-import { LoggingService } from '../observability/logging';
+import { MetricsService } from '../observability/metrics.js';
+import { LoggingService } from '../observability/logging.js';
 import { Pool, PoolClient, QueryResult, QueryConfig } from 'pg';
 
 export class DatabaseInstrumentation {

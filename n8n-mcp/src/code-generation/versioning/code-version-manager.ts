@@ -1,13 +1,14 @@
-import { CodeGenerationDatabase } from '../database/code-generation-db';
-import { AIService } from '../../ai-service';
-import { DynamicCodeGenerator } from '../dynamic-code-generator';
-import { RealTimeQualityAssessor } from '../quality/real-time-quality-assessor';
-import { AdvancedPerformanceMetrics } from '../performance/advanced-metrics';
+import { CodeGenerationDatabase } from '../database/code-generation-db.js';
+import { AIService } from '../../ai-service.js';
+import { DynamicCodeGenerator } from '../dynamic-code-generator.js';
+import { RealTimeQualityAssessor } from '../quality/real-time-quality-assessor.js';
+import { AdvancedPerformanceMetrics } from '../performance/advanced-metrics.js';
+import { CodeContext } from '../types.js';
 import * as crypto from 'crypto';
 import { 
   VersioningError,
   ValidationError 
-} from '../errors/custom-errors';
+} from '../errors/custom-errors.js';
 
 // Internal types for performance metrics
 interface PerformanceMetricsData {
@@ -168,7 +169,7 @@ export class CodeVersionManager {
     
     // Assess quality and performance
     const [qualityAssessment, performanceMetrics] = await Promise.all([
-      this.qualityAssessor.assessCodeQuality(code, { intent: metadata.context }),
+      this.qualityAssessor.assessCodeQuality(code, this.buildCodeContext(metadata.context)),
       this.performanceMetrics.collectDetailedMetrics(
         `${codeId}_v${versionNumber}`,
         code,
@@ -490,12 +491,12 @@ Analyze the differences and provide:
   ): Promise<QualityDiff> {
     const qualityA = await this.qualityAssessor.assessCodeQuality(
       versionA.code,
-      { intent: versionA.metadata.context }
+      this.buildCodeContext(versionA.metadata.context)
     );
     
     const qualityB = await this.qualityAssessor.assessCodeQuality(
       versionB.code,
-      { intent: versionB.metadata.context }
+      this.buildCodeContext(versionB.metadata.context)
     );
     
     const overallChange = qualityB.overallScore - qualityA.overallScore;
@@ -567,8 +568,8 @@ Analyze the differences and provide:
       regressions.push(`Throughput decreased by ${Math.round((perfA.performance.throughput.itemsPerSecond - perfB.performance.throughput.itemsPerSecond) / perfA.performance.throughput.itemsPerSecond * 100)}%`);
     }
     
-    if (perfB.memoryProfile.leaks.length > perfA.memoryProfile.leaks.length) {
-      regressions.push(`New memory leaks detected: ${perfB.memoryProfile.leaks.length - perfA.memoryProfile.leaks.length}`);
+    if (perfB.memoryProfile.heapUsed > perfA.memoryProfile.heapUsed * 1.5) {
+      regressions.push(`Memory usage increased by ${Math.round((perfB.memoryProfile.heapUsed - perfA.memoryProfile.heapUsed) / perfA.memoryProfile.heapUsed * 100)}%`);
     }
     
     return regressions;
@@ -724,14 +725,17 @@ Provide validation results:
       score -= Math.min(30, metrics.performance.executionTime.avg / 10);
     }
     
-    // Penalize memory issues
-    if (metrics.memoryProfile.leaks.length > 0) {
-      score -= metrics.memoryProfile.leaks.length * 10;
+    // Penalize high memory usage
+    const memoryUsageMB = metrics.memoryProfile.heapUsed / (1024 * 1024);
+    if (memoryUsageMB > 100) {
+      score -= Math.min(20, memoryUsageMB / 10);
     }
     
-    // Penalize security issues
-    score -= metrics.security.vulnerabilities.filter(v => v.severity === 'critical').length * 20;
-    score -= metrics.security.vulnerabilities.filter(v => v.severity === 'high').length * 10;
+    // Penalize security issues if present
+    if (metrics.security && metrics.security.vulnerabilities) {
+      score -= metrics.security.vulnerabilities.filter(v => v.severity === 'critical').length * 20;
+      score -= metrics.security.vulnerabilities.filter(v => v.severity === 'high').length * 10;
+    }
     
     return Math.max(0, Math.round(score));
   }
@@ -844,5 +848,37 @@ ${versions.length > 1 ? `
 - Most stable version: v${versions.filter(v => v.deploymentStatus.deployed).sort((a, b) => b.qualityScore - a.qualityScore)[0]?.version || 'None deployed'}
 ` : 'Create more versions to see recommendations'}
 `;
+  }
+
+  private buildCodeContext(context: any): CodeContext {
+    return {
+      intent: {
+        primaryFunction: context?.primaryFunction || 'unknown',
+        dataTransformation: context?.dataTransformation || 'unknown',
+        businessLogic: context?.businessLogic || 'unknown',
+        integrationNeeds: context?.integrationNeeds || 'unknown',
+        performanceRequirements: context?.performanceRequirements || 'unknown'
+      },
+      technicalRequirements: {
+        inputDataStructure: context?.inputDataStructure || 'unknown',
+        outputDataStructure: context?.outputDataStructure || 'unknown',
+        errorHandling: context?.errorHandling || 'unknown',
+        validation: context?.validation || 'unknown',
+        algorithms: context?.algorithms || 'unknown'
+      },
+      codeComplexity: {
+        level: context?.level || 'moderate',
+        estimatedLines: context?.estimatedLines || 100,
+        requiredLibraries: context?.requiredLibraries || [],
+        asyncOperations: context?.asyncOperations || false,
+        errorProneParts: context?.errorProneParts || []
+      },
+      optimizationOpportunities: {
+        performance: [],
+        readability: [],
+        maintainability: [],
+        security: []
+      }
+    };
   }
 }

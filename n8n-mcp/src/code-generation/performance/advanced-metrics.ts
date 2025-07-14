@@ -1,5 +1,5 @@
-import { AIService } from '../../ai-service';
-import { CodeGenerationDatabase } from '../database/code-generation-db';
+import { AIService } from '../../ai-service.js';
+import { CodeGenerationDatabase } from '../database/code-generation-db.js';
 
 export interface CodeQualityMetrics {
   cyclomaticComplexity: number;
@@ -374,8 +374,8 @@ Identify security vulnerabilities:
       
       return {
         vulnerabilities: [...(analysis.vulnerabilities || []), ...manualChecks.vulnerabilities],
-        securityScore: analysis.securityScore || manualChecks.score,
-        complianceStatus: analysis.complianceStatus || manualChecks.compliance,
+        securityScore: analysis.securityScore || manualChecks.securityScore,
+        complianceStatus: analysis.complianceStatus || manualChecks.complianceStatus,
         recommendations: analysis.recommendations || []
       };
     } catch (error) {

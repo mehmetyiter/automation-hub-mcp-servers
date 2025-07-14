@@ -334,7 +334,7 @@ export class CustomPlatformAdapter extends BasePlatformAdapter {
         });
 
         if (response.ok) {
-          const tokens = await response.json();
+          const tokens = await response.json() as any;
           return {
             ...data,
             token: tokens.access_token,
