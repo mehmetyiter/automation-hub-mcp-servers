@@ -59,7 +59,7 @@ export default function AIPromptAssistant({ onPromptGenerated }: AIPromptAssista
 
   const fetchUserProviders = async () => {
     try {
-      const response = await api.get('/n8n/api/ai-providers/settings');
+      const response = await api.get('/n8n/ai-providers/settings');
       setUserProviders(response.data || []);
     } catch (error) {
       console.error('Failed to fetch user providers:', error);
@@ -288,48 +288,17 @@ ${dynamicPrompt.userPrompt}
 
       let response;
       
-      if (userProvider) {
-        // Use stored credentials with selected provider
-        response = await api.post('/n8n/api/ai-providers/chat/completion', {
+      // Always send the request, let backend handle API key retrieval
+      response = await api.post('/n8n/ai-providers/chat/completion', {
           messages: [
-            {
-              role: 'system',
-              content: `You are an AI assistant specialized in creating detailed workflow automation prompts for n8n. 
-
-Your role is to help users create comprehensive, production-ready workflow prompts by:
-
-1. Understanding their automation needs
-2. Identifying required triggers, integrations, and data flows
-3. Suggesting error handling and edge cases
-4. Structuring the prompt for maximum clarity
-
-When responding:
-- Ask clarifying questions if the request is vague
-- Suggest additional features that might be helpful
-- Structure your response with clear sections
-- Include specific technical requirements
-- Consider scalability and reliability
-
-Format your responses to include:
-- Brief summary of the workflow
-- List of triggers and their configuration
-- Required integrations and APIs
-- Data processing steps
-- Error handling strategies
-- Expected outcomes and success criteria
-
-Always aim for production-ready, enterprise-grade workflows.`
-            },
+            // System prompt is now handled by backend
             ...messages.slice(1).map(m => ({ role: m.role, content: m.content })),
             { role: 'user', content: input }
           ],
           provider: selectedProvider.provider,
-          useSpecificProvider: true
+          useSpecificProvider: true,
+          useUserSettings: false  // Use environment variables instead
         });
-      } else {
-        // No stored credentials - show error
-        throw new Error(`No API key found for ${selectedProvider.name}. Please add it in Settings → AI Providers.`);
-      }
 
       const aiResponse = response.data.content || response.data.message;
       const generatedPrompt = await generateWorkflowPrompt(input, aiResponse);

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { AIWorkflowGeneratorV2 } from '../ai-workflow-generator-v2.js';
 import fetch from 'node-fetch';
+import { AIChatService } from '../services/ai-chat-service.js';
 
 const router = Router();
 
@@ -219,10 +220,37 @@ router.post('/chat/completion', requireAuth, async (req: Request, res: Response)
       return;
     }
 
+    // Initialize chat service
+    const chatService = new AIChatService();
+    
     let generatorConfig: any = {};
 
     // If using specific provider selection
-    if (useSpecificProvider && providerName) {
+    if (useSpecificProvider && providerName && !useUserSettings) {
+      // Use environment variables
+      let envApiKey;
+      if (providerName === 'openai') {
+        envApiKey = process.env.OPENAI_API_KEY;
+      } else if (providerName === 'anthropic') {
+        envApiKey = process.env.ANTHROPIC_API_KEY;
+      } else if (providerName === 'gemini') {
+        envApiKey = process.env.GEMINI_API_KEY;
+      }
+
+      if (!envApiKey) {
+        throw new Error(`No API key found for ${providerName} in environment variables. Please set ${providerName.toUpperCase()}_API_KEY.`);
+      }
+      
+      generatorConfig = {
+        provider: providerName,
+        apiKey: envApiKey,
+        model: model || (providerName === 'openai' ? 'gpt-4o' : providerName === 'anthropic' ? 'claude-3-sonnet-20240229' : 'gemini-1.5-pro'),
+        temperature: 0.7,
+        maxTokens: 2000
+      };
+    }
+    // If trying to use stored user settings
+    else if (useSpecificProvider && providerName) {
       // Get the specific provider's details with decrypted API key
       const providerResponse = await fetch(`http://localhost:3005/api/ai-providers/provider/${providerName}`, {
         headers: {
@@ -285,24 +313,37 @@ router.post('/chat/completion', requireAuth, async (req: Request, res: Response)
       }
     }
 
-    // Create provider instance and use chat method
-    const { ProviderFactory } = await import('../providers/provider-factory.js');
-    const providerInstance = ProviderFactory.createProvider(generatorConfig);
+    // Use our enhanced chat service instead of direct provider
+    const result = await chatService.processChat(messages, generatorConfig);
     
-    // Check if the provider has a chat method
-    if ('chat' in providerInstance && typeof providerInstance.chat === 'function') {
-      const result = await providerInstance.chat(messages);
-      
-      if (result.success) {
-        res.json({ 
-          success: true, 
-          content: result.content,
-          usage: result.usage 
-        });
-      } else {
-        throw new Error(result.error || 'Chat failed');
-      }
+    if (result.success) {
+      res.json({
+        success: true,
+        content: result.content,
+        usage: result.usage,
+        // Include analysis data for debugging (optional)
+        _analysis: result.analysis
+      });
     } else {
+      // If chat service fails, fallback to direct provider
+      const { ProviderFactory } = await import('../providers/provider-factory.js');
+      const providerInstance = ProviderFactory.createProvider(generatorConfig);
+      
+      // Check if the provider has a chat method
+      if ('chat' in providerInstance && typeof providerInstance.chat === 'function') {
+        const fallbackResult = await providerInstance.chat(messages);
+        
+        if (fallbackResult.success) {
+          res.json({ 
+            success: true, 
+            content: fallbackResult.content,
+            usage: fallbackResult.usage,
+            _note: 'Fallback to direct provider due to chat service error'
+          });
+        } else {
+          throw new Error(fallbackResult.error || 'Chat failed');
+        }
+      } else {
       // Fallback for providers without chat method - use the last user message
       const lastUserMessage = messages.filter(m => m.role === 'user').pop();
       if (!lastUserMessage) {
@@ -338,6 +379,7 @@ router.post('/chat/completion', requireAuth, async (req: Request, res: Response)
           content: `I'll help you create a workflow for: ${lastUserMessage.content}. Please provide more details about your automation requirements.` 
         });
       }
+    }
     }
   } catch (error: any) {
     console.error('Chat completion error:', error);

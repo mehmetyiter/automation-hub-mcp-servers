@@ -517,9 +517,8 @@
           "fix": "Ensure proper node ordering and connections"
         }
       ]
-    }
-  },
-  "patterns": {
+    },
+    "patterns": {
     "slack": {
       "common_mistakes": [
         {

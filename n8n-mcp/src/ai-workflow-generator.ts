@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { DynamicCodeGenerator } from './code-generation/dynamic-code-generator.js';
 import { CodeGenerationRequest } from './code-generation/types.js';
+import { PromptToWorkflowMapper } from './planning/prompt-to-workflow-mapper.js';
+import { WorkflowValidationService } from './services/workflow-validation-service.js';
 
 export interface WorkflowGenerationOptions {
   apiKey?: string;
@@ -24,11 +26,15 @@ export class AIWorkflowGenerator {
   private provider: 'openai' | 'anthropic';
   private trainingData: any;
   protected codeGenerator: DynamicCodeGenerator;
+  private promptMapper: PromptToWorkflowMapper;
+  private validationService: WorkflowValidationService;
 
   constructor(options?: WorkflowGenerationOptions) {
     this.apiKey = options?.apiKey;
     this.provider = options?.provider || 'anthropic';
     this.codeGenerator = new DynamicCodeGenerator(this.provider);
+    this.promptMapper = new PromptToWorkflowMapper();
+    this.validationService = new WorkflowValidationService();
     this.loadTrainingData();
   }
 
@@ -84,6 +90,11 @@ export class AIWorkflowGenerator {
       throw new Error('API key not configured');
     }
     
+    // Always analyze the prompt first using PromptToWorkflowMapper
+    console.log('Analyzing prompt with PromptToWorkflowMapper...');
+    const mapperAnalysis = await this.promptMapper.analyzePrompt(prompt);
+    const workflowPlan = this.promptMapper.createWorkflowPlan(mapperAnalysis);
+    
     // Check if this is a complex workflow that needs staged generation
     const isComplex = this.isComplexPrompt(prompt);
     
@@ -92,13 +103,41 @@ export class AIWorkflowGenerator {
       return this.generateInStages(prompt, name);
     }
     
-    console.log('Simple workflow - using single generation');
+    console.log('Simple workflow - using single generation with mapper insights');
     try {
       const result = this.provider === 'anthropic' 
-        ? await this.generateWithClaude(prompt, name)
-        : await this.generateWithOpenAI(prompt, name);
+        ? await this.generateWithClaude(prompt, name, mapperAnalysis)
+        : await this.generateWithOpenAI(prompt, name, mapperAnalysis);
       
       console.log('Single generation result:', JSON.stringify(result, null, 2));
+      
+      // Validate against checklist
+      if (result.success && result.workflow && mapperAnalysis.validationChecklist) {
+        result.validationResults = await this.validateWorkflowAgainstChecklist(
+          result.workflow, 
+          mapperAnalysis.validationChecklist
+        );
+        result.mapperAnalysis = mapperAnalysis;
+      }
+      
+      // Run comprehensive workflow validation
+      if (result.success && result.workflow) {
+        console.log('Running comprehensive workflow validation...');
+        const validationResult = await this.validationService.validateWorkflow(result.workflow);
+        
+        // Apply auto-corrections from validation service
+        if (validationResult.nodeIssues.length > 0) {
+          console.log(`Found ${validationResult.nodeIssues.length} node issues, applying corrections...`);
+          // The validation service already auto-corrected node types in-place
+        }
+        
+        // Generate validation report
+        const validationReport = this.validationService.generateValidationReport(validationResult);
+        
+        result.workflowValidation = validationResult;
+        result.validationReport = validationReport;
+      }
+      
       return result;
     } catch (error: any) {
       console.error('Single generation error:', error);
@@ -212,7 +251,7 @@ export class AIWorkflowGenerator {
       
       // Stage 3: Combine all branches into final workflow
       console.log('Stage 3: Combining branches into final workflow...');
-      const combined = this.combineBranches(structure, branchResults, name);
+      const combined = await this.combineBranches(structure, branchResults, name);
       
       return combined;
     } catch (error: any) {
@@ -225,9 +264,20 @@ export class AIWorkflowGenerator {
   }
   
   private async analyzeWorkflowStructure(prompt: string): Promise<any> {
+    // First use the PromptToWorkflowMapper to analyze the prompt
+    console.log('Using PromptToWorkflowMapper for initial analysis...');
+    const mapperAnalysis = await this.promptMapper.analyzePrompt(prompt);
+    
+    // Generate a workflow plan for better AI understanding
+    const workflowPlan = this.promptMapper.createWorkflowPlan(mapperAnalysis);
+    console.log('Generated workflow plan from mapper:', workflowPlan);
+    
     const analysisPrompt = `Analyze this workflow request and identify its structure:
 
 ${prompt}
+
+Based on this analysis:
+${workflowPlan}
 
 Return a JSON object with:
 {
@@ -241,7 +291,8 @@ Return a JSON object with:
       "description": "What this branch does",
       "trigger_condition": "When this branch activates",
       "is_parallel": true/false,
-      "estimated_nodes": number
+      "estimated_nodes": number,
+      "required_nodes": ["array of specific node types needed"]
     }
   ],
   "merge_points": [
@@ -250,7 +301,9 @@ Return a JSON object with:
       "merges_branches": ["branch1", "branch2"]
     }
   ],
-  "final_actions": "Description of final steps"
+  "final_actions": "Description of final steps",
+  "workflow_tasks": ${JSON.stringify(mapperAnalysis.tasks)},
+  "validation_checklist": ${JSON.stringify(mapperAnalysis.validationChecklist)}
 }
 
 Focus on identifying separate flows and branches, not implementation details.`;
@@ -259,12 +312,18 @@ Focus on identifying separate flows and branches, not implementation details.`;
     
     return {
       success: true,
-      ...result
+      ...result,
+      mapperAnalysis // Include the mapper analysis for later use
     };
   }
   
   private async generateBranch(branch: any, originalPrompt: string): Promise<StageResult> {
     const nodePrefix = branch.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    
+    // Include required nodes if available
+    const requiredNodesSection = branch.required_nodes && branch.required_nodes.length > 0
+      ? `\nREQUIRED NODES TO INCLUDE:\n${branch.required_nodes.map((node: string) => `- ${node}`).join('\n')}\n`
+      : '';
     
     const branchPrompt = `Generate n8n workflow nodes for this specific branch:
 
@@ -272,6 +331,7 @@ Branch Name: ${branch.name}
 Description: ${branch.description}
 Trigger Condition: ${branch.trigger_condition}
 Context from full workflow: ${originalPrompt}
+${requiredNodesSection}
 
 CRITICAL CONNECTION REQUIREMENTS:
 1. DEFAULT: Create LINEAR FLOW: node1 -> node2 -> node3 -> node4 -> node5
@@ -576,7 +636,7 @@ Important:
     return normalized;
   }
   
-  private combineBranches(structure: any, branches: StageResult[], name: string): any {
+  private async combineBranches(structure: any, branches: StageResult[], name: string): Promise<any> {
     const allNodes: any[] = [];
     const allConnections: any = {};
     
@@ -667,11 +727,34 @@ Important:
       }
     });
 
+    // Run validation against the checklist if available
+    let validationResults = null;
+    if (structure.validation_checklist) {
+      validationResults = await this.validateWorkflowAgainstChecklist(workflow, structure.validation_checklist);
+    }
+
+    // Run comprehensive workflow validation
+    console.log('Running comprehensive workflow validation...');
+    const validationResult = await this.validationService.validateWorkflow(workflow);
+    
+    // Apply auto-corrections from validation service
+    if (validationResult.nodeIssues.length > 0) {
+      console.log(`Found ${validationResult.nodeIssues.length} node issues, applying corrections...`);
+      // The validation service already auto-corrected node types in-place
+    }
+    
+    // Generate validation report
+    const validationReport = this.validationService.generateValidationReport(validationResult);
+
     return {
       success: true,
       workflow: workflow,
       method: 'staged-ai-generation',
-      confidence: 0.95
+      confidence: 0.95,
+      validationResults,
+      mapperAnalysis: structure.mapperAnalysis,
+      workflowValidation: validationResult,
+      validationReport
     };
   }
   
@@ -916,6 +999,62 @@ Important:
         }
         break;
     }
+  }
+  
+  private async validateWorkflowAgainstChecklist(workflow: any, checklist: string[]): Promise<any> {
+    const validationResults: any = {
+      passed: [],
+      failed: [],
+      warnings: []
+    };
+    
+    const nodes = workflow.nodes || [];
+    const connections = workflow.connections || {};
+    
+    // Check each validation item
+    checklist.forEach(item => {
+      const checkItem = item.toLowerCase();
+      
+      if (checkItem.includes('trigger')) {
+        const hasTrigger = nodes.some((n: any) => 
+          n.type.includes('webhook') || n.type.includes('cron') || 
+          n.type.includes('trigger') || n.name.toLowerCase().includes('trigger')
+        );
+        if (hasTrigger) {
+          validationResults.passed.push(item);
+        } else {
+          validationResults.failed.push(item);
+        }
+      }
+      
+      if (checkItem.includes('connected')) {
+        const disconnectedCount = this.findOrphanedNodes(workflow).length;
+        if (disconnectedCount === 0) {
+          validationResults.passed.push(item);
+        } else {
+          validationResults.failed.push(`${item} (${disconnectedCount} nodes disconnected)`);
+        }
+      }
+      
+      if (checkItem.includes('error handling')) {
+        const hasErrorHandling = nodes.some((n: any) => 
+          n.name.toLowerCase().includes('error') || n.type.includes('errorTrigger')
+        );
+        if (hasErrorHandling) {
+          validationResults.passed.push(item);
+        } else {
+          validationResults.warnings.push(item);
+        }
+      }
+      
+      if (checkItem.includes('api credentials') || checkItem.includes('credentials')) {
+        // This is a warning since we can't check credentials at generation time
+        validationResults.warnings.push(`${item} - Needs manual configuration`);
+      }
+    });
+    
+    console.log('Workflow validation results:', validationResults);
+    return validationResults;
   }
   
   private ensureMergeNodesHaveOutputs(workflow: any): void {
@@ -1203,11 +1342,17 @@ Important:
     }
   }
   
-  private async generateWithClaude(prompt: string, name: string): Promise<any> {
+  private async generateWithClaude(prompt: string, name: string, mapperAnalysis?: any): Promise<any> {
+    let workflowPlanSection = '';
+    if (mapperAnalysis) {
+      const plan = this.promptMapper.createWorkflowPlan(mapperAnalysis);
+      workflowPlanSection = `\n\nWORKFLOW PLAN AND REQUIREMENTS:\n${plan}\n\nSUGGESTED NODES:\n${mapperAnalysis.suggestedNodes.join(', ')}\n`;
+    }
+    
     const workflowPrompt = `Create an n8n workflow for: ${prompt}
 
 Workflow name: ${name}
-
+${workflowPlanSection}
 Return a complete n8n workflow JSON with this EXACT structure:
 {
   "name": "${name}",
@@ -1242,10 +1387,17 @@ CRITICAL: Nodes must NOT have a "main" property. All connections must be in the 
     }
   }
   
-  private async generateWithOpenAI(prompt: string, name: string): Promise<any> {
+  private async generateWithOpenAI(prompt: string, name: string, mapperAnalysis?: any): Promise<any> {
     // Keep existing OpenAI implementation
     const systemPrompt = this.getSystemPrompt();
-    const userPrompt = `Create an n8n workflow for: ${prompt}\n\nWorkflow name: ${name}`;
+    
+    let workflowPlanSection = '';
+    if (mapperAnalysis) {
+      const plan = this.promptMapper.createWorkflowPlan(mapperAnalysis);
+      workflowPlanSection = `\n\nWORKFLOW PLAN AND REQUIREMENTS:\n${plan}\n\nSUGGESTED NODES:\n${mapperAnalysis.suggestedNodes.join(', ')}\n`;
+    }
+    
+    const userPrompt = `Create an n8n workflow for: ${prompt}\n\nWorkflow name: ${name}${workflowPlanSection}`;
     
     const requestBody = {
       model: 'gpt-4o',
@@ -1323,6 +1475,17 @@ CRITICAL: Nodes must NOT have a "main" property. All connections must be in the 
 
     return `You are an n8n workflow expert. Generate complete, production-ready n8n workflows.
 
+🚨 CRITICAL ORCHESTRATION REQUIREMENT 🚨
+For workflows with multiple features/sections:
+1. ALL features must be part of ONE INTERCONNECTED workflow
+2. Use CENTRAL ORCHESTRATION pattern:
+   Main Trigger → Central Router (Switch/IF) → Feature Branches → Central Merge → Final Processing
+3. NEVER create isolated node chains - everything must flow together
+4. Example structure for multi-feature workflow:
+   - Webhook → Data Preparation → Feature Router (Switch)
+   - Switch routes to: Feature A branch, Feature B branch, Feature C branch
+   - All branches → Central Merge Node → Final Processing → Response
+
 CRITICAL WORKFLOW STRUCTURE:
 The workflow MUST have this exact JSON structure:
 {
@@ -1363,26 +1526,37 @@ CRITICAL CONNECTION RULES:
 8. NEVER put connections inside node definitions
 9. CROSS-CONNECTIONS: Connect nodes across branches when workflow logic requires
 10. LOOPS: Use SplitInBatches with connections back to itself for array processing
+11. ORCHESTRATION: Multi-feature workflows MUST use central routing/merging
 
 ${additionalGuidelines}
 
 IMPORTANT RULES:
 1. Generate realistic workflows with proper node counts
-2. Use actual n8n node types like:
-   - n8n-nodes-base.webhook (typeVersion: 1.1)
-   - n8n-nodes-base.httpRequest (typeVersion: 4.2)
-   - n8n-nodes-base.code (typeVersion: 2)
-   - n8n-nodes-base.postgres (typeVersion: 2.4)
-   - n8n-nodes-base.set (typeVersion: 3.4)
-   - n8n-nodes-base.if (typeVersion: 2)
-   - n8n-nodes-base.switch (typeVersion: 3)
-   - n8n-nodes-base.merge (typeVersion: 3)
-   - n8n-nodes-base.splitInBatches (typeVersion: 3)
-   - n8n-nodes-base.wait (typeVersion: 1.1)
-   - n8n-nodes-base.emailSend (typeVersion: 2.1)
-   - n8n-nodes-base.slack (typeVersion: 2.2)
-   - n8n-nodes-base.discord (typeVersion: 2)
-   - n8n-nodes-base.twilio (typeVersion: 1)
+2. Use ONLY VALID n8n node types (CRITICAL - USE EXACT TYPES):
+   - n8n-nodes-base.webhook (NOT webhookTrigger)
+   - n8n-nodes-base.httpRequest
+   - n8n-nodes-base.code (NOT function)
+   - n8n-nodes-base.postgres
+   - n8n-nodes-base.set
+   - n8n-nodes-base.if
+   - n8n-nodes-base.switch
+   - n8n-nodes-base.merge
+   - n8n-nodes-base.splitInBatches
+   - n8n-nodes-base.wait
+   - n8n-nodes-base.emailSend (NOT email)
+   - n8n-nodes-base.slack
+   - n8n-nodes-base.discord
+   - n8n-nodes-base.twilio (for SMS, NOT sms)
+   - n8n-nodes-base.whatsappBusiness (NOT whatsapp)
+   - n8n-nodes-base.mqtt (NOT mqttTrigger)
+   - n8n-nodes-base.cron (NOT cronTrigger)
+   - n8n-nodes-base.errorTrigger
+   - n8n-nodes-base.executeCommand
+   - n8n-nodes-base.googleDrive
+   - n8n-nodes-base.html
+   - n8n-nodes-raspberry.raspberryPi (NOT gpio, for GPIO operations)
+   
+   NEVER USE: function, gpio, mqttTrigger, cronTrigger, whatsapp, email, sms
 
 3. Each node must have:
    - Unique id (use snake_case)
@@ -1424,57 +1598,54 @@ Return ONLY valid JSON with the exact structure shown above.`;
       };
       
       // Use asynchronous code generation based on patterns
-      const result = await this.codeGenerator.generateCodeForNode('code', {
-        nodeName: node.name,
-        purpose: this.extractCodePurposeFromNodeName(node.name)
-      });
+      const purpose = this.extractCodePurposeFromNodeName(node.name);
+      const codeRequest: CodeGenerationRequest = {
+        description: purpose,
+        nodeType: 'code',
+        requirements: {
+          language: language === 'python' ? 'python' : 'javascript',
+          errorHandling: 'comprehensive',
+          performanceLevel: 'optimized'
+        },
+        workflowContext: {
+          workflowPurpose: `${node.name} - ${purpose}`,
+          previousNodes: [],
+          nextNodes: []
+        }
+      };
+      
+      const result = await this.codeGenerator.generateCode(codeRequest);
       
       // Store code ID for future monitoring
       node.codeGenerationId = `node_${nodeId}_${Date.now()}`;
       
-      return result;
+      // Return the generated code string
+      return result.code;
     } catch (error) {
-      console.log('AI code generation unavailable, using template-based approach');
+      console.log('AI code generation failed, using generic fallback');
       
-      // Fallback to template-based generation
-      if (nodeName.includes('calculate') || nodeName.includes('calc')) {
-        return this.generateCalculationCode();
-      } else if (nodeName.includes('transform') || nodeName.includes('format')) {
-        return this.generateTransformationCode();
-      } else if (nodeName.includes('validate') || nodeName.includes('check')) {
-        return this.generateValidationCode();
-      } else if (nodeName.includes('filter')) {
-        return this.generateFilterCode();
-      } else if (nodeName.includes('process') || nodeName.includes('handle')) {
-        return this.generateProcessingCode();
-      } else if (nodeName.includes('aggregate') || nodeName.includes('sum') || nodeName.includes('total')) {
-        return this.generateAggregationCode();
-      } else if (nodeName.includes('parse') || nodeName.includes('extract')) {
-        return this.generateParsingCode();
-      } else if (nodeName.includes('log') || nodeName.includes('debug')) {
-        return this.generateLoggingCode();
-      }
-      
-      // Default to a context-aware processing code
-      return this.generateDefaultProcessingCode();
+      // Generic fallback - no patterns, just basic functionality
+      return `// Code generation failed - please implement: ${nodeName}
+const items = $input.all();
+
+// Process each item
+const processedItems = items.map(item => {
+  // TODO: Implement ${nodeName} logic here
+  return item;
+});
+
+return processedItems;`;
     }
   }
 
   private extractCodePurposeFromNodeName(nodeName: string): string {
-    if (!nodeName) return 'Process data items';
+    if (!nodeName) return 'Process data items according to workflow requirements';
     
-    // Extract purpose from node name
-    const lowerName = nodeName.toLowerCase();
-    
-    if (lowerName.includes('calculate')) return 'Calculate numeric values from input data';
-    if (lowerName.includes('transform')) return 'Transform data structure to new format';
-    if (lowerName.includes('validate')) return 'Validate data against business rules';
-    if (lowerName.includes('filter')) return 'Filter items based on conditions';
-    if (lowerName.includes('aggregate')) return 'Aggregate and summarize data';
-    if (lowerName.includes('parse')) return 'Parse and extract data from text';
-    if (lowerName.includes('format')) return 'Format data for output';
-    
-    return `Process data for ${nodeName}`;
+    // Let AI understand the purpose from the node name itself
+    // No predefined patterns - just pass the node name to AI
+    return `Implement the functionality suggested by the node name: "${nodeName}". 
+            Analyze what this node should do based on its name and position in the workflow.
+            Generate appropriate code that handles all items in the input array.`;
   }
 
   private generateCalculationCode(): string {

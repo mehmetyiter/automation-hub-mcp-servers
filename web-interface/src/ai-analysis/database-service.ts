@@ -1,5 +1,5 @@
 import { api } from '../services/api';
-import { DeepAnalysis, FeedbackData, RecognizedPatterns, WorkflowArchitecture } from './types';
+import { DeepAnalysis, FeedbackData, WorkflowArchitecture } from './types';
 
 export interface Pattern {
   id: string;
@@ -125,23 +125,28 @@ export class DatabaseService {
   async getPerformanceMetrics(): Promise<Record<string, PerformanceMetric>> {
     try {
       const response = await api.get('/ai-analysis/performance-metrics');
-      return response.data;
+      // Ensure we return a valid object
+      return response.data && typeof response.data === 'object' ? response.data : {};
     } catch (error) {
       // Fallback to localStorage
-      return JSON.parse(localStorage.getItem('ai_metrics') || '{}');
+      const metrics = JSON.parse(localStorage.getItem('ai_metrics') || '{}');
+      return typeof metrics === 'object' ? metrics : {};
     }
   }
 
   async getRecentFeedback(limit: number = 100): Promise<FeedbackData[]> {
     try {
       const response = await api.get(`/ai-analysis/feedback?limit=${limit}`);
-      return response.data;
+      // Ensure we always return an array
+      return Array.isArray(response.data) ? response.data : [];
     } catch (error) {
       // Fallback to localStorage
       const feedbacks = JSON.parse(localStorage.getItem('ai_feedback') || '[]');
-      return feedbacks
-        .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-        .slice(0, limit);
+      return Array.isArray(feedbacks) 
+        ? feedbacks
+            .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+            .slice(0, limit)
+        : [];
     }
   }
 

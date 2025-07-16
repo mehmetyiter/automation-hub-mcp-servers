@@ -121,7 +121,7 @@ const createMCPAutomation = async (platform: string, data: any) => {
           useUserSettings: data.useUserSettings
         }
         
-        const generationResponse = await mcpClients.n8n.post('/tools/n8n_generate_workflow', generatePayload)
+        const generationResponse = await api.post('/n8n/tools/n8n_generate_workflow', generatePayload)
         
         // Check if generation was successful
         if (!generationResponse.data.success) {
@@ -140,7 +140,7 @@ const createMCPAutomation = async (platform: string, data: any) => {
           active: data.active || false
         }
         
-        return mcpClients.n8n.post('/tools/n8n_create_workflow', workflowData)
+        return api.post('/n8n/tools/n8n_create_workflow', workflowData)
       } else {
         // If nodes are already provided, create directly
         const workflowData = {
@@ -151,7 +151,7 @@ const createMCPAutomation = async (platform: string, data: any) => {
           settings: data.settings || {},
           active: data.active || false
         }
-        return mcpClients.n8n.post('/tools/n8n_create_workflow', workflowData)
+        return api.post('/n8n/tools/n8n_create_workflow', workflowData)
       }
     case 'make':
       return mcpClients.make.post('/tools/make_create_scenario', data)
@@ -167,7 +167,7 @@ const createMCPAutomation = async (platform: string, data: any) => {
 const listMCPAutomations = async (platform: string) => {
   switch (platform) {
     case 'n8n':
-      return mcpClients.n8n.post('/tools/n8n_list_workflows', {})
+      return api.post('/n8n/tools/n8n_list_workflows', {})
     case 'make':
       return mcpClients.make.post('/tools/make_list_scenarios', {})
     case 'zapier':
@@ -204,8 +204,15 @@ export const createAutomation = async (data: {
     return response.data
   }
   
-  // Otherwise, use database to store automation metadata
-  const response = await mcpClients.database.post('/automations', data)
+  // Otherwise, use n8n as default platform
+  const response = await createMCPAutomation('n8n', data)
+  // Normalize response structure
+  if (response.data.success) {
+    return {
+      success: true,
+      result: response.data.data || response.data.result || response.data
+    }
+  }
   return response.data
 }
 
@@ -219,7 +226,8 @@ export const listAutomations = async (platform?: string) => {
   }
   
   // Get all automations from all platforms
-  const platforms = ['n8n', 'make', 'zapier', 'vapi']
+  // Only query n8n for now since other services are not available
+  const platforms = ['n8n'] // Removed 'make', 'zapier', 'vapi' until they're implemented
   const results = await Promise.allSettled(
     platforms.map(p => listMCPAutomations(p))
   )
@@ -271,7 +279,7 @@ export const executeAutomation = async (id: string, data?: any) => {
   
   switch (automation.platform) {
     case 'n8n':
-      return mcpClients.n8n.post('/tools/n8n_execute_workflow', { id, data })
+      return api.post('/n8n/tools/n8n_execute_workflow', { id, data })
     case 'make':
       return mcpClients.make.post('/tools/make_run_scenario', { id, data })
     case 'zapier':
@@ -471,32 +479,32 @@ export const authAPI = {
 // n8n-specific API exports for components that need them
 export const n8nAPI = {
   listWorkflows: (params?: { limit?: number, active?: boolean }) =>
-    mcpClients.n8n.post('/tools/n8n_list_workflows', params || {}),
+    api.post('/n8n/tools/n8n_list_workflows', params || {}),
   
   getWorkflow: (id: string) =>
-    mcpClients.n8n.post('/tools/n8n_get_workflow', { id }),
+    api.post('/n8n/tools/n8n_get_workflow', { id }),
   
   createWorkflow: (data: any) =>
-    mcpClients.n8n.post('/tools/n8n_create_workflow', data),
+    api.post('/n8n/tools/n8n_create_workflow', data),
   
   updateWorkflow: (id: string, data: any) =>
-    mcpClients.n8n.post('/tools/n8n_update_workflow', { id, ...data }),
+    api.post('/n8n/tools/n8n_update_workflow', { id, ...data }),
   
   deleteWorkflow: (id: string) =>
-    mcpClients.n8n.post('/tools/n8n_delete_workflow', { id }),
+    api.post('/n8n/tools/n8n_delete_workflow', { id }),
   
   executeWorkflow: (id: string, data?: any) =>
-    mcpClients.n8n.post('/tools/n8n_execute_workflow', { id, data }),
+    api.post('/n8n/tools/n8n_execute_workflow', { id, data }),
   
   getExecutions: (workflowId: string, limit?: number) =>
-    mcpClients.n8n.post('/tools/n8n_get_executions', { workflowId, limit }),
+    api.post('/n8n/tools/n8n_get_executions', { workflowId, limit }),
   
   getCredentials: () =>
-    mcpClients.n8n.post('/tools/n8n_get_credentials', {}),
+    api.post('/n8n/tools/n8n_get_credentials', {}),
   
   testConnection: () =>
-    mcpClients.n8n.post('/tools/n8n_test_connection', {}),
+    api.post('/n8n/tools/n8n_test_connection', {}),
   
   generateWorkflow: (prompt: string, name: string, apiKey?: string) =>
-    mcpClients.n8n.post('/tools/n8n_generate_workflow', { prompt, name, apiKey })
+    api.post('/n8n/tools/n8n_generate_workflow', { prompt, name, apiKey })
 }

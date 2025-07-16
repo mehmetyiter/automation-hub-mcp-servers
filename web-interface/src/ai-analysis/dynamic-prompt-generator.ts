@@ -1,18 +1,15 @@
 import { AIAnalyzer } from './ai-analyzer';
-import { PatternRecognizer } from './pattern-recognizer';
 import { WorkflowArchitect } from './workflow-architect';
 import { LearningEngine } from './learning-engine';
-import { DeepAnalysis, RecognizedPatterns, WorkflowArchitecture, DynamicPrompt } from './types';
+import { DeepAnalysis, WorkflowArchitecture, DynamicPrompt } from './types';
 
 export class DynamicPromptGenerator {
   private aiAnalyzer: AIAnalyzer;
-  private patternRecognizer: PatternRecognizer;
   private workflowArchitect: WorkflowArchitect;
   private learningEngine: LearningEngine;
   
   constructor() {
     this.aiAnalyzer = new AIAnalyzer();
-    this.patternRecognizer = new PatternRecognizer();
     this.workflowArchitect = new WorkflowArchitect();
     this.learningEngine = new LearningEngine();
   }
@@ -22,19 +19,15 @@ export class DynamicPromptGenerator {
       // Step 1: Deep analysis of user request
       const deepAnalysis = await this.aiAnalyzer.analyzeRequest(userRequest);
       
-      // Step 2: Recognize patterns from historical data
-      const patterns = await this.patternRecognizer.recognizePatterns(deepAnalysis);
+      // Step 2: Design optimal workflow architecture (AI-driven, no patterns)
+      const architecture = await this.workflowArchitect.designArchitecture(deepAnalysis);
       
-      // Step 3: Design optimal workflow architecture
-      const architecture = await this.workflowArchitect.designArchitecture(deepAnalysis, patterns);
-      
-      // Step 4: Get improvement suggestions from learning engine
+      // Step 3: Get improvement suggestions from learning engine
       const improvements = await this.learningEngine.suggestImprovements(architecture);
       
-      // Step 5: Generate dynamic prompt based on all insights
-      const dynamicPrompt = await this.createDynamicPrompt(
+      // Step 4: Generate pure AI dynamic prompt
+      const dynamicPrompt = await this.createPureAIDynamicPrompt(
         deepAnalysis,
-        patterns,
         architecture,
         improvements
       );
@@ -46,160 +39,208 @@ export class DynamicPromptGenerator {
     }
   }
   
-  private async createDynamicPrompt(
+  private async createPureAIDynamicPrompt(
     analysis: DeepAnalysis,
-    patterns: RecognizedPatterns,
     architecture: WorkflowArchitecture,
     improvements: string[]
   ): Promise<DynamicPrompt> {
-    // Generate contextual prompt introduction
-    const introduction = await this.generateIntroduction(analysis);
+    // Generate contextual prompt introduction using pure AI
+    const introduction = await this.generateAIIntroduction(analysis);
     
-    // Generate workflow-specific instructions
-    const workflowInstructions = await this.generateWorkflowInstructions(architecture);
+    // Generate workflow-specific instructions with AI creativity
+    const workflowInstructions = await this.generateAIWorkflowInstructions(architecture);
     
-    // Generate optimization guidelines
-    const optimizationGuidelines = await this.generateOptimizationGuidelines(patterns, improvements);
+    // Generate AI-driven optimization guidelines
+    const optimizationGuidelines = await this.generateAIOptimizationGuidelines(analysis, improvements);
     
-    // Generate quality assurance checklist
-    const qualityChecklist = await this.generateQualityChecklist(analysis, architecture);
+    // Generate dynamic quality checklist
+    const qualityChecklist = await this.generateAIQualityChecklist(analysis, architecture);
     
     return {
-      systemPrompt: this.buildSystemPrompt(introduction, workflowInstructions),
-      userPrompt: this.buildUserPrompt(analysis, architecture),
+      systemPrompt: this.buildAISystemPrompt(introduction, workflowInstructions),
+      userPrompt: this.buildAIUserPrompt(analysis, architecture),
       contextualGuidelines: optimizationGuidelines,
       qualityChecklist,
       metadata: {
         analysisDepth: analysis.complexityScore,
-        patternCount: patterns.successPatterns.length,
-        nodeCount: architecture.nodes.length,
+        nodeCount: architecture?.nodes?.length || 0,
         improvementCount: improvements.length,
-        generatedAt: new Date().toISOString()
+        generatedAt: new Date().toISOString(),
+        approach: 'pure-ai-dynamic'
       }
     };
   }
   
-  private async generateIntroduction(analysis: DeepAnalysis): Promise<string> {
+  private async generateAIIntroduction(analysis: DeepAnalysis): Promise<string> {
     const response = await this.aiAnalyzer.analyze(
-      `Generate a concise introduction for an n8n workflow creation based on:
-      Intent: ${analysis.intent.primaryGoal}
-      Context: ${analysis.intent.businessContext}
-      Complexity: ${analysis.complexityScore}
+      `As a creative AI workflow architect, generate a dynamic introduction that:
       
-      The introduction should:
-      1. Acknowledge the user's goal
-      2. Set appropriate expectations
-      3. Highlight key considerations`
+      CONTEXT:
+      - Goal: ${analysis?.intent?.primaryGoal || 'Create automation'}
+      - Business Context: ${analysis?.intent?.businessContext || 'general'}
+      - Complexity: ${analysis?.complexityScore || 'medium'}
+      
+      APPROACH:
+      - Be creative and adaptive, not pattern-based
+      - Focus on innovative solutions
+      - Encourage AI to think outside conventional patterns
+      - Emphasize unique aspects of this specific request
+      
+      Generate a fresh, creative introduction that breaks away from standard templates.`
     );
     
-    return response.introduction || '';
+    return response.introduction || 'Let me design a creative, custom workflow solution for your unique needs.';
   }
   
-  private async generateWorkflowInstructions(architecture: WorkflowArchitecture): Promise<string> {
-    const nodeDescriptions = architecture.nodes.map((node, index) => 
-      `Step ${index + 1}: ${node.type} - ${node.configuration.description || ''}`
-    ).join('\n');
-    
+  private async generateAIWorkflowInstructions(architecture: WorkflowArchitecture): Promise<string> {
     const response = await this.aiAnalyzer.analyze(
-      `Generate detailed workflow instructions for:
-      ${nodeDescriptions}
+      `As an innovative AI architect, create dynamic workflow instructions that:
       
-      Connections: ${JSON.stringify(architecture.connections)}
+      CREATIVE APPROACH:
+      - Don't follow rigid templates or patterns
+      - Invent new solutions specific to this workflow
+      - Think creatively about node combinations
+      - Suggest innovative approaches not seen before
       
-      Include:
-      1. Step-by-step configuration guide
-      2. Parameter recommendations
-      3. Error handling strategies
-      4. Testing approaches`
+      WORKFLOW CONTEXT:
+      - Nodes: ${architecture?.nodes?.length || 0} components
+      - Connections: ${JSON.stringify(architecture?.connections || {})}
+      - Complexity: ${architecture?.estimatedComplexity || 'medium'}
+      
+      INSTRUCTIONS SHOULD:
+      - Be inventive and adaptive
+      - Suggest creative optimization techniques
+      - Propose novel error handling approaches
+      - Include unique testing strategies
+      
+      Generate fresh, innovative instructions that break conventional patterns.`
     );
     
-    return response.instructions || '';
+    return response.instructions || 'Create an innovative, purpose-built workflow solution.';
   }
   
-  private async generateOptimizationGuidelines(
-    patterns: RecognizedPatterns,
+  private async generateAIOptimizationGuidelines(
+    analysis: DeepAnalysis,
     improvements: string[]
   ): Promise<string[]> {
-    const guidelines = [
-      ...patterns.bestPractices,
-      ...improvements,
-      'Monitor workflow execution times and optimize bottlenecks',
-      'Implement proper error handling for each node',
-      'Use caching where appropriate to improve performance',
-      'Document complex logic for future maintenance'
-    ];
+    const response = await this.aiAnalyzer.analyze(
+      `As a creative AI optimizer, generate innovative optimization guidelines for:
+      
+      CONTEXT:
+      - Goal: ${analysis?.intent?.primaryGoal || 'automation'}
+      - Business Context: ${analysis?.intent?.businessContext || 'general'}
+      - Complexity: ${analysis?.complexityScore || 'medium'}
+      
+      CREATIVE OPTIMIZATION APPROACH:
+      - Don't use standard optimization patterns
+      - Think of novel optimization techniques
+      - Consider unique performance approaches
+      - Suggest creative caching strategies
+      - Invent new error handling methods
+      
+      CURRENT IMPROVEMENTS: ${improvements.join(', ')}
+      
+      Generate 5-7 innovative, creative optimization guidelines that break away from conventional approaches.`
+    );
     
-    // Remove duplicates and sort by relevance
-    return [...new Set(guidelines)];
+    return response.guidelines || [
+      'Implement adaptive performance monitoring',
+      'Create dynamic error recovery strategies',
+      'Develop intelligent caching mechanisms',
+      'Design flexible scaling approaches',
+      'Build innovative debugging capabilities'
+    ];
   }
   
-  private async generateQualityChecklist(
+  private async generateAIQualityChecklist(
     analysis: DeepAnalysis,
     architecture: WorkflowArchitecture
   ): Promise<string[]> {
-    const baseChecklist = [
-      'All nodes are properly configured with required parameters',
-      'Error handling is implemented for critical nodes',
-      'Workflow has been tested with sample data',
-      'Performance meets acceptable thresholds',
-      'Security considerations have been addressed'
+    const response = await this.aiAnalyzer.analyze(
+      `As an innovative AI quality assurance specialist, create a dynamic quality checklist for:
+      
+      CONTEXT:
+      - Goal: ${analysis?.intent?.primaryGoal || 'automation'}
+      - Urgency: ${analysis?.intent?.urgency || 'medium'}
+      - Nodes: ${architecture?.nodes?.length || 0} components
+      
+      CREATIVE QA APPROACH:
+      - Don't use standard quality checklists
+      - Think of innovative quality metrics
+      - Consider unique testing approaches
+      - Suggest creative validation methods
+      - Invent new quality assurance techniques
+      
+      SPECIFIC CONSIDERATIONS:
+      - Node types: ${architecture?.nodes?.map(n => n.type).join(', ') || 'various'}
+      - Estimated complexity: ${architecture.estimatedComplexity}
+      
+      Generate 6-8 innovative, creative quality checks that go beyond conventional QA approaches.`
+    );
+    
+    return response.checklist || [
+      'Verify adaptive error handling responds to different failure scenarios',
+      'Ensure workflow demonstrates intelligent decision-making capabilities',
+      'Test dynamic performance scaling under various load conditions',
+      'Validate innovative integration approaches function correctly',
+      'Confirm creative optimization techniques improve efficiency',
+      'Verify workflow adapts to changing requirements gracefully'
     ];
-    
-    // Add context-specific checks
-    if (analysis.intent.urgency === 'high') {
-      baseChecklist.push('Workflow includes monitoring and alerting');
-    }
-    
-    if (architecture.nodes.some(n => n.type.includes('database'))) {
-      baseChecklist.push('Database connections are properly secured');
-      baseChecklist.push('Query performance has been optimized');
-    }
-    
-    if (architecture.nodes.some(n => n.type.includes('api'))) {
-      baseChecklist.push('API rate limits are respected');
-      baseChecklist.push('API credentials are securely stored');
-    }
-    
-    return baseChecklist;
   }
   
-  private buildSystemPrompt(introduction: string, instructions: string): string {
+  private buildAISystemPrompt(introduction: string, instructions: string): string {
     return `${introduction}
 
-You are an expert n8n workflow architect with deep understanding of automation patterns and best practices.
+🚀 You are an INNOVATIVE AI workflow architect who breaks conventional patterns and creates unique solutions.
 
 ${instructions}
 
-Key Principles:
-1. Always prioritize reliability and maintainability
-2. Implement comprehensive error handling
-3. Optimize for performance without sacrificing clarity
-4. Provide clear documentation and comments
-5. Follow security best practices
+🎯 CREATIVE PRINCIPLES:
+1. BREAK away from standard patterns - invent new approaches
+2. THINK creatively about node combinations and connections
+3. INNOVATE beyond traditional automation workflows
+4. ADAPT dynamically to specific user needs
+5. CREATE unique solutions that haven't been seen before
 
-Remember to:
-- Validate all inputs and outputs
-- Handle edge cases gracefully
-- Provide meaningful error messages
-- Consider scalability from the start`;
+🔥 DYNAMIC APPROACH:
+- Don't follow rigid templates or patterns
+- Invent new workflow architectures
+- Think outside conventional automation boxes
+- Suggest creative, innovative solutions
+- Adapt to the specific context and requirements
+
+⚡ INNOVATION FOCUS:
+- Generate fresh, creative workflow designs
+- Propose novel integration approaches
+- Suggest innovative optimization techniques
+- Create adaptive error handling strategies
+- Design intelligent, responsive workflows`;
   }
   
-  private buildUserPrompt(analysis: DeepAnalysis, architecture: WorkflowArchitecture): string {
-    return `Create an n8n workflow for: ${analysis.intent.primaryGoal}
+  private buildAIUserPrompt(analysis: DeepAnalysis, architecture: WorkflowArchitecture): string {
+    return `🎯 CREATIVE CHALLENGE: Design an innovative n8n workflow for: ${analysis?.intent?.primaryGoal || 'automation'}
 
-Business Context: ${analysis.intent.businessContext}
-Scope: ${analysis.intent.scope}
-Urgency: ${analysis.intent.urgency}
+🌟 CONTEXT FOR INNOVATION:
+- Business Context: ${analysis?.intent?.businessContext || 'general'}
+- Scope: ${analysis?.intent?.scope || 'standard'}
+- Urgency: ${analysis?.intent?.urgency || 'medium'}
 
-Required Components:
-${architecture.nodes.map(n => `- ${n.type}: ${n.purpose}`).join('\n')}
+🚀 ARCHITECTURAL INSPIRATION:
+${architecture?.nodes?.map(n => `- ${n.type}: ${n.purpose || 'custom solution'}`).join('\n') || '- Create innovative node combinations'}
 
-Technical Requirements:
-${analysis.technicalRequirements.map(req => `- ${req}`).join('\n')}
+💡 CREATIVE REQUIREMENTS:
+${analysis?.technicalRequirements?.map(req => `- ${req}`).join('\n') || '- Create innovative technical solutions'}
 
-Constraints:
-${analysis.constraints.map(c => `- ${c}`).join('\n')}
+🔥 INNOVATION CONSTRAINTS:
+${analysis?.constraints?.map(c => `- ${c}`).join('\n') || '- Push creative boundaries within limits'}
 
-Please provide a complete, production-ready workflow that addresses all requirements.`;
+⚡ MISSION: Create a completely UNIQUE, innovative workflow that:
+- Breaks away from conventional patterns
+- Demonstrates creative problem-solving
+- Introduces novel automation approaches
+- Adapts dynamically to specific needs
+- Showcases innovative architecture design
+
+Don't just build a workflow - INNOVATE a revolutionary automation solution!`;
   }
 }

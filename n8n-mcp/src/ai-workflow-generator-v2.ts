@@ -113,7 +113,15 @@ export class AIWorkflowGeneratorV2 {
     const finalNodes = workflow.nodes.filter((n: any) => 
       n.name.toLowerCase().includes('final') || 
       n.name.toLowerCase().includes('orchestration') ||
-      n.name.toLowerCase().includes('completion')
+      n.name.toLowerCase().includes('completion') ||
+      n.name.toLowerCase().includes('track')
+    );
+    
+    // Fix disconnected error handling nodes
+    const errorNodes = workflow.nodes.filter((n: any) => 
+      n.name.toLowerCase().includes('error') || 
+      n.name.toLowerCase().includes('notification') ||
+      n.name.toLowerCase().includes('alert')
     );
 
     finalNodes.forEach((finalNode: any) => {
@@ -126,6 +134,37 @@ export class AIWorkflowGeneratorV2 {
           }
           workflow.connections[sourceNode.name].main[0].push({
             node: finalNode.name,
+            type: 'main',
+            index: 0
+          });
+        }
+      }
+    });
+    
+    // Connect error handling nodes to appropriate sources
+    errorNodes.forEach((errorNode: any) => {
+      if (!this.hasIncomingConnections(errorNode.name, workflow.connections)) {
+        // Find HTTP Request or Database nodes that might fail
+        const criticalNodes = workflow.nodes.filter((n: any) => 
+          n.type.includes('httpRequest') || 
+          n.type.includes('database') || 
+          n.type.includes('api') ||
+          n.name.toLowerCase().includes('send') ||
+          n.name.toLowerCase().includes('collect')
+        );
+        
+        if (criticalNodes.length > 0) {
+          // Connect error node to the first critical node found
+          const sourceNode = criticalNodes[0];
+          if (!workflow.connections[sourceNode.name]) {
+            workflow.connections[sourceNode.name] = { main: [[]] };
+          }
+          // Add error output connection (index 1 for error branch)
+          if (!workflow.connections[sourceNode.name].main[1]) {
+            workflow.connections[sourceNode.name].main[1] = [];
+          }
+          workflow.connections[sourceNode.name].main[1].push({
+            node: errorNode.name,
             type: 'main',
             index: 0
           });

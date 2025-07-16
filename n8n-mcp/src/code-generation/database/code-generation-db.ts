@@ -1,4 +1,5 @@
-import { Database } from 'better-sqlite3';
+import BetterSqlite3 from 'better-sqlite3';
+import type { Database } from 'better-sqlite3';
 import * as path from 'path';
 import * as fs from 'fs';
 import { 
@@ -39,7 +40,7 @@ export interface CodeVersion {
 }
 
 export class CodeGenerationDatabase {
-  private db: Database;
+  private db: BetterSqlite3.Database;
   private dbPath: string;
   private isConnected: boolean = false;
 
@@ -57,8 +58,7 @@ export class CodeGenerationDatabase {
     }
 
     // Create database connection
-    const Database = require('better-sqlite3');
-    this.db = new Database(this.dbPath);
+    this.db = new BetterSqlite3(this.dbPath);
     this.isConnected = true;
 
     // Enable foreign keys and WAL mode for better performance

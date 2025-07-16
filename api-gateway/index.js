@@ -42,6 +42,26 @@ app.use('/api/ai-providers', createProxyMiddleware({
   }
 }));
 
+// Handle n8n routes with different path patterns
+// AI providers routes need /api prefix
+app.use('/api/n8n/ai-providers', createProxyMiddleware({
+  target: process.env.N8N_MCP_URL || 'http://localhost:3006',
+  ...proxyOptions,
+  pathRewrite: {
+    '^/api/n8n/ai-providers': '/api/ai-providers'
+  }
+}));
+
+// Tools routes don't need /api prefix
+app.use('/api/n8n/tools', createProxyMiddleware({
+  target: process.env.N8N_MCP_URL || 'http://localhost:3006',
+  ...proxyOptions,
+  pathRewrite: {
+    '^/api/n8n/tools': '/tools'
+  }
+}));
+
+// Other n8n routes
 app.use('/api/n8n', createProxyMiddleware({
   target: process.env.N8N_MCP_URL || 'http://localhost:3006',
   ...proxyOptions,

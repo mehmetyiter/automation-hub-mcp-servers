@@ -1,323 +1,320 @@
-import { AIWorkflowGenerator } from './ai-workflow-generator.js';
-import { DynamicCodeGenerator } from './code-generation/dynamic-code-generator.js';
-import { CodeGenerationLearningEngine } from './code-generation/code-generation-learning-engine.js';
-import { CodeGenerationRequest } from './code-generation/types.js';
+import { AIProvider, AIProviderConfig } from './types/ai-provider.js';
+import { ProviderFactory } from './providers/provider-factory.js';
+import { MultiStepWorkflowGenerator } from './generators/multi-step-generator.js';
+import { N8nKnowledgeBase } from './knowledge/n8n-capabilities.js';
 
-export class AIWorkflowGeneratorV3 extends AIWorkflowGenerator {
-  private learningEngine: CodeGenerationLearningEngine;
-  private workflowGenerationStats: Map<string, any>;
-  declare protected codeGenerator: DynamicCodeGenerator;
+export interface WorkflowGenerationOptions {
+  apiKey?: string;
+  provider?: AIProvider;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+  useMultiStep?: boolean;
+}
 
-  constructor(options?: any) {
-    super(options);
-    this.codeGenerator = new DynamicCodeGenerator(options?.provider);
-    this.learningEngine = new CodeGenerationLearningEngine(options?.provider);
-    this.workflowGenerationStats = new Map();
+export class AIWorkflowGeneratorV3 {
+  private providerConfig: AIProviderConfig;
+  private knowledgeBase: N8nKnowledgeBase;
+
+  constructor(options: WorkflowGenerationOptions) {
+    if (!options.apiKey) {
+      throw new Error('API key is required');
+    }
+
+    this.providerConfig = {
+      provider: options.provider || 'openai',
+      apiKey: options.apiKey,
+      model: options.model,
+      temperature: options.temperature,
+      maxTokens: options.maxTokens
+    };
+    
+    this.knowledgeBase = new N8nKnowledgeBase();
   }
 
   async generateFromPrompt(prompt: string, name: string): Promise<any> {
-    console.log('=== AI Workflow Generation V3 with Real-time Learning ===');
+    console.log('=== AI Workflow Generation V3 (Multi-Step) Started ===');
+    console.log('Prompt:', prompt);
+    console.log('Name:', name);
+    console.log('Provider:', this.providerConfig.provider);
+    console.log('Model:', this.providerConfig.model || 'default');
     
-    const startTime = Date.now();
+    try {
+      const provider = ProviderFactory.createProvider(this.providerConfig);
+      
+      // Always use multi-step for better results
+      console.log('Using Multi-Step Generation for complex workflows...');
+      const multiStepGenerator = new MultiStepWorkflowGenerator(provider);
+      const workflow = await multiStepGenerator.generateWorkflow(prompt, name);
+      
+      // Validate the generated workflow
+      if (!workflow || !workflow.nodes || workflow.nodes.length === 0) {
+        throw new Error('Generated workflow is empty');
+      }
+      
+      console.log(`Multi-step generation completed with ${workflow.nodes.length} nodes`);
+      
+      // Additional validation
+      workflow.connections = this.validateAndFixConnections(workflow);
+      
+      return {
+        success: true,
+        workflow: workflow,
+        provider: this.providerConfig.provider,
+        method: 'multi-step-generation',
+        nodeCount: workflow.nodes.length
+      };
+      
+    } catch (error: any) {
+      console.error('Workflow generation failed:', error);
+      
+      // Fallback to enhanced single-step generation
+      try {
+        console.log('Falling back to enhanced single-step generation...');
+        return await this.enhancedSingleStepGeneration(prompt, name);
+      } catch (fallbackError: any) {
+        return {
+          success: false,
+          error: fallbackError.message || error.message,
+          provider: this.providerConfig.provider
+        };
+      }
+    }
+  }
+  
+  private async enhancedSingleStepGeneration(prompt: string, name: string): Promise<any> {
+    const provider = ProviderFactory.createProvider(this.providerConfig);
     
-    // Call parent generation method
-    const result = await super.generateFromPrompt(prompt, name);
+    // Enhance the prompt with knowledge base information
+    const enhancedPrompt = this.enhancePromptWithKnowledge(prompt);
+    
+    const result = await provider.generateWorkflow(enhancedPrompt, name);
     
     if (result.success && result.workflow) {
-      // Enhance code nodes with real-time learning
-      await this.enhanceCodeNodesWithLearning(result.workflow, prompt);
-      
-      // Track generation statistics
-      this.trackGenerationStats(prompt, name, result, Date.now() - startTime);
-      
-      // Learn from successful generation
-      await this.learnFromWorkflowGeneration(prompt, result.workflow);
+      // Apply additional validation and fixes
+      result.workflow = this.validateAndFixConnections(result.workflow);
+      result.method = 'enhanced-single-step';
     }
     
     return result;
   }
-
-  private async enhanceCodeNodesWithLearning(
-    workflow: any, 
-    originalPrompt: string
-  ): Promise<void> {
-    console.log('🧠 Enhancing code nodes with AI-driven generation...');
+  
+  private enhancePromptWithKnowledge(prompt: string): string {
+    const suggestions = this.knowledgeBase.suggestNodesForUseCase(prompt);
+    const features = this.extractFeatures(prompt);
+    const recommendedNodes = this.knowledgeBase.calculateRecommendedNodes(features);
     
-    for (const node of workflow.nodes) {
-      if (node.type === 'n8n-nodes-base.code') {
-        try {
-          // Create detailed code generation request
-          const codeRequest: CodeGenerationRequest = {
-            description: this.extractCodePurpose(node, originalPrompt),
-            nodeType: 'code',
-            workflowContext: {
-              workflowPurpose: originalPrompt,
-              previousNodes: this.getPreviousNodes(workflow, node),
-              nextNodes: this.getNextNodes(workflow, node)
-            },
-            requirements: {
-              language: node.parameters?.language === 'python' ? 'python' : 'javascript',
-              performanceLevel: 'optimized',
-              errorHandling: 'comprehensive'
-            }
-          };
-          
-          // Generate enhanced code
-          const codeResult = await this.codeGenerator.generateCode(codeRequest);
-          
-          if (codeResult.success) {
-            // Update node with AI-generated code
-            if (node.parameters.language === 'python') {
-              node.parameters.pythonCode = codeResult.code;
-            } else {
-              node.parameters.jsCode = codeResult.code;
-            }
-            
-            // Store code generation ID for monitoring
-            node.codeGenerationId = this.generateCodeId(node.id);
-            
-            // Record successful generation for learning
-            await this.learningEngine.recordSuccessfulGeneration(
-              codeRequest,
-              codeResult
-            );
-            
-            console.log(`✅ Enhanced code node: ${node.name}`);
+    return `${prompt}
+
+IMPORTANT CONTEXT FROM N8N KNOWLEDGE BASE:
+- Suggested node types for this use case: ${suggestions.join(', ')}
+- Estimated nodes based on features: ${recommendedNodes} (adjust as needed)
+- Available node categories: trigger, processing, logic, communication, ai, database, control
+
+IMPLEMENTATION GUIDELINES:
+${features.map(feature => {
+  const expansion = this.knowledgeBase.getExpansionForFeature(feature);
+  if (expansion) {
+    return `- For "${feature}": Consider nodes like ${expansion.expansion.slice(0, 3).join(', ')}...`;
+  }
+  return `- For "${feature}": Implement with appropriate specialized nodes`;
+}).join('\n')}
+
+Remember to create an EFFICIENT workflow with necessary error handling, validation, and monitoring.`;
+  }
+  
+  private validateAndFixConnections(workflow: any): any {
+    if (!workflow.connections) {
+      workflow.connections = {};
+    }
+    
+    // Normalize connections format
+    const normalizedConnections: any = {};
+    
+    Object.entries(workflow.connections).forEach(([nodeId, targets]: [string, any]) => {
+      // Handle both node names and IDs
+      const sourceNode = workflow.nodes.find((n: any) => 
+        n.id === nodeId || n.name === nodeId
+      );
+      
+      if (!sourceNode) return;
+      
+      const sourceKey = sourceNode.name || sourceNode.id;
+      normalizedConnections[sourceKey] = { main: [] };
+      
+      // Process targets
+      if (targets.main && Array.isArray(targets.main)) {
+        targets.main.forEach((targetGroup: any, groupIndex: number) => {
+          if (!normalizedConnections[sourceKey].main[groupIndex]) {
+            normalizedConnections[sourceKey].main[groupIndex] = [];
           }
-        } catch (error) {
-          console.error(`Failed to enhance code node ${node.name}:`, error);
-          // Keep existing code on failure
-        }
-      }
-    }
-  }
-
-  private extractCodePurpose(node: any, workflowPrompt: string): string {
-    // Extract purpose from node name and workflow context
-    const nodeName = node.name || '';
-    const nodePosition = node.position || [0, 0];
-    
-    // Try to understand the node's purpose from its name
-    if (nodeName) {
-      return `${nodeName} - Part of workflow: ${workflowPrompt}`;
-    }
-    
-    // Default description based on workflow
-    return `Process data for ${workflowPrompt}`;
-  }
-
-  private getPreviousNodes(workflow: any, currentNode: any): any[] {
-    const previousNodes: any[] = [];
-    
-    // Find nodes that connect TO this node
-    Object.entries(workflow.connections || {}).forEach(([nodeName, connections]: any) => {
-      Object.values(connections || {}).forEach((mainConnections: any) => {
-        mainConnections.forEach((connectionList: any[]) => {
-          connectionList.forEach((conn: any) => {
-            if (conn.node === currentNode.name) {
-              const prevNode = workflow.nodes.find((n: any) => n.name === nodeName);
-              if (prevNode) {
-                previousNodes.push({
-                  id: prevNode.id,
-                  type: prevNode.type,
-                  outputData: {} // Would be populated in real execution
+          
+          const normalizedGroup = Array.isArray(targetGroup) ? targetGroup : [targetGroup];
+          
+          normalizedGroup.forEach((target: any) => {
+            if (typeof target === 'string') {
+              // Find target node
+              const targetNode = workflow.nodes.find((n: any) => 
+                n.id === target || n.name === target
+              );
+              
+              if (targetNode) {
+                normalizedConnections[sourceKey].main[groupIndex].push({
+                  node: targetNode.name || targetNode.id,
+                  type: 'main',
+                  index: 0
+                });
+              }
+            } else if (target.node) {
+              // Already in correct format, just ensure node exists
+              const targetNode = workflow.nodes.find((n: any) => 
+                n.id === target.node || n.name === target.node
+              );
+              
+              if (targetNode) {
+                normalizedConnections[sourceKey].main[groupIndex].push({
+                  ...target,
+                  node: targetNode.name || targetNode.id
                 });
               }
             }
           });
         });
-      });
+      }
     });
     
-    return previousNodes;
-  }
-
-  private getNextNodes(workflow: any, currentNode: any): any[] {
-    const nextNodes: any[] = [];
+    // Find and connect orphaned nodes
+    const connectedNodes = new Set<string>();
+    const allNodeNames = new Set(workflow.nodes.map((n: any) => n.name || n.id));
     
-    // Find nodes that this node connects TO
-    const connections = workflow.connections[currentNode.name];
-    if (connections && connections.main) {
-      connections.main.forEach((connectionList: any[]) => {
-        connectionList.forEach((conn: any) => {
-          const nextNode = workflow.nodes.find((n: any) => n.name === conn.node);
-          if (nextNode) {
-            nextNodes.push({
-              id: nextNode.id,
-              type: nextNode.type,
-              configuration: nextNode.parameters
-            });
-          }
-        });
-      });
-    }
-    
-    return nextNodes;
-  }
-
-  private async learnFromWorkflowGeneration(
-    prompt: string,
-    workflow: any
-  ): Promise<void> {
-    console.log('📚 Learning from workflow generation...');
-    
-    try {
-      // Extract patterns from the generated workflow
-      const patterns = this.extractWorkflowPatterns(workflow);
-      
-      // Store workflow generation data for learning
-      const learningData = {
-        prompt,
-        workflow: {
-          nodeCount: workflow.nodes.length,
-          nodeTypes: this.getNodeTypes(workflow),
-          connectionPatterns: this.getConnectionPatterns(workflow),
-          codeNodeCount: workflow.nodes.filter((n: any) => n.type === 'n8n-nodes-base.code').length
-        },
-        patterns,
-        timestamp: new Date().toISOString()
-      };
-      
-      // This could be saved to database for future analysis
-      console.log('📊 Workflow learning data:', learningData);
-      
-    } catch (error) {
-      console.error('Failed to learn from workflow generation:', error);
-    }
-  }
-
-  private extractWorkflowPatterns(workflow: any): any[] {
-    const patterns: any[] = [];
-    
-    // Extract node sequence patterns
-    const nodeSequence = workflow.nodes.map((n: any) => n.type);
-    patterns.push({
-      type: 'node_sequence',
-      pattern: nodeSequence,
-      description: 'Common node sequence pattern'
-    });
-    
-    // Extract branching patterns
-    const branchNodes = workflow.nodes.filter((n: any) => 
-      n.type === 'n8n-nodes-base.if' || 
-      n.type === 'n8n-nodes-base.switch'
-    );
-    
-    if (branchNodes.length > 0) {
-      patterns.push({
-        type: 'branching',
-        count: branchNodes.length,
-        description: 'Workflow uses conditional branching'
-      });
-    }
-    
-    // Extract merge patterns
-    const mergeNodes = workflow.nodes.filter((n: any) => 
-      n.type === 'n8n-nodes-base.merge'
-    );
-    
-    if (mergeNodes.length > 0) {
-      patterns.push({
-        type: 'merging',
-        count: mergeNodes.length,
-        description: 'Workflow merges data streams'
-      });
-    }
-    
-    return patterns;
-  }
-
-  private getNodeTypes(workflow: any): Record<string, number> {
-    const nodeTypes: Record<string, number> = {};
-    
-    workflow.nodes.forEach((node: any) => {
-      nodeTypes[node.type] = (nodeTypes[node.type] || 0) + 1;
-    });
-    
-    return nodeTypes;
-  }
-
-  private getConnectionPatterns(workflow: any): any[] {
-    const patterns: any[] = [];
-    
-    // Analyze connection patterns
-    let linearConnections = 0;
-    let branchingConnections = 0;
-    let mergingConnections = 0;
-    
-    Object.values(workflow.connections || {}).forEach((connections: any) => {
-      Object.values(connections || {}).forEach((mainConnections: any) => {
-        if (Array.isArray(mainConnections)) {
-          if (mainConnections.length === 1 && mainConnections[0].length === 1) {
-            linearConnections++;
-          } else if (mainConnections.length > 1) {
-            branchingConnections++;
-          }
-        }
-      });
-    });
-    
-    // Count nodes with multiple inputs (merging)
-    const nodeInputCounts: Record<string, number> = {};
-    Object.values(workflow.connections || {}).forEach((connections: any) => {
-      Object.values(connections || {}).forEach((mainConnections: any) => {
-        mainConnections.forEach((connectionList: any[]) => {
-          connectionList.forEach((conn: any) => {
-            nodeInputCounts[conn.node] = (nodeInputCounts[conn.node] || 0) + 1;
+    // Mark connected nodes
+    Object.entries(normalizedConnections).forEach(([source, targets]: [string, any]) => {
+      connectedNodes.add(source);
+      if (targets.main) {
+        targets.main.forEach((group: any[]) => {
+          group.forEach((conn: any) => {
+            connectedNodes.add(conn.node);
           });
         });
+      }
+    });
+    
+    // Find orphaned nodes
+    const orphanedNodes = Array.from(allNodeNames).filter(name => !connectedNodes.has(name as string));
+    
+    if (orphanedNodes.length > 0) {
+      console.log(`Found ${orphanedNodes.length} orphaned nodes, connecting them...`);
+      
+      // Connect orphaned nodes based on their type and position
+      orphanedNodes.forEach(nodeName => {
+        const node = workflow.nodes.find((n: any) => (n.name || n.id) === nodeName);
+        if (!node) return;
+        
+        // Skip trigger nodes as they don't need incoming connections
+        if (node.type && node.type.includes('trigger')) return;
+        
+        // Find a suitable parent node
+        const parentNode = this.findSuitableParent(node, workflow.nodes, normalizedConnections);
+        if (parentNode) {
+          const parentName = parentNode.name || parentNode.id;
+          if (!normalizedConnections[parentName]) {
+            normalizedConnections[parentName] = { main: [[]] };
+          }
+          if (!normalizedConnections[parentName].main[0]) {
+            normalizedConnections[parentName].main[0] = [];
+          }
+          normalizedConnections[parentName].main[0].push({
+            node: nodeName,
+            type: 'main',
+            index: 0
+          });
+          console.log(`Connected orphaned node "${nodeName}" to "${parentName}"`);
+        }
       });
+    }
+    
+    workflow.connections = normalizedConnections;
+    return workflow;
+  }
+  
+  private findSuitableParent(node: any, allNodes: any[], connections: any): any {
+    // Try to find a node that should logically connect to this one
+    const nodePosition = node.position || [0, 0];
+    
+    // Find nodes that are positioned before (to the left of) this node
+    const candidateNodes = allNodes.filter(n => {
+      if (n === node) return false;
+      const pos = n.position || [0, 0];
+      return pos[0] < nodePosition[0];
     });
     
-    Object.values(nodeInputCounts).forEach(count => {
-      if (count > 1) mergingConnections++;
+    if (candidateNodes.length === 0) {
+      // If no nodes to the left, find the trigger node
+      return allNodes.find(n => n.type && n.type.includes('trigger'));
+    }
+    
+    // Sort by distance and return the closest one
+    candidateNodes.sort((a, b) => {
+      const posA = a.position || [0, 0];
+      const posB = b.position || [0, 0];
+      
+      const distA = Math.sqrt(
+        Math.pow(posA[0] - nodePosition[0], 2) +
+        Math.pow(posA[1] - nodePosition[1], 2)
+      );
+      const distB = Math.sqrt(
+        Math.pow(posB[0] - nodePosition[0], 2) +
+        Math.pow(posB[1] - nodePosition[1], 2)
+      );
+      
+      return distA - distB;
     });
     
-    patterns.push({
-      linear: linearConnections,
-      branching: branchingConnections,
-      merging: mergingConnections
+    return candidateNodes[0];
+  }
+  
+  private extractFeatures(prompt: string): string[] {
+    const features = [];
+    const keywords = [
+      'api integration', 'database operation', 'notification', 'error handling',
+      'data validation', 'authentication', 'monitoring', 'logging', 'reporting',
+      'data processing', 'external service', 'webhook', 'scheduling', 'retry logic'
+    ];
+    
+    const lowerPrompt = prompt.toLowerCase();
+    keywords.forEach(keyword => {
+      if (lowerPrompt.includes(keyword.toLowerCase())) {
+        features.push(keyword);
+      }
     });
     
-    return patterns;
+    // Also extract specific services mentioned
+    const services = ['slack', 'email', 'sms', 'database', 'api', 'webhook'];
+    services.forEach(service => {
+      if (lowerPrompt.includes(service)) {
+        features.push(service);
+      }
+    });
+    
+    return [...new Set(features)]; // Remove duplicates
   }
 
-  private trackGenerationStats(
-    prompt: string,
-    name: string,
-    result: any,
-    duration: number
-  ): void {
-    const stats = {
-      prompt,
-      name,
-      success: result.success,
-      duration,
-      nodeCount: result.workflow?.nodes?.length || 0,
-      codeNodeCount: result.workflow?.nodes?.filter((n: any) => 
-        n.type === 'n8n-nodes-base.code'
-      ).length || 0,
-      timestamp: new Date().toISOString()
-    };
-    
-    this.workflowGenerationStats.set(`${name}_${Date.now()}`, stats);
-    
-    console.log('📈 Generation stats:', stats);
+  async testConnection(): Promise<boolean> {
+    try {
+      const provider = ProviderFactory.createProvider(this.providerConfig);
+      return await provider.testConnection();
+    } catch (error) {
+      return false;
+    }
   }
 
-  private generateCodeId(nodeId: string): string {
-    return `code_${nodeId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  async getGenerationStats(): Promise<any> {
-    const stats = Array.from(this.workflowGenerationStats.values());
-    
-    return {
-      totalGenerations: stats.length,
-      successRate: (stats.filter(s => s.success).length / stats.length) * 100,
-      avgDuration: stats.reduce((sum, s) => sum + s.duration, 0) / stats.length,
-      avgNodeCount: stats.reduce((sum, s) => sum + s.nodeCount, 0) / stats.length,
-      avgCodeNodeCount: stats.reduce((sum, s) => sum + s.codeNodeCount, 0) / stats.length
-    };
+  async getAvailableModels(): Promise<string[]> {
+    try {
+      const provider = ProviderFactory.createProvider(this.providerConfig);
+      return await provider.getModels();
+    } catch (error) {
+      console.error('Error getting models:', error);
+      return [];
+    }
   }
 }

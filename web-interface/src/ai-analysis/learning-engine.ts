@@ -1,4 +1,4 @@
-import { DeepAnalysis, RecognizedPatterns, WorkflowArchitecture, FeedbackData } from './types';
+import { DeepAnalysis, WorkflowArchitecture, FeedbackData } from './types';
 import { AIAnalyzer } from './ai-analyzer';
 import { AIService } from './ai-service';
 import { DatabaseService } from './database-service';
@@ -12,7 +12,7 @@ export class LearningEngine {
   
   constructor() {
     this.aiAnalyzer = new AIAnalyzer();
-    this.aiService = new AIService();
+    this.aiService = new AIService('openai', false); // Use environment variables
     this.databaseService = new DatabaseService();
   }
   
@@ -173,8 +173,11 @@ export class LearningEngine {
   
   async suggestImprovements(workflow: WorkflowArchitecture): Promise<string[]> {
     // Get recent feedback data from database
-    const recentFeedback = await this.databaseService.getRecentFeedback();
+    const recentFeedbackData = await this.databaseService.getRecentFeedback();
     const metrics = await this.databaseService.getPerformanceMetrics();
+    
+    // Ensure recentFeedback is an array
+    const recentFeedback = Array.isArray(recentFeedbackData) ? recentFeedbackData : [];
     
     // Analyze architecture for improvement opportunities
     const improvementPrompt = `

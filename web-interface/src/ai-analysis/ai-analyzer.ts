@@ -11,7 +11,7 @@ export class AIAnalyzer {
   
   constructor(provider: string = 'openai') {
     this.provider = provider;
-    this.aiService = new AIService(provider);
+    this.aiService = new AIService(provider, false); // Use environment variables, not user settings
     this.databaseService = new DatabaseService();
   }
 

@@ -296,6 +296,9 @@ export default function PersonalSettings() {
         </div>
       </div>
 
+      {/* AI Provider Settings */}
+      <AIProviderSettings />
+
       {/* Save Button */}
       <div className="flex justify-end">
         <button

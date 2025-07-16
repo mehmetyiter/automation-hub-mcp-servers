@@ -67,7 +67,7 @@ export default function AIProviderSettings() {
 
   const fetchProviderSettings = async () => {
     try {
-      const response = await api.get('/n8n/api/ai-providers/settings');
+      const response = await api.get('/ai-providers/settings');
       setProviders(response.data || []);
     } catch (error) {
       console.error('Failed to fetch provider settings:', error);
@@ -84,7 +84,7 @@ export default function AIProviderSettings() {
 
     setSaving(provider.provider);
     try {
-      await api.post('/n8n/api/ai-providers/settings', provider);
+      await api.post('/ai-providers/settings', provider);
       toast.success(`${providerInfo[provider.provider].name} settings saved successfully`);
       await fetchProviderSettings();
       setShowAddForm(false);
@@ -105,7 +105,7 @@ export default function AIProviderSettings() {
   const handleTestConnection = async (provider: AIProviderSetting) => {
     setTesting(provider.provider);
     try {
-      const response = await api.post('/n8n/api/ai-providers/models', {
+      const response = await api.post('/ai-providers/models', {
         provider: provider.provider,
         apiKey: provider.apiKey
       });
@@ -124,7 +124,7 @@ export default function AIProviderSettings() {
 
   const handleSetActive = async (provider: AIProvider) => {
     try {
-      await api.post('/n8n/api/ai-providers/settings/active', { provider });
+      await api.post('/ai-providers/active', { provider });
       toast.success(`${providerInfo[provider].name} set as active provider`);
       await fetchProviderSettings();
     } catch (error) {
@@ -138,7 +138,7 @@ export default function AIProviderSettings() {
     }
 
     try {
-      await api.delete(`/n8n/api/ai-providers/settings/${provider}`);
+      await api.delete(`/ai-providers/settings/${provider}`);
       toast.success('Provider settings deleted');
       await fetchProviderSettings();
     } catch (error) {

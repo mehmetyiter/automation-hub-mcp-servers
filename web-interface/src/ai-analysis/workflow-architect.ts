@@ -1,4 +1,4 @@
-import { DeepAnalysis, RecognizedPatterns, WorkflowArchitecture } from './types';
+import { DeepAnalysis, WorkflowArchitecture } from './types';
 import { AIAnalyzer } from './ai-analyzer';
 
 export class WorkflowArchitect {
@@ -9,19 +9,22 @@ export class WorkflowArchitect {
   }
 
   async designArchitecture(
-    analysis: DeepAnalysis, 
-    patterns: RecognizedPatterns
+    analysis: DeepAnalysis
   ): Promise<WorkflowArchitecture> {
     const architecturePrompt = `
-TASK: Design a comprehensive workflow architecture based on analysis and patterns.
+🚀 CREATIVE ARCHITECTURE CHALLENGE: Design an innovative workflow architecture that breaks conventional patterns.
 
-ANALYSIS:
+DEEP ANALYSIS:
 ${JSON.stringify(analysis, null, 2)}
 
-RECOGNIZED PATTERNS:
-${JSON.stringify(patterns, null, 2)}
+🎯 INNOVATION MISSION:
+- IGNORE standard workflow patterns
+- CREATE unique, custom architecture
+- INVENT new node combinations
+- DESIGN adaptive, intelligent workflows
+- THINK outside conventional automation
 
-Design a complete workflow architecture:
+Design a revolutionary workflow architecture:
 
 {
   "mainFlow": {
@@ -118,7 +121,7 @@ CRITICAL: Consider all edge cases and failure scenarios.`;
   private createBasicArchitecture(analysis: DeepAnalysis): WorkflowArchitecture {
     return {
       mainFlow: {
-        entry_point: analysis.entities.triggers[0] || 'Manual trigger',
+        entry_point: analysis?.entities?.triggers?.[0] || 'Manual trigger',
         core_processes: [
           {
             id: 'start',

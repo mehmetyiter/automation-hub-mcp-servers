@@ -55,36 +55,7 @@ export interface DeepAnalysis {
   complexityScore: number;
 }
 
-export interface RecognizedPatterns {
-  workflowPatterns: {
-    architecture_patterns: string[];
-    branch_patterns: string[];
-    flow_patterns: string[];
-    completion_patterns: string[];
-  };
-  integrationPatterns: {
-    connection_strategies: string[];
-    data_transformation: string[];
-    authentication_patterns: string[];
-    error_recovery: string[];
-  };
-  errorPatterns: {
-    common_failure_points: string[];
-    recovery_strategies: string[];
-    prevention_measures: string[];
-    monitoring_strategies: string[];
-  };
-  optimizationPatterns: {
-    performance_optimizations: string[];
-    scalability_approaches: string[];
-    resource_efficiency: string[];
-    maintainability_practices: string[];
-  };
-  confidence: number;
-  successPatterns: any[];
-  failurePatterns: any[];
-  bestPractices: string[];
-}
+// RecognizedPatterns interface removed - using pure AI dynamic approach instead
 
 export interface WorkflowArchitecture {
   mainFlow: {
@@ -224,10 +195,11 @@ export interface DynamicPrompt {
   qualityChecklist: string[];
   metadata: {
     analysisDepth: number;
-    patternCount: number;
+    patternCount?: number;
     nodeCount: number;
     improvementCount: number;
     generatedAt: string;
+    approach?: string;
   };
 }
 

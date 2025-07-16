@@ -11,7 +11,7 @@ export class PatternRecognizer {
   
   constructor() {
     this.aiAnalyzer = new AIAnalyzer();
-    this.aiService = new AIService();
+    this.aiService = new AIService('openai', false); // Use environment variables
     this.databaseService = new DatabaseService();
   }
   
@@ -23,8 +23,9 @@ export class PatternRecognizer {
     }
 
     // Get historical successful patterns from database
+    const businessContext = analysis?.intent?.businessContext || 'general';
     const historicalPatterns = await this.databaseService.getSuccessfulPatterns(
-      analysis.intent.businessContext
+      businessContext
     );
 
     // Use AI to analyze and adapt patterns
@@ -164,15 +165,15 @@ Return optimized patterns in this JSON structure:
   private getDefaultArchitecturePatterns(analysis: DeepAnalysis): string[] {
     const patterns = ['Main workflow structure'];
     
-    if (analysis.workflow_characteristics.parallel_processes > 0) {
+    if (analysis?.workflow_characteristics?.parallel_processes > 0) {
       patterns.push('Parallel processing branches');
     }
     
-    if (analysis.workflow_characteristics.decision_points > 0) {
+    if (analysis?.workflow_characteristics?.decision_points > 0) {
       patterns.push('Conditional branching');
     }
     
-    if (analysis.entities.systems.length > 2) {
+    if (analysis?.entities?.systems?.length > 2) {
       patterns.push('Multi-system integration');
     }
     
@@ -182,18 +183,18 @@ Return optimized patterns in this JSON structure:
   private getDefaultBranchPatterns(analysis: DeepAnalysis): string[] {
     const patterns = [];
     
-    if (analysis.workflow_characteristics.complexity === 'complex' || 
-        analysis.workflow_characteristics.complexity === 'enterprise') {
+    if (analysis?.workflow_characteristics?.complexity === 'complex' || 
+        analysis?.workflow_characteristics?.complexity === 'enterprise') {
       patterns.push('Complex branching with merge points');
     } else {
       patterns.push('Simple conditional branching');
     }
     
-    if (analysis.technical_requirements.real_time_requirements) {
+    if (analysis?.technical_requirements?.real_time_requirements) {
       patterns.push('Real-time processing branches');
     }
     
-    if (analysis.technical_requirements.batch_processing) {
+    if (analysis?.technical_requirements?.batch_processing) {
       patterns.push('Batch processing branches');
     }
     
@@ -203,7 +204,7 @@ Return optimized patterns in this JSON structure:
   private getConnectionStrategies(analysis: DeepAnalysis): string[] {
     const strategies = [];
     
-    for (const system of analysis.entities.systems) {
+    for (const system of analysis?.entities?.systems || []) {
       if (system.includes('database')) {
         strategies.push('Database connection pooling');
       } else if (system.includes('api')) {
@@ -224,7 +225,7 @@ Return optimized patterns in this JSON structure:
       patterns.push('JWT token management');
     }
     
-    if (analysis.entities.systems.some(s => s.includes('database'))) {
+    if (analysis?.entities?.systems?.some(s => s.includes('database'))) {
       patterns.push('Database credentials management');
     }
     
@@ -234,16 +235,16 @@ Return optimized patterns in this JSON structure:
   private getPerformanceOptimizations(analysis: DeepAnalysis): string[] {
     const optimizations = [];
     
-    if (analysis.technical_requirements.scalability_needs === 'high') {
+    if (analysis?.technical_requirements?.scalability_needs === 'high') {
       optimizations.push('Horizontal scaling');
       optimizations.push('Load balancing');
     }
     
-    if (analysis.workflow_characteristics.parallel_processes > 2) {
+    if (analysis?.workflow_characteristics?.parallel_processes > 2) {
       optimizations.push('Parallel processing optimization');
     }
     
-    if (analysis.entities.data.length > 3) {
+    if (analysis?.entities?.data?.length > 3) {
       optimizations.push('Data caching strategies');
     }
     
@@ -274,7 +275,7 @@ Return optimized patterns in this JSON structure:
       practices.push('Add timeout handling for API calls');
     }
     
-    if (analysis.technical_requirements.real_time_requirements) {
+    if (analysis?.technical_requirements?.real_time_requirements) {
       practices.push('Optimize for low latency');
       practices.push('Implement real-time monitoring');
     }
@@ -290,7 +291,7 @@ Return optimized patterns in this JSON structure:
   private async saveLearnedPatterns(patterns: RecognizedPatterns, analysis: DeepAnalysis): Promise<void> {
     // Save successful patterns for future learning
     const successfulPatterns = {
-      domain: analysis.intent.businessContext,
+      domain: analysis?.intent?.businessContext || 'general',
       patterns: patterns.workflowPatterns.architecture_patterns,
       confidence: patterns.confidence,
       timestamp: new Date().toISOString()
@@ -301,7 +302,10 @@ Return optimized patterns in this JSON structure:
   }
   
   private generateCacheKey(analysis: DeepAnalysis): string {
-    const key = `${analysis.intent.primaryGoal}_${analysis.intent.businessContext}_${analysis.complexityScore}`;
+    if (!analysis || !analysis.intent) {
+      return btoa(`default_${Date.now()}`).replace(/[^a-zA-Z0-9]/g, '');
+    }
+    const key = `${analysis?.intent?.primaryGoal || 'unknown'}_${analysis?.intent?.businessContext || 'general'}_${analysis?.complexityScore || 0}`;
     return btoa(key).replace(/[^a-zA-Z0-9]/g, '');
   }
 }

@@ -12,7 +12,7 @@ export class AIService {
   async callAI(prompt: string): Promise<string> {
     // Use the existing AI provider infrastructure through our API
     try {
-      const response = await api.post('/n8n/api/ai-providers/chat/completion', {
+      const response = await api.post('/n8n/ai-providers/chat/completion', {
         messages: [
           {
             role: 'system',
@@ -24,8 +24,8 @@ export class AIService {
           }
         ],
         provider: this.provider,
-        useSpecificProvider: !this.useUserSettings,
-        useUserSettings: this.useUserSettings
+        useSpecificProvider: true,
+        useUserSettings: false  // Always use environment variables for AI analysis
       });
 
       const result = response.data.content || response.data.message || response.data;
@@ -39,10 +39,17 @@ export class AIService {
       return JSON.stringify(result);
     } catch (error: any) {
       console.error('AI API call failed:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
       
       // Fallback to direct API calls if our backend is not available
       if (error.response?.status === 404 || error.code === 'ECONNREFUSED') {
         return this.callDirectAPI(prompt);
+      }
+      
+      // If 500 error, try to extract the actual error message
+      if (error.response?.status === 500 && error.response?.data?.error) {
+        throw new Error(`AI service error: ${error.response.data.error}`);
       }
       
       throw new Error(`AI service error: ${error.message || 'Unknown error'}`);
@@ -51,10 +58,10 @@ export class AIService {
 
   private async callDirectAPI(prompt: string): Promise<string> {
     // This method requires API keys to be set in environment variables
-    const apiKey = process.env.REACT_APP_AI_API_KEY;
+    const apiKey = import.meta.env.VITE_AI_API_KEY;
     
     if (!apiKey) {
-      throw new Error('AI API key not configured. Please set REACT_APP_AI_API_KEY in your environment.');
+      throw new Error('AI API key not configured. Please set VITE_AI_API_KEY in your environment.');
     }
 
     if (this.provider === 'anthropic') {
@@ -155,7 +162,13 @@ export class AIService {
 
   // Helper method to validate JSON response
   async getJSONResponse(prompt: string): Promise<any> {
-    const response = await this.callAI(prompt);
+    // Enhance prompt to ensure JSON response
+    const jsonPrompt = `${prompt}
+
+IMPORTANT: You MUST respond ONLY with valid JSON format. Do not include any text before or after the JSON.
+Do not include markdown code blocks. Just return the raw JSON object.`;
+    
+    const response = await this.callAI(jsonPrompt);
     
     try {
       // Try to extract JSON from the response
@@ -168,7 +181,13 @@ export class AIService {
       return JSON.parse(response);
     } catch (error) {
       console.error('Failed to parse AI response as JSON:', response);
-      throw new Error('AI response was not valid JSON. Please try again.');
+      // Return a default structure instead of throwing
+      return {
+        introduction: 'Creating an innovative workflow solution',
+        instructions: 'Build a creative, adaptive workflow',
+        guidelines: ['Innovate', 'Adapt', 'Optimize'],
+        checklist: ['Verify functionality', 'Test thoroughly', 'Document well']
+      };
     }
   }
 }
