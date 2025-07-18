@@ -302,10 +302,19 @@ app.post('/tools/n8n_generate_workflow', async (req, res) => {
       if (!generatorOptions.apiKey) {
         if (generatorOptions.provider === 'anthropic') {
           generatorOptions.apiKey = process.env.ANTHROPIC_API_KEY;
+          if (!generatorOptions.model) {
+            generatorOptions.model = process.env.ANTHROPIC_MODEL;
+          }
         } else if (generatorOptions.provider === 'openai') {
           generatorOptions.apiKey = process.env.OPENAI_API_KEY;
+          if (!generatorOptions.model) {
+            generatorOptions.model = process.env.OPENAI_MODEL;
+          }
         } else if (generatorOptions.provider === 'gemini') {
           generatorOptions.apiKey = process.env.GEMINI_API_KEY;
+          if (!generatorOptions.model) {
+            generatorOptions.model = process.env.GEMINI_MODEL;
+          }
         }
       }
     }

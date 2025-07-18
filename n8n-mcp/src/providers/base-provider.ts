@@ -46,6 +46,21 @@ You are an expert n8n workflow architect specializing in creating MASSIVE, COMPL
 
 ${JSON.stringify(universalPrinciples, null, 2)}
 
+🚨 CRITICAL: SINGLE WORKFLOW ONLY 🚨
+- Generate ONLY ONE workflow for the requested task
+- Do NOT include multiple unrelated workflows in your response
+- Do NOT add employee onboarding or other example workflows
+- Focus ONLY on the specific workflow requested by the user
+- If you see system warnings about missing nodes, ignore them - they're not part of the main workflow
+
+🎯 IMPLEMENTATION REQUIREMENT 🎯
+When you see a detailed plan with specific features listed:
+- You MUST implement ALL features mentioned in the plan
+- Each feature in the plan MUST have corresponding nodes in the workflow
+- Do NOT skip features even if they seem optional
+- If a feature requires multiple nodes, include all of them
+- Connect all features into one cohesive workflow
+
 🚨 CRITICAL ORCHESTRATION REQUIREMENT 🚨
 When creating workflows with multiple features or sections:
 1. ALL features must be part of ONE INTERCONNECTED workflow
@@ -97,6 +112,12 @@ INTELLIGENT WORKFLOW DESIGN:
 - Logging for critical operations and errors
 - Notifications based on workflow requirements
 
+MANDATORY ERROR HANDLING:
+When the workflow involves critical operations, external APIs, or complex processing, ALWAYS include:
+1. Error Trigger node (n8n-nodes-base.errorTrigger) to catch workflow errors
+2. Email Send or other notification node to alert administrators
+3. Connect Error Trigger to notification node for error alerts
+
 ESSENTIAL NODE TYPES (USE AS NEEDED):
 - IF/Switch nodes for decision points
 - Merge nodes to combine parallel branches
@@ -131,6 +152,35 @@ CONNECTION RULES:
 3. Use proper branching for parallel processes
 4. Ensure all paths eventually converge or complete
 5. For multi-feature workflows: Main entry → Router → Features → Merger → Exit
+6. No orphaned nodes - every node must be connected
+7. IF nodes must have BOTH true AND false outputs connected
+8. Switch nodes must have ALL outputs connected or use fallbackOutput
+9. Merge nodes must receive inputs from ALL expected branches
+
+SWITCH NODE RULES:
+1. Each condition MUST have a unique output number
+2. NEVER assign the same output number to multiple conditions
+3. Output numbers should be sequential: 0, 1, 2, 3...
+4. Always set fallbackOutput to handle unmatched cases
+5. Example:
+   rules: [
+     { value2: "action1", output: 0 },
+     { value2: "action2", output: 1 },
+     { value2: "action3", output: 2 }
+   ],
+   fallbackOutput: 3
+
+MERGE NODE CONNECTIONS:
+1. ALL feature branches MUST connect to the central Merge node
+2. The last node of each branch must have a connection to "Merge All Features"
+3. This ensures all parallel processes complete before final processing
+4. Use descriptive names like "Merge All Features" or "Combine Results"
+
+WORKFLOW COMPLETENESS RULES:
+1. Every workflow MUST have at least one trigger node
+2. All branches from Switch nodes MUST eventually converge to a Merge node
+3. Error handling path MUST be connected to all critical operations
+4. Final processing nodes MUST run AFTER all branches complete
 
 CREATIVE IMPLEMENTATION APPROACH:
 
@@ -221,15 +271,30 @@ REMEMBER: Use the RIGHT number of nodes for the task!
   }
 
   protected parseAIResponse(response: string): any {
+    console.log('Parsing AI response...');
+    
     try {
+      // Clean the response first to remove any control characters
+      const cleanedResponse = this.cleanResponseForJSON(response);
+      
       // Try to parse as JSON first
-      return JSON.parse(response);
+      const parsedWorkflow = JSON.parse(cleanedResponse);
+      console.log('Direct JSON parsing successful, preserving all AI details...');
+      
+      // Save original AI response for comparison
+      console.log('AI Response node count:', parsedWorkflow.nodes?.length || 0);
+      console.log('AI Response connections count:', Object.keys(parsedWorkflow.connections || {}).length);
+      
+      return parsedWorkflow;
     } catch (error) {
+      console.log('Direct JSON parsing failed, trying extraction methods...');
+      
       // Try to extract JSON from markdown code blocks
       const jsonMatch = response.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
       if (jsonMatch) {
         try {
-          return JSON.parse(jsonMatch[1]);
+          const cleaned = this.cleanResponseForJSON(jsonMatch[1]);
+          return JSON.parse(cleaned);
         } catch (e) {
           // Try to fix common JSON errors
           const fixed = this.fixCommonJSONErrors(jsonMatch[1]);
@@ -241,7 +306,8 @@ REMEMBER: Use the RIGHT number of nodes for the task!
       const objectMatch = response.match(/\{[\s\S]*"nodes"[\s\S]*"connections"[\s\S]*\}/);
       if (objectMatch) {
         try {
-          return JSON.parse(objectMatch[0]);
+          const cleaned = this.cleanResponseForJSON(objectMatch[0]);
+          return JSON.parse(cleaned);
         } catch (e) {
           // Try to fix common JSON errors
           const fixed = this.fixCommonJSONErrors(objectMatch[0]);
@@ -254,9 +320,24 @@ REMEMBER: Use the RIGHT number of nodes for the task!
         const fixed = this.fixCommonJSONErrors(response);
         return JSON.parse(fixed);
       } catch (e) {
+        console.error('JSON parsing failed completely:', e.message);
+        console.error('Response preview (first 500 chars):', response.substring(0, 500));
         throw new Error(`Could not parse AI response as valid workflow JSON: ${e.message}`);
       }
     }
+  }
+  
+  private cleanResponseForJSON(response: string): string {
+    // Remove control characters that cause JSON parsing issues
+    let cleaned = response.replace(/[\x00-\x1F\x7F]/g, '');
+    
+    // Remove any BOM characters
+    cleaned = cleaned.replace(/^\uFEFF/, '');
+    
+    // Normalize line endings
+    cleaned = cleaned.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    
+    return cleaned;
   }
   
   private fixCommonJSONErrors(jsonString: string): string {
@@ -274,6 +355,15 @@ REMEMBER: Use the RIGHT number of nodes for the task!
     
     // Fix escaped quotes in strings
     fixed = fixed.replace(/\\\"/g, '\\"');
+    
+    // Remove control characters that cause JSON parsing issues
+    fixed = fixed.replace(/[\x00-\x1F\x7F]/g, '');
+    
+    // Fix newlines in strings to be proper JSON escaped newlines
+    fixed = fixed.replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t');
+    
+    // Clean up multiple spaces
+    fixed = fixed.replace(/\s+/g, ' ');
     
     return fixed;
   }
@@ -322,5 +412,207 @@ REMEMBER: Use the RIGHT number of nodes for the task!
     });
     
     return normalized;
+  }
+
+  // New method: Optimize Switch Node outputs
+  protected optimizeSwitchNodeOutputs(switchNode: any): void {
+    if (switchNode.type === 'n8n-nodes-base.switch' && switchNode.parameters?.rules?.rules) {
+      const rules = switchNode.parameters.rules.rules;
+      
+      // Assign sequential outputs to each rule
+      rules.forEach((rule: any, index: number) => {
+        rule.output = index;
+      });
+      
+      // Set fallback output
+      if (switchNode.parameters.fallbackOutput === undefined) {
+        switchNode.parameters.fallbackOutput = rules.length;
+      }
+      
+      console.log(`Optimized Switch node "${switchNode.name}" with ${rules.length} rules and fallback output ${switchNode.parameters.fallbackOutput}`);
+    }
+  }
+
+  // New method: Find branch end nodes
+  private findBranchEndNodes(workflow: any): any[] {
+    const endNodes: any[] = [];
+    const mergeNodeNames = workflow.nodes
+      .filter((n: any) => n.type === 'n8n-nodes-base.merge')
+      .map((n: any) => n.name);
+    
+    workflow.nodes.forEach((node: any) => {
+      const nodeName = node.name;
+      const hasOutgoingConnection = workflow.connections[nodeName]?.main?.[0]?.length > 0;
+      
+      // Find nodes that don't have outgoing connections or don't go to merge nodes
+      if (!hasOutgoingConnection || 
+          (hasOutgoingConnection && !mergeNodeNames.includes(workflow.connections[nodeName].main[0][0].node))) {
+        // Check if this is the end of a branch
+        if (this.isEndOfBranch(workflow, node)) {
+          endNodes.push(node);
+        }
+      }
+    });
+    
+    return endNodes;
+  }
+
+  // New method: Check if a node is at the end of a branch
+  private isEndOfBranch(workflow: any, node: any): boolean {
+    const nodeName = node.name;
+    
+    // Skip trigger nodes - they should not be connected to merge
+    if (node.type === 'n8n-nodes-base.webhook' || 
+        node.type === 'n8n-nodes-base.cron' ||
+        node.type === 'n8n-nodes-base.errorTrigger') {
+      return false;
+    }
+    
+    // Skip router nodes (switch, if) - they route, not end branches
+    if (node.type === 'n8n-nodes-base.switch' || 
+        node.type === 'n8n-nodes-base.if') {
+      return false;
+    }
+    
+    // Get outgoing connections
+    const outgoingConnections = workflow.connections[nodeName]?.main?.[0] || [];
+    
+    // If no connections, it's an end node
+    if (outgoingConnections.length === 0) {
+      return true;
+    }
+    
+    // Check if only connects to Merge or Error nodes
+    const targetNodes = outgoingConnections.map((conn: any) => 
+      workflow.nodes.find((n: any) => n.name === conn.node)
+    );
+    
+    const allTargetsAreMergeOrError = targetNodes.every((target: any) => 
+      target && (
+        target.type === 'n8n-nodes-base.merge' ||
+        target.type === 'n8n-nodes-base.errorTrigger'
+      )
+    );
+    
+    return !allTargetsAreMergeOrError;
+  }
+
+  // New method: Ensure all branches connect to merge node
+  protected ensureMergeNodeConnections(workflow: any): void {
+    const mergeNodes = workflow.nodes.filter((n: any) => 
+      n.type === 'n8n-nodes-base.merge'
+    );
+    
+    if (mergeNodes.length === 0) return;
+    
+    // Find the main merge node
+    const mainMergeNode = mergeNodes.find((n: any) => 
+      n.name.toLowerCase().includes('all') || 
+      n.name.toLowerCase().includes('main') ||
+      n.name.toLowerCase().includes('features')
+    ) || mergeNodes[0];
+    
+    if (!mainMergeNode) return;
+    
+    console.log(`Checking connections to merge node "${mainMergeNode.name}"`);
+    
+    // Find all branch end nodes
+    const branchEndNodes = this.findBranchEndNodes(workflow);
+    
+    // Connect each branch end to merge if not already connected
+    branchEndNodes.forEach((node: any) => {
+      const hasConnectionToMerge = workflow.connections[node.name]?.main?.[0]?.some(
+        (conn: any) => conn.node === mainMergeNode.name
+      );
+      
+      if (!hasConnectionToMerge && node.name !== mainMergeNode.name) {
+        this.addConnection(workflow, node.name, mainMergeNode.name);
+        console.log(`Connected branch end node "${node.name}" to merge node "${mainMergeNode.name}"`);
+      }
+    });
+  }
+
+  // New method: Add a connection between nodes
+  private addConnection(workflow: any, sourceNodeName: string, targetNodeName: string): void {
+    if (!workflow.connections[sourceNodeName]) {
+      workflow.connections[sourceNodeName] = { main: [[]] };
+    }
+    
+    workflow.connections[sourceNodeName].main[0].push({
+      node: targetNodeName,
+      type: 'main',
+      index: 0
+    });
+  }
+
+  // New method: Validate all connections
+  protected validateAllConnections(workflow: any): void {
+    const nodeNames = new Set(workflow.nodes.map((n: any) => n.name));
+    
+    // Check all connections
+    Object.entries(workflow.connections).forEach(([sourceName, connections]: [string, any]) => {
+      if (!nodeNames.has(sourceName)) {
+        console.log(`Removing orphan connection from non-existent node "${sourceName}"`);
+        delete workflow.connections[sourceName];
+        return;
+      }
+      
+      // Check each connection target
+      if (connections.main) {
+        connections.main.forEach((outputs: any[], outputIndex: number) => {
+          const validConnections = outputs.filter((conn: any) => {
+            if (!nodeNames.has(conn.node)) {
+              console.log(`Removing invalid connection from "${sourceName}" to non-existent node "${conn.node}"`);
+              return false;
+            }
+            return true;
+          });
+          connections.main[outputIndex] = validConnections;
+        });
+      }
+    });
+  }
+
+  // New method: Mark utility nodes
+  protected markUtilityNodes(workflow: any): void {
+    workflow.nodes.forEach((node: any) => {
+      const lowerName = node.name.toLowerCase();
+      if (lowerName.includes('rate limit') ||
+          lowerName.includes('transformer') ||
+          lowerName.includes('utility') ||
+          lowerName.includes('helper')) {
+        node.metadata = node.metadata || {};
+        node.metadata.isUtility = true;
+        node.metadata.description = 'Utility node - connect manually when needed';
+        console.log(`Marked "${node.name}" as utility node`);
+      }
+    });
+  }
+
+  // New method: Post-process workflow (public wrapper)
+  public applyPostProcessing(workflow: any): any {
+    return this.postProcessWorkflow(workflow);
+  }
+
+  // New method: Post-process workflow
+  protected postProcessWorkflow(workflow: any): any {
+    console.log('Post-processing workflow...');
+    
+    // 1. Optimize Switch nodes
+    workflow.nodes
+      .filter((n: any) => n.type === 'n8n-nodes-base.switch')
+      .forEach((n: any) => this.optimizeSwitchNodeOutputs(n));
+    
+    // 2. Ensure Merge node connections
+    this.ensureMergeNodeConnections(workflow);
+    
+    // 3. Validate all connections
+    this.validateAllConnections(workflow);
+    
+    // 4. Mark utility nodes
+    this.markUtilityNodes(workflow);
+    
+    console.log('Post-processing completed');
+    return workflow;
   }
 }

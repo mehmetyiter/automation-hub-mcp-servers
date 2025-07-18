@@ -35,6 +35,10 @@ Create a workflow that PRECISELY matches the requirements.
    - Aggregate nodes for data summarization
 
 4. ERROR HANDLING REQUIREMENTS:
+   - EVERY workflow MUST include error handling nodes:
+     * Add Error Trigger node (n8n-nodes-base.errorTrigger) with id and position
+     * Add Email Send node for error notifications
+     * Connect Error Trigger to Email Send in connections
    - EVERY external API call MUST have error handling
    - Add retry nodes with exponential backoff
    - Create fallback branches for failures

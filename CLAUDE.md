@@ -1,87 +1,165 @@
-# Automation Hub MCP Servers - Claude Code Integration
+# Automation Hub MCP Servers - Development Guidelines
+
+## 🚨 CRITICAL: NO TEMPLATES ALLOWED 🚨
+
+**NEVER ADD HARDCODED TEMPLATES OR PATTERNS TO THIS PROJECT!**
+
+We use pure AI-driven workflow generation. Any hardcoded templates, domain-specific patterns, or pre-defined workflow structures will:
+- Cause duplicate content issues
+- Override user intentions
+- Create maintenance nightmares
+- Break the AI's creative workflow generation
 
 ## Project Overview
-This is an AI-powered automation platform that helps users create workflows across multiple platforms (n8n, Vapi, Zapier, etc.) using natural language prompts.
 
-## Key Components
+AI-powered automation platform for creating workflows across multiple platforms (n8n, Vapi, Zapier, etc.) using natural language.
+
+## Architecture
 
 ### 1. **n8n MCP Server** (`/n8n-mcp/`)
-- AI-powered workflow generation using OpenAI/Anthropic
-- Training data system for continuous improvement
-- HTTP API server on port 3006
-- MCP server for tool-based integration
+- **Purpose**: AI workflow generation and n8n integration
+- **Port**: 3006
+- **Key Features**:
+  - AI-powered workflow generation (OpenAI/Anthropic)
+  - Quick & Advanced workflow builders
+  - Node catalog system
+  - Connection validation & auto-fix
+  - NO TEMPLATES - pure AI generation
 
 ### 2. **Auth MCP Server** (`/auth-mcp/`)
-- User authentication and session management
-- Encrypted credential storage
-- HTTP API server on port 3005
+- **Purpose**: Authentication and credential management
+- **Port**: 3005
+- **Features**:
+  - JWT-based authentication
+  - Encrypted credential storage
+  - Session management
 
 ### 3. **API Gateway** (`/api-gateway/`)
-- Central routing hub on port 8080
-- Routes: `/api/auth/*` → auth service, `/api/n8n/*` → n8n service
+- **Purpose**: Central routing and request forwarding
+- **Port**: 8080
+- **Routes**:
+  - `/api/auth/*` → Auth service (port 3005)
+  - `/api/n8n/*` → n8n service (port 3006)
 
 ### 4. **Web Interface** (`/web-interface/`)
-- React-based frontend on port 5173
-- Automation creation with AI assistance
-- Credential management
+- **Purpose**: User interface
+- **Port**: 5173
+- **Tech**: React + TypeScript + Tailwind
+- **Features**:
+  - AI Assistant for workflow creation
+  - Credential management
+  - Workflow visualization
 
-## Current Session Summary (2025-01-07)
+## Development Principles
 
-### Issues Reported by User:
-1. **Disconnected Nodes**: "Final Orchestration" node remains disconnected in generated workflows
-2. **Duplicate Workflows**: Creating 2 identical workflows instead of 1
-3. **Empty Workflow Error**: "propertyValues[itemName] is not iterable" error on first attempt
+### 1. **AI-First Approach**
+- All workflow generation must be AI-driven
+- NO hardcoded templates or patterns
+- Let AI analyze and create unique workflows
+- Trust the AI's creativity
 
-### Implemented Solutions:
+### 2. **Dynamic Prompt Generation**
+- Use `DynamicPromptGenerator` for AI analysis
+- Never fallback to templates
+- Keep prompts clean and user-focused
+- Don't add unnecessary metadata
 
-1. **validateBranchConnections** - Validates each branch immediately after AI generation:
-   - Normalizes connection format (string vs object)
-   - Creates linear connections if none exist
-   - Finds truly disconnected nodes
-   - Connects orphans based on position and node type
-   - Ensures proper start_node and end_nodes
+### 3. **Workflow Quality**
+- Focus on connection validation
+- Auto-fix disconnected nodes
+- Ensure proper node types via catalog
+- Validate against user requirements
 
-2. **Improved AI Prompts**:
-   - Added validation checklist in prompts
-   - Emphasized connection requirements
-   - Provided exact connection format examples
-   - Required every node to appear in connections
+### 4. **Error Handling**
+- Clear error messages
+- Graceful fallbacks (but NOT to templates!)
+- Comprehensive logging
+- User-friendly notifications
 
-3. **Connection Normalization**:
-   - Handles both string format: `"NodeName"`
-   - And object format: `{"node": "NodeName", "type": "main", "index": 0}`
-   - Ensures consistent object format throughout
+## Key Systems
 
-4. **Fixed Duplicate Workflow Creation**:
-   - Root cause: `n8n_generate_workflow` endpoint was creating the workflow AND returning it
-   - Frontend then called `n8n_create_workflow` again with the same data
-   - Solution: Modified `n8n_generate_workflow` to only generate and return the workflow structure
-   - The actual creation now happens only in the `n8n_create_workflow` call
+### Workflow Generation V2 (`ai-workflow-generator-v2.ts`)
+- **Quick Mode**: Simple sequential workflows
+- **Advanced Mode**: Complex workflows with parallel execution, switches, merges
+- **Auto-detection**: Chooses mode based on complexity
+- **Validation**: Auto-fixes disconnected nodes
 
-5. **Special Handling for Final/Orchestration Nodes**:
-   - Added logic in `validateAndFixConnections` to connect final/orchestration nodes to the last merge node
-   - Ensures these nodes are properly connected in the workflow
+### Node Catalog (`n8n-node-catalog.ts`)
+- 50+ n8n node definitions
+- Intelligent node matching
+- Use case based selection
+- Category organization
 
-### Files Modified Today:
-- `/n8n-mcp/src/ai-workflow-generator.ts` - Added validateBranchConnections and final node handling
-- `/n8n-mcp/training-data/n8n-workflow-patterns.json` - Added learning from disconnected nodes issue
-- `/n8n-mcp/src/n8n-client.ts` - Added undefined check for workflow
-- `/n8n-mcp/src/http-server.ts` - Fixed duplicate creation by removing createWorkflow call
+### Prompt Processing
+- **Parser**: Handles BRANCH and numbered list formats
+- **Builder**: Creates proper n8n JSON structure
+- **Validator**: Ensures all nodes connected
+- **NO TEMPLATES**: Pure AI-based generation
 
-## Next Steps:
-1. Fix AI response parsing to extract workflow properly
-2. Test complex workflows with new validation
-3. Verify disconnected nodes are reduced
+## Common Issues & Solutions
 
-## Testing Commands:
+### Issue: "Use this prompt" adds duplicate content
+**Solution**: Removed all template systems. Now only uses user's original request.
+
+### Issue: Disconnected nodes
+**Solution**: QuickValidator with auto-fix based on node positions.
+
+### Issue: Wrong node types
+**Solution**: Node catalog with intelligent matching.
+
+### Issue: Multiple workflows in response
+**Solution**: PromptCleaner detects and removes secondary workflows.
+
+## Testing
+
+### Basic Workflow Test
 ```bash
-# Simple test
 curl -X POST http://localhost:8080/api/n8n/tools/n8n_generate_workflow \
   -H "Content-Type: application/json" \
-  -d '{"prompt": "webhook", "name": "test"}'
-
-# Complex workflow test
-curl -X POST http://localhost:8080/api/n8n/tools/n8n_generate_workflow \
-  -H "Content-Type: application/json" \
-  -d '{"prompt": "Complex workflow with BRANCH...", "name": "complex test"}'
+  -d '{"prompt": "send email when form submitted", "name": "Contact Form"}'
 ```
+
+### Complex Workflow Test
+```bash
+curl -X POST http://localhost:8080/api/n8n/tools/n8n_generate_workflow \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "monitor brand reputation with parallel processing", "name": "Brand Monitor"}'
+```
+
+## DO NOT ADD
+
+❌ Domain templates
+❌ Workflow patterns
+❌ Hardcoded prompt structures
+❌ Pre-defined node sequences
+❌ Template-based generation
+❌ Fixed workflow architectures
+
+## ALWAYS USE
+
+✅ AI-driven generation
+✅ Dynamic analysis
+✅ User's exact requirements
+✅ Creative workflow design
+✅ Node catalog for type matching
+✅ Connection validation
+
+## Session History
+
+### 2025-01-16 Updates
+- Implemented Phase 2 of workflow improvements
+- Added Advanced Workflow Builder
+- Created comprehensive node catalog
+- **REMOVED ALL TEMPLATE SYSTEMS**
+- Fixed "use this prompt" duplication issue
+- Improved prompt parsing and validation
+
+### Previous Issues (Resolved)
+- Disconnected nodes → Auto-fix validation
+- Duplicate workflows → Single generation
+- Template contamination → Removed all templates
+- Wrong node types → Node catalog system
+
+## Remember
+
+This is an AI-first platform. Trust the AI to create unique, creative workflows based on user requirements. Never constrain it with templates or patterns. Every workflow should be as unique as the user's needs.

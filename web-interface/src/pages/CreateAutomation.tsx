@@ -40,6 +40,8 @@ export default function CreateAutomation() {
       if (location.state.title) {
         setName(location.state.title)
       }
+      // Clear the state after using it to prevent re-applying
+      window.history.replaceState({}, document.title)
     }
   }, [location.state])
 
@@ -149,7 +151,12 @@ export default function CreateAutomation() {
   ]
 
   const handlePromptGenerated = (prompt: string) => {
+    // Directly set the AI-generated prompt
     setDescription(prompt);
+    // Clear any name that might have been set from Prompt Library
+    if (name && name.includes('prompt')) {
+      setName('');
+    }
     // Optionally close the assistant after prompt is used
     // setShowAIAssistant(false);
   };

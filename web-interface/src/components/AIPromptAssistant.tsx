@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, ChevronDown, Sparkles, Copy, ArrowRight } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '../services/api';
-import { getTemplateForDomain, generatePromptFromTemplate } from '../utils/domain-templates';
 import { DynamicPromptGenerator } from '../ai-analysis/dynamic-prompt-generator';
 import { LearningEngine } from '../ai-analysis/learning-engine';
 import { FeedbackData } from '../ai-analysis/types';
@@ -71,199 +70,9 @@ export default function AIPromptAssistant({ onPromptGenerated }: AIPromptAssista
   };
 
   const generateWorkflowPrompt = async (userRequest: string, aiResponse: string): Promise<string> => {
-    try {
-      // Use the new AI-driven dynamic prompt generation
-      const dynamicPrompt = await dynamicPromptGenerator.current.generateDynamicPrompt(userRequest);
-      
-      // Combine with AI response for enhanced context
-      let finalPrompt = `## AI Assistant Analysis:
-${aiResponse}
-
-`;
-      finalPrompt += `## AI-Generated Workflow Design:
-${dynamicPrompt.systemPrompt}
-
-`;
-      finalPrompt += `## User Requirements:
-${dynamicPrompt.userPrompt}
-
-`;
-      
-      // Add contextual guidelines
-      if (dynamicPrompt.contextualGuidelines.length > 0) {
-        finalPrompt += `## Optimization Guidelines:
-`;
-        dynamicPrompt.contextualGuidelines.forEach(guideline => {
-          finalPrompt += `- ${guideline}
-`;
-        });
-        finalPrompt += '\n';
-      }
-      
-      // Add quality checklist
-      if (dynamicPrompt.qualityChecklist.length > 0) {
-        finalPrompt += `## Quality Checklist:
-`;
-        dynamicPrompt.qualityChecklist.forEach(item => {
-          finalPrompt += `- [ ] ${item}
-`;
-        });
-        finalPrompt += '\n';
-      }
-      
-      return finalPrompt;
-    } catch (error) {
-      console.error('Error generating dynamic prompt:', error);
-      // Fallback to original template-based approach
-      return generateTemplateBasedPrompt(userRequest, aiResponse);
-    }
-  };
-  
-  const generateTemplateBasedPrompt = (userRequest: string, aiResponse: string): string => {
-    // Enhanced structured prompt generation based on the conversation
-    const lowerRequest = userRequest.toLowerCase();
-    
-    // Analyze request type and domain
-    const domain = detectDomain(lowerRequest);
-    const triggers = extractTriggers(lowerRequest);
-    const integrations = extractIntegrations(lowerRequest);
-    const hasErrorHandling = lowerRequest.includes('error') || lowerRequest.includes('retry') || lowerRequest.includes('fallback');
-    
-    // Check if we have a domain template
-    if (domain) {
-      const template = getTemplateForDomain(domain);
-      if (template) {
-        // Use the domain template as base
-        let templatePrompt = generatePromptFromTemplate(template);
-        
-        // Enhance with AI response insights
-        templatePrompt = `## AI Assistant Analysis:\n${aiResponse}\n\n${templatePrompt}`;
-        
-        // Add any additional user-specific requirements
-        if (hasErrorHandling) {
-          templatePrompt += `\n## Enhanced Error Handling (User Requested):\n`;
-          templatePrompt += `- Implement advanced retry logic with exponential backoff\n`;
-          templatePrompt += `- Add circuit breaker patterns for external services\n`;
-          templatePrompt += `- Include detailed error logging and alerting\n`;
-        }
-        
-        return templatePrompt;
-      }
-    }
-    
-    // Fallback to custom structured prompt if no template
-    let structuredPrompt = `${aiResponse}\n\n`;
-    
-    // Add domain-specific requirements
-    if (domain) {
-      structuredPrompt += `## Domain: ${domain}\n\n`;
-    }
-    
-    // Add trigger section
-    if (triggers.length > 0) {
-      structuredPrompt += `## Trigger Events:\n`;
-      triggers.forEach(trigger => {
-        structuredPrompt += `- ${trigger}\n`;
-      });
-      structuredPrompt += '\n';
-    }
-    
-    // Add integration requirements
-    if (integrations.length > 0) {
-      structuredPrompt += `## Integrations:\n`;
-      integrations.forEach(integration => {
-        structuredPrompt += `- ${integration}\n`;
-      });
-      structuredPrompt += '\n';
-    }
-    
-    // Add error handling section
-    structuredPrompt += `## Error Handling:\n`;
-    if (hasErrorHandling) {
-      structuredPrompt += `- Implement retry logic for external API calls\n`;
-      structuredPrompt += `- Add fallback mechanisms for critical paths\n`;
-      structuredPrompt += `- Include error notification systems\n`;
-    } else {
-      structuredPrompt += `- Basic error handling for all external integrations\n`;
-      structuredPrompt += `- Logging of all errors\n`;
-    }
-    structuredPrompt += '\n';
-    
-    // Add expected outcomes
-    structuredPrompt += `## Expected Outcomes:\n`;
-    structuredPrompt += `- Automated workflow that handles the described process\n`;
-    structuredPrompt += `- Proper data validation and processing\n`;
-    structuredPrompt += `- Reliable execution with error recovery\n`;
-    structuredPrompt += `- Clear logging and monitoring\n\n`;
-    
-    // Add production requirements
-    structuredPrompt += `## Production Requirements:\n`;
-    structuredPrompt += `- All nodes must be properly connected\n`;
-    structuredPrompt += `- Include data validation at entry points\n`;
-    structuredPrompt += `- Add success/failure notifications\n`;
-    structuredPrompt += `- Implement proper logging throughout\n`;
-    structuredPrompt += `- Ensure scalability and performance\n`;
-    
-    return structuredPrompt;
-  };
-  
-  const detectDomain = (text: string): string => {
-    const domainPatterns = {
-      'Healthcare': ['hospital', 'patient', 'doctor', 'appointment', 'medical', 'health', 'clinic'],
-      'E-commerce': ['order', 'payment', 'product', 'inventory', 'shipping', 'customer', 'cart'],
-      'HR': ['employee', 'onboarding', 'leave', 'payroll', 'recruitment', 'hr', 'staff'],
-      'Finance': ['invoice', 'payment', 'accounting', 'budget', 'expense', 'financial'],
-      'Marketing': ['campaign', 'email', 'lead', 'crm', 'marketing', 'social'],
-      'IT Operations': ['server', 'monitoring', 'alert', 'deployment', 'backup', 'system']
-    };
-    
-    for (const [domain, keywords] of Object.entries(domainPatterns)) {
-      if (keywords.some(keyword => text.includes(keyword))) {
-        return domain;
-      }
-    }
-    return '';
-  };
-  
-  const extractTriggers = (text: string): string[] => {
-    const triggers = [];
-    const triggerPatterns = {
-      'Webhook trigger': ['webhook', 'api call', 'http request', 'incoming request'],
-      'Schedule trigger': ['daily', 'hourly', 'scheduled', 'cron', 'every day', 'every hour'],
-      'Manual trigger': ['manual', 'on-demand', 'when needed'],
-      'Database trigger': ['database change', 'new record', 'data update'],
-      'Email trigger': ['email received', 'incoming email', 'email trigger']
-    };
-    
-    for (const [triggerName, patterns] of Object.entries(triggerPatterns)) {
-      if (patterns.some(pattern => text.includes(pattern))) {
-        triggers.push(triggerName);
-      }
-    }
-    
-    return triggers.length > 0 ? triggers : ['Manual trigger'];
-  };
-  
-  const extractIntegrations = (text: string): string[] => {
-    const integrations = [];
-    const integrationPatterns = {
-      'Database (PostgreSQL/MySQL)': ['database', 'mysql', 'postgresql', 'postgres', 'sql'],
-      'Email (SMTP/SendGrid)': ['email', 'smtp', 'sendgrid', 'mail'],
-      'SMS (Twilio)': ['sms', 'twilio', 'text message'],
-      'Slack': ['slack', 'slack notification'],
-      'Calendar (Google/Outlook)': ['calendar', 'appointment', 'schedule', 'booking'],
-      'Payment (Stripe/PayPal)': ['payment', 'stripe', 'paypal', 'checkout'],
-      'CRM (Salesforce/HubSpot)': ['crm', 'salesforce', 'hubspot', 'customer'],
-      'API Integration': ['api', 'rest', 'webhook', 'external service']
-    };
-    
-    for (const [integrationName, patterns] of Object.entries(integrationPatterns)) {
-      if (patterns.some(pattern => text.includes(pattern))) {
-        integrations.push(integrationName);
-      }
-    }
-    
-    return integrations;
+    // Return the full AI-generated workflow plan
+    // This detailed structure is what our backend expects for proper workflow generation
+    return aiResponse;
   };
 
   const handleSend = async () => {
@@ -333,8 +142,13 @@ ${dynamicPrompt.userPrompt}
   };
 
   const usePrompt = (prompt: string) => {
+    // Clear any existing location state to prevent mixing with Prompt Library prompts
+    if (window.history.state && window.history.state.usr) {
+      window.history.replaceState({ ...window.history.state.usr, prompt: null }, '');
+    }
+    
     onPromptGenerated(prompt);
-    toast.success('Prompt added to the form!');
+    toast.success('AI-generated prompt added to the form!');
     
     // Track successful usage for learning
     const feedback: FeedbackData = {

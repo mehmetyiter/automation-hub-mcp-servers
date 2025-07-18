@@ -41,4 +41,5 @@ export interface AIProviderInterface {
   testConnection(): Promise<boolean>;
   getModels(): Promise<string[]>;
   chat?(messages: any[]): Promise<any>;
+  applyPostProcessing?(workflow: any): any;
 }

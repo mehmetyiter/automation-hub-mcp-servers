@@ -1,5 +1,13 @@
 import { AIProvider, AIProviderConfig } from './types/ai-provider.js';
 import { ProviderFactory } from './providers/provider-factory.js';
+import { QuickPromptParser } from './workflow-generation/quick-parser.js';
+import { QuickWorkflowBuilder } from './workflow-generation/quick-builder.js';
+import { QuickValidator } from './workflow-generation/quick-validator.js';
+import { AdvancedPromptParser } from './workflow-generation/advanced-prompt-parser.js';
+import { AdvancedWorkflowBuilder } from './workflow-generation/advanced-workflow-builder.js';
+import { PromptCleaner } from './workflow-generation/prompt-cleaner.js';
+import { WorkflowAnalyzer, WorkflowValidator } from './workflow-generation/workflow-analyzer.js';
+import { DirectWorkflowBuilder } from './workflow-generation/direct-workflow-builder.js';
 
 export interface WorkflowGenerationOptions {
   apiKey?: string;
@@ -11,6 +19,15 @@ export interface WorkflowGenerationOptions {
 
 export class AIWorkflowGeneratorV2 {
   private providerConfig: AIProviderConfig;
+  private parser = new QuickPromptParser();
+  private builder = new QuickWorkflowBuilder();
+  private validator = new QuickValidator();
+  private advancedParser = new AdvancedPromptParser();
+  private advancedBuilder = new AdvancedWorkflowBuilder();
+  private directBuilder = new DirectWorkflowBuilder();
+  private workflowAnalyzer = new WorkflowAnalyzer();
+  private workflowValidator = new WorkflowValidator();
+  private useAdvancedMode = false;
 
   constructor(options: WorkflowGenerationOptions) {
     if (!options.apiKey) {
@@ -28,18 +45,96 @@ export class AIWorkflowGeneratorV2 {
 
   async generateFromPrompt(prompt: string, name: string): Promise<any> {
     console.log('=== AI Workflow Generation V2 Started ===');
-    console.log('Prompt:', prompt);
+    console.log('Original Prompt:', prompt);
     console.log('Name:', name);
     console.log('Provider:', this.providerConfig.provider);
     console.log('Model:', this.providerConfig.model || 'default');
     
+    // Extract clean user requirements if this is an AI Assistant formatted prompt
+    const cleanPrompt = PromptCleaner.extractUserRequirements(prompt);
+    console.log('Clean Prompt:', cleanPrompt);
+    
     try {
       const provider = ProviderFactory.createProvider(this.providerConfig);
-      const result = await provider.generateWorkflow(prompt, name);
+      
+      // Set provider for DirectWorkflowBuilder to enable post-processing
+      this.directBuilder.setProvider(provider);
+      
+      const result = await provider.generateWorkflow(cleanPrompt, name);
       
       if (result.success && result.workflow) {
-        // Apply additional validation and fixes
-        result.workflow = this.validateAndFixConnections(result.workflow);
+        // Check if workflow looks like a detailed prompt (text) instead of JSON
+        if (typeof result.workflow === 'string' || 
+            (result.workflow && result.workflow.prompt) ||
+            (result.workflow && !result.workflow.nodes)) {
+          
+          console.log('Detected detailed prompt response, parsing and building workflow...');
+          
+          // Extract the actual prompt text
+          let detailedPrompt = typeof result.workflow === 'string' 
+            ? result.workflow 
+            : result.workflow.prompt || JSON.stringify(result.workflow);
+          
+          // Clean the prompt to ensure only one workflow
+          const promptValidation = PromptCleaner.validateSingleWorkflow(detailedPrompt);
+          if (!promptValidation.isValid) {
+            console.log(`Warning: Detected ${promptValidation.workflowCount} workflows in prompt`);
+            console.log('Issues:', promptValidation.issues);
+            detailedPrompt = PromptCleaner.cleanPrompt(detailedPrompt);
+          }
+          
+          // Detect if we need advanced mode
+          this.useAdvancedMode = this.detectAdvancedMode(detailedPrompt);
+          
+          // Parse the detailed prompt
+          console.log(`Parsing prompt... (${this.useAdvancedMode ? 'Advanced' : 'Quick'} mode)`);
+          const parsed = this.useAdvancedMode 
+            ? this.advancedParser.parse(detailedPrompt)
+            : this.parser.parse(detailedPrompt);
+          parsed.workflowName = name || parsed.workflowName;
+          
+          // Build workflow from parsed data
+          console.log('Building workflow...');
+          let workflow = this.useAdvancedMode
+            ? this.advancedBuilder.build(parsed)
+            : this.builder.build(parsed);
+        } else if (result.workflow && result.workflow.nodes && result.workflow.connections) {
+          
+          console.log('Detected direct AI workflow JSON, using DirectWorkflowBuilder...');
+          
+          // Analyze the prompt to extract requirements and plan
+          console.log('Analyzing prompt for requirements and validation...');
+          const workflowPlan = this.workflowAnalyzer.analyzePrompt(prompt);
+          
+          // AI returned perfect JSON workflow, use it directly with workflow plan
+          let workflow = this.directBuilder.build(result.workflow, workflowPlan);
+          
+          // Validate with analyzer
+          console.log('Validating workflow against prompt requirements...');
+          const workflowValidation = this.workflowValidator.validateImplementation(workflowPlan, workflow);
+          console.log(`Workflow compliance score: ${(workflowValidation.score * 100).toFixed(1)}%`);
+          console.log(`Implemented features: ${workflowValidation.implemented.join(', ')}`);
+          
+          if (workflowValidation.missing.length > 0) {
+            console.log(`Missing features: ${workflowValidation.missing.join(', ')}`);
+          }
+          
+          if (workflowValidation.issues.length > 0) {
+            console.log('Validation issues found:');
+            workflowValidation.issues.forEach(issue => {
+              console.log(`  ${issue.severity.toUpperCase()}: ${issue.message}`);
+            });
+          }
+          
+          console.log(`Generated workflow with ${workflow.nodes.length} nodes (AI details preserved)`);
+          
+          result.workflow = workflow;
+        } else {
+          console.log('Unknown workflow format, applying fallback validation...');
+          result.workflow = this.validateAndFixConnections(result.workflow);
+        }
+      } else {
+        console.log('No workflow generated or validation failed');
       }
       
       return result;
@@ -273,5 +368,74 @@ export class AIWorkflowGeneratorV2 {
     });
     
     return normalized;
+  }
+
+  private detectAdvancedMode(detailedPrompt: string): boolean {
+    console.log('Detecting workflow mode...');
+    
+    // Advanced mode indicators
+    const advancedIndicators = [
+      // Parallel execution patterns
+      /parallel\s*(execution|processing)/gi,
+      /simultaneously/gi,
+      /at\s*the\s*same\s*time/gi,
+      /concurrent(ly)?/gi,
+      
+      // Switch/routing patterns
+      /switch\s*(between|based|on)/gi,
+      /route\s*(to|based|on)/gi,
+      /decision\s*(point|tree|logic)/gi,
+      /condition(al)?\s*(branch|logic|routing)/gi,
+      /multiple\s*branches/gi,
+      
+      // Merge patterns
+      /merge\s*(results|data|branches)/gi,
+      /combine\s*(outputs|results)/gi,
+      /join\s*(parallel|branches)/gi,
+      
+      // Complex error handling
+      /error\s*handling\s*for\s*(multiple|different|each)/gi,
+      /catch\s*different\s*errors/gi,
+      /error\s*branches/gi,
+      
+      // Multiple triggers
+      /multiple\s*triggers/gi,
+      /different\s*trigger\s*types/gi,
+      
+      // Complex workflows
+      /complex\s*(workflow|process|logic)/gi,
+      /advanced\s*(workflow|automation)/gi
+    ];
+    
+    // Check for indicators
+    let indicatorCount = 0;
+    for (const pattern of advancedIndicators) {
+      if (pattern.test(detailedPrompt)) {
+        indicatorCount++;
+        console.log(`Found advanced indicator: ${pattern.source}`);
+      }
+      // Reset lastIndex for global regex
+      pattern.lastIndex = 0;
+    }
+    
+    // Additional checks for specific patterns
+    const hasParallelBranches = detailedPrompt.match(/\(parallel\)/gi) || 
+                               detailedPrompt.match(/parallel.*branches/gi);
+    const hasSwitchLogic = detailedPrompt.match(/branches?:\s*\n(?:\s*[-*]\s*.+\n)+/gi);
+    const hasMultipleMerges = (detailedPrompt.match(/merge/gi) || []).length > 1;
+    
+    // Decision logic
+    const useAdvanced = indicatorCount >= 2 || 
+                       hasParallelBranches !== null || 
+                       hasSwitchLogic !== null || 
+                       hasMultipleMerges;
+    
+    console.log(`Advanced mode indicators found: ${indicatorCount}`);
+    console.log(`Has parallel branches: ${hasParallelBranches !== null}`);
+    console.log(`Has switch logic: ${hasSwitchLogic !== null}`);
+    console.log(`Has multiple merges: ${hasMultipleMerges}`);
+    console.log(`Using ${useAdvanced ? 'Advanced' : 'Quick'} mode`);
+    
+    return useAdvanced;
   }
 }
