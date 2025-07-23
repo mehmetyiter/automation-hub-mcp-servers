@@ -23,37 +23,57 @@ export class MultiStepWorkflowGenerator {
   private knowledgeBase: N8nKnowledgeBase;
   private provider: AIProviderInterface;
   private nodeIdCounter: number = 1;
+  private learningContext?: any;
+  private progressCallback?: (message: string) => void;
   
-  constructor(provider: AIProviderInterface) {
+  constructor(provider: AIProviderInterface, learningContext?: any, progressCallback?: (message: string) => void) {
     this.provider = provider;
     this.knowledgeBase = new N8nKnowledgeBase();
+    this.learningContext = learningContext;
+    this.progressCallback = progressCallback;
   }
   
   async generateWorkflow(prompt: string, name: string): Promise<any> {
     console.log('Starting multi-step workflow generation...');
+    this.progressCallback?.('Starting multi-step workflow generation...');
+    
+    if (this.learningContext) {
+      console.log('Using learning context with insights from previous workflows');
+      this.progressCallback?.('Analyzing similar workflows from learning database...');
+    }
     
     // Step 1: Analyze requirements and create generation plan
+    this.progressCallback?.('Creating workflow generation plan...');
     const plan = await this.createGenerationPlan(prompt);
     console.log('Generation plan created:', plan);
+    this.progressCallback?.(`Planning ${plan.totalNodes} nodes across ${plan.sections.length} sections`);
     
     // Step 2: Generate core workflow structure
+    this.progressCallback?.('Generating core workflow structure...');
     const coreSection = await this.generateCoreSection(prompt, name, plan);
     console.log(`Core section generated with ${coreSection.nodes.length} nodes`);
+    this.progressCallback?.(`Core section completed with ${coreSection.nodes.length} nodes`);
     
     // Step 3: Generate each expansion section
     const sections: WorkflowSection[] = [coreSection];
     for (const sectionPlan of plan.sections) {
+      this.progressCallback?.(`Generating ${sectionPlan.name} section...`);
       const section = await this.generateSection(sectionPlan, prompt, sections);
       sections.push(section);
       console.log(`Generated ${sectionPlan.name} with ${section.nodes.length} nodes`);
+      this.progressCallback?.(`${sectionPlan.name} section completed with ${section.nodes.length} nodes`);
     }
     
     // Step 4: Merge all sections into final workflow
+    this.progressCallback?.('Merging all sections into final workflow...');
     const finalWorkflow = this.mergeSections(sections, name);
     console.log(`Final workflow has ${finalWorkflow.nodes.length} nodes`);
+    this.progressCallback?.(`Workflow assembled with ${finalWorkflow.nodes.length} total nodes`);
     
     // Step 5: Validate and fix connections
+    this.progressCallback?.('Validating and optimizing node connections...');
     this.validateAndFixConnections(finalWorkflow);
+    this.progressCallback?.('Workflow generation completed successfully!');
     
     return finalWorkflow;
   }
@@ -62,51 +82,102 @@ export class MultiStepWorkflowGenerator {
     const features = this.extractFeatures(prompt);
     const recommendedNodes = this.knowledgeBase.calculateRecommendedNodes(features);
     
-    const planPrompt = `Analyze this workflow request and create a detailed generation plan:
+    const planPrompt = `Analyze this workflow request and create a generation plan.
 
 Request: ${prompt}
 
-Based on the features, approximately ${recommendedNodes} nodes are recommended.
+You MUST respond with ONLY a valid JSON object (no markdown, no explanations, no text before or after).
+The JSON must follow this exact structure:
 
-Break down the workflow into logical sections based on functionality:
-1. Core workflow (main flow)
-2. Data validation & preprocessing (if needed)
-3. Main processing branches
-4. Error handling & recovery
-5. Monitoring & logging (if required)
-6. Notifications & reporting (if needed)
-
-Allocate nodes based on actual requirements, not fixed numbers.
-
-Return a JSON object with this structure:
 {
-  "totalNodes": <number>,
+  "totalNodes": 50,
   "sections": [
     {
-      "name": "section name",
-      "description": "what this section does",
-      "estimatedNodes": <number>,
-      "dependencies": ["other section names it depends on"]
+      "name": "Core Workflow",
+      "description": "Main workflow structure with triggers and basic flow",
+      "estimatedNodes": 10,
+      "dependencies": []
+    },
+    {
+      "name": "Input Validation",
+      "description": "Input validation and sanitization",
+      "estimatedNodes": 8,
+      "dependencies": ["Core Workflow"]
+    },
+    {
+      "name": "Data Processing",
+      "description": "Main data processing and transformation logic",
+      "estimatedNodes": 15,
+      "dependencies": ["Input Validation"]
+    },
+    {
+      "name": "External Integrations",
+      "description": "API calls and external service integrations",
+      "estimatedNodes": 12,
+      "dependencies": ["Data Processing"]
+    },
+    {
+      "name": "Error Handling",
+      "description": "Error handling and recovery",
+      "estimatedNodes": 5,
+      "dependencies": ["Core Workflow"]
     }
   ]
-}`;
+}
+
+Replace the numbers with appropriate estimates based on the complexity of the requested workflow.
+DO NOT include any text before or after the JSON object.`;
     
     const response = await this.provider.generateWorkflow(planPrompt, 'plan');
     
+    // Check if the provider returned an error
+    if (!response.success) {
+      console.error('Provider returned an error:', response.error);
+      // Throw the error to prevent continuing with invalid workflow
+      throw new Error(`Failed to generate plan: ${response.error || 'Unknown error'}`);
+    }
+    
     // Extract plan from response
-    if (response.success && response.workflow) {
+    if (response.workflow) {
       try {
-        // The workflow might contain the plan in description or as a string
-        let planData;
-        if (typeof response.workflow === 'string') {
-          planData = JSON.parse(response.workflow);
-        } else if (response.workflow.description) {
-          planData = JSON.parse(response.workflow.description);
-        } else {
-          // Default plan if parsing fails
-          planData = this.createDefaultPlan(features);
+        let planData: GenerationPlan;
+        
+        // If the workflow is already a valid plan object
+        if (response.workflow.totalNodes && response.workflow.sections) {
+          planData = response.workflow;
         }
-        return planData;
+        // If it's a string, try to parse it
+        else if (typeof response.workflow === 'string') {
+          planData = JSON.parse(response.workflow);
+        }
+        // If it has a description field, try to extract JSON from it
+        else if (response.workflow.description) {
+          const jsonMatch = response.workflow.description.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            planData = JSON.parse(jsonMatch[0]);
+          } else {
+            planData = JSON.parse(response.workflow.description);
+          }
+        }
+        // If it has nodes array, extract from the first node's parameters
+        else if (response.workflow.nodes && response.workflow.nodes.length > 0) {
+          const firstNode = response.workflow.nodes[0];
+          if (firstNode.parameters?.functionCode) {
+            const jsonMatch = firstNode.parameters.functionCode.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              planData = JSON.parse(jsonMatch[0]);
+            }
+          }
+        }
+        
+        // Validate the plan structure
+        if (planData && planData.totalNodes && Array.isArray(planData.sections)) {
+          return planData;
+        }
+        
+        // Default plan if parsing fails
+        console.warn('Could not extract valid plan from response, using default');
+        return this.createDefaultPlan(features);
       } catch (error) {
         console.error('Failed to parse plan, using default:', error);
         return this.createDefaultPlan(features);
@@ -184,25 +255,41 @@ Return a JSON object with this structure:
   }
   
   private async generateCoreSection(prompt: string, name: string, plan: GenerationPlan): Promise<WorkflowSection> {
-    const corePrompt = `Create the CORE section of a workflow named "${name}".
+    const corePrompt = `Generate ONLY a valid n8n workflow JSON for the CORE section of "${name}".
 
 Original request: ${prompt}
 
-This is just the CORE section with basic structure. Include:
-1. Appropriate trigger node(s)
-2. Initial validation (if needed)
-3. Main routing logic (if branching is required)
-4. Basic processing nodes
-5. Response/output nodes
-6. Basic error handling
+Generate ${plan.sections.find(s => s.name === 'Core Workflow')?.estimatedNodes || 10} nodes for the core section.
 
-Important:
-- Use proper n8n node types
-- All nodes must be connected
-- Include node IDs starting from "1"
-- This is just the foundation - other sections will add more complexity
+CRITICAL REQUIREMENTS:
+1. Return ONLY valid JSON (no markdown, no explanations)
+2. Include "nodes" array with proper n8n node types
+3. Include "connections" object linking all nodes
+4. Start node IDs from "1"
+5. All nodes MUST be connected
+6. Function nodes MUST return items as array: return [{json: data}] NOT return {json: data}
 
-Return a complete n8n workflow JSON with nodes and connections.`;
+Required structure:
+{
+  "name": "${name}",
+  "nodes": [
+    {
+      "id": "1",
+      "name": "Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [100, 100],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "1": {
+      "main": [[{"node": "2", "type": "main", "index": 0}]]
+    }
+  }
+}
+
+DO NOT include any text before or after the JSON.`;
     
     const response = await this.provider.generateWorkflow(corePrompt, `${name} - Core`);
     
@@ -228,29 +315,55 @@ Return a complete n8n workflow JSON with nodes and connections.`;
     const existingNodeCount = existingSections.reduce((sum, s) => sum + s.nodes.length, 0);
     this.nodeIdCounter = existingNodeCount + 1;
     
-    const sectionPrompt = `Expand the workflow with a new section: "${sectionPlan.name}"
+    const sectionPrompt = `Generate ONLY valid n8n workflow JSON for the "${sectionPlan.name}" section.
 
 Original request: ${originalPrompt}
-Section description: ${sectionPlan.description}
-Target nodes for this section: ${sectionPlan.estimatedNodes}
+Section: ${sectionPlan.description}
+Required nodes: EXACTLY ${sectionPlan.estimatedNodes} nodes
 
-Generate EXACTLY ${sectionPlan.estimatedNodes} nodes for this section.
-
-This section should include:
+Section requirements:
 ${this.getSectionRequirements(sectionPlan.name, sectionPlan.estimatedNodes)}
 
-Important:
-- Start node IDs from "${this.nodeIdCounter}"
-- All nodes must be properly connected within this section
-- First node should be connectable from previous sections
-- Include appropriate n8n node types
-- This is ONE section of a larger workflow
+CRITICAL REQUIREMENTS:
+1. Return ONLY valid JSON (no markdown, no text)
+2. Start node IDs from "${this.nodeIdCounter}"
+3. Generate EXACTLY ${sectionPlan.estimatedNodes} nodes
+4. All nodes MUST be connected
+5. Use proper n8n node types
+6. Function nodes MUST return items as array: return [{json: data}] NOT return {json: data}
 
-Return a complete n8n workflow JSON with nodes and connections for JUST this section.`;
+Required structure:
+{
+  "name": "${sectionPlan.name}",
+  "nodes": [
+    {
+      "id": "${this.nodeIdCounter}",
+      "name": "First Node",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [100, 100],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "${this.nodeIdCounter}": {
+      "main": [[{"node": "${this.nodeIdCounter + 1}", "type": "main", "index": 0}]]
+    }
+  }
+}
+
+DO NOT include any text before or after the JSON.`;
     
     const response = await this.provider.generateWorkflow(sectionPrompt, `${sectionPlan.name} Section`);
     
-    if (response.success && response.workflow) {
+    // Check if the provider returned an error
+    if (!response.success) {
+      console.error(`Failed to generate ${sectionPlan.name} section:`, response.error);
+      // Return a basic section as fallback
+      return this.generateBasicSection(sectionPlan.name, sectionPlan.estimatedNodes);
+    }
+    
+    if (response.workflow) {
       // Adjust node IDs to continue from existing nodes
       this.adjustNodeIds(response.workflow);
       
@@ -312,26 +425,36 @@ Return a complete n8n workflow JSON with nodes and connections for JUST this sec
   
   private adjustNodeIds(workflow: any): void {
     const idMap: { [key: string]: string } = {};
+    const nameToId: { [key: string]: string } = {};
     
-    // Update node IDs
+    // Update node IDs and create name mapping
     workflow.nodes.forEach((node: any) => {
       const oldId = node.id;
       const newId = String(this.nodeIdCounter++);
       idMap[oldId] = newId;
       node.id = newId;
+      
+      // Also map node names to new IDs
+      if (node.name) {
+        nameToId[node.name] = newId;
+      }
     });
     
     // Update connections with new IDs
     const newConnections: any = {};
-    Object.entries(workflow.connections).forEach(([nodeId, targets]: [string, any]) => {
-      const newNodeId = idMap[nodeId] || nodeId;
-      newConnections[newNodeId] = {};
+    Object.entries(workflow.connections || {}).forEach(([nodeKey, targets]: [string, any]) => {
+      // Try to resolve node key (could be ID or name)
+      const newNodeId = idMap[nodeKey] || nameToId[nodeKey] || nodeKey;
+      
+      if (!newConnections[newNodeId]) {
+        newConnections[newNodeId] = {};
+      }
       
       Object.entries(targets).forEach(([type, connections]: [string, any]) => {
         newConnections[newNodeId][type] = connections.map((connGroup: any[]) => 
           connGroup.map((conn: any) => ({
             ...conn,
-            node: idMap[conn.node] || conn.node
+            node: idMap[conn.node] || nameToId[conn.node] || conn.node
           }))
         );
       });
@@ -397,14 +520,29 @@ Return a complete n8n workflow JSON with nodes and connections for JUST this sec
   }
   
   private findEndNodes(workflow: any): string[] {
-    const hasOutgoing = new Set(Object.keys(workflow.connections || {}));
+    if (!workflow.connections || Object.keys(workflow.connections).length === 0) {
+      console.warn('No connections found in workflow section');
+      // If no connections, return the last node as end node
+      const nodes = workflow.nodes || [];
+      return nodes.length > 0 ? [nodes[nodes.length - 1].id] : [];
+    }
+    
+    const hasOutgoing = new Set(Object.keys(workflow.connections));
     const allNodes = new Set((workflow.nodes || []).map((n: any) => n.id));
     
-    return Array.from(allNodes).filter((id: any) => !hasOutgoing.has(id)) as string[];
+    const endNodes = Array.from(allNodes).filter((id: any) => !hasOutgoing.has(id)) as string[];
+    
+    // If all nodes have outgoing connections (circular), take the last node
+    if (endNodes.length === 0 && workflow.nodes && workflow.nodes.length > 0) {
+      return [workflow.nodes[workflow.nodes.length - 1].id];
+    }
+    
+    return endNodes;
   }
   
   private validateAndFixConnections(workflow: any): void {
-    const nodeMap = new Map(workflow.nodes.map((n: any) => [n.id, n]));
+    // Remove unused variable
+    // const nodeMap = new Map(workflow.nodes.map((n: any) => [n.id, n]));
     const connected = new Set<string>();
     
     // Find all connected nodes
@@ -428,7 +566,7 @@ Return a complete n8n workflow JSON with nodes and connections for JUST this sec
       // Connect disconnected nodes based on their position
       disconnected.forEach((node: any) => {
         // Find the nearest node that comes before this one
-        const prevNode = this.findNearestPreviousNode(node, workflow.nodes, workflow.connections);
+        const prevNode = this.findNearestPreviousNode(node, workflow.nodes);
         if (prevNode) {
           if (!workflow.connections[prevNode.id]) {
             workflow.connections[prevNode.id] = { main: [[]] };
@@ -443,7 +581,7 @@ Return a complete n8n workflow JSON with nodes and connections for JUST this sec
     }
   }
   
-  private findNearestPreviousNode(targetNode: any, allNodes: any[], connections: any): any {
+  private findNearestPreviousNode(targetNode: any, allNodes: any[]): any {
     // Find nodes that are positioned before (to the left of) the target node
     const candidateNodes = allNodes.filter(n => 
       n.id !== targetNode.id && 

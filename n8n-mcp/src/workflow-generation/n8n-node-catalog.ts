@@ -31,8 +31,8 @@ export const n8nNodeCatalog: Record<string, NodeDefinition> = {
     type: 'n8n-nodes-base.errorTrigger',
     category: 'trigger',
     description: 'Catches errors from other workflows',
-    commonNames: ['error trigger', 'error handler', 'exception handler'],
-    useCases: ['error handling', 'failure notifications', 'recovery workflows']
+    commonNames: ['error trigger', 'error handler', 'exception handler', 'catch errors', 'workflow errors'],
+    useCases: ['error handling', 'failure notifications', 'recovery workflows', 'error monitoring']
   },
   'n8n-nodes-base.manualTrigger': {
     type: 'n8n-nodes-base.manualTrigger',
@@ -43,12 +43,12 @@ export const n8nNodeCatalog: Record<string, NodeDefinition> = {
   },
 
   // Communication Nodes
-  'n8n-nodes-base.emailSend': {
-    type: 'n8n-nodes-base.emailSend',
+  'n8n-nodes-base.sendEmail': {
+    type: 'n8n-nodes-base.sendEmail',
     category: 'communication',
-    description: 'Send emails',
-    commonNames: ['email', 'send email', 'mail', 'notification email', 'alert email'],
-    useCases: ['email notifications', 'alerts', 'reports', 'confirmations']
+    description: 'Send emails with SMTP',
+    commonNames: ['email', 'send email', 'mail', 'notification email', 'alert email', 'smtp email', 'email report', 'email alert'],
+    useCases: ['email notifications', 'alerts', 'reports', 'confirmations', 'daily reports', 'error notifications']
   },
   'n8n-nodes-base.slack': {
     type: 'n8n-nodes-base.slack',
@@ -70,6 +70,13 @@ export const n8nNodeCatalog: Record<string, NodeDefinition> = {
     description: 'SMS and voice calls',
     commonNames: ['sms', 'text message', 'twilio', 'phone', 'call'],
     useCases: ['sms notifications', 'phone calls', 'two-factor auth', 'urgent alerts']
+  },
+  'n8n-nodes-base.whatsappBusiness': {
+    type: 'n8n-nodes-base.whatsappBusiness',
+    category: 'communication',
+    description: 'WhatsApp Business messaging',
+    commonNames: ['whatsapp', 'whatsapp business', 'whatsapp message', 'whatsapp notification'],
+    useCases: ['customer messaging', 'business notifications', 'support messages', 'order updates', 'maintenance alerts']
   },
   'n8n-nodes-base.discord': {
     type: 'n8n-nodes-base.discord',
@@ -147,8 +154,8 @@ export const n8nNodeCatalog: Record<string, NodeDefinition> = {
     type: 'n8n-nodes-base.httpRequest',
     category: 'http',
     description: 'Make HTTP requests',
-    commonNames: ['http', 'api', 'rest', 'request', 'fetch', 'call api', 'web request'],
-    useCases: ['api calls', 'webhooks', 'rest apis', 'data fetching', 'external services']
+    commonNames: ['http', 'api', 'rest', 'request', 'fetch', 'call api', 'web request', 'record', 'log', 'store', 'save', 'update', 'track', 'archive'],
+    useCases: ['api calls', 'webhooks', 'rest apis', 'data fetching', 'external services', 'record data', 'log events', 'store information', 'save records', 'update systems', 'track metrics', 'archive data']
   },
   'n8n-nodes-base.respondToWebhook': {
     type: 'n8n-nodes-base.respondToWebhook',
@@ -185,7 +192,7 @@ export const n8nNodeCatalog: Record<string, NodeDefinition> = {
     category: 'database',
     description: 'MongoDB operations',
     commonNames: ['mongodb', 'mongo', 'nosql', 'document db'],
-    useCases: ['nosql operations', 'document storage', 'json data', 'flexible schemas']
+    useCases: ['nosql operations', 'document storage', 'json data', 'flexible schemas', 'database operations']
   },
   'n8n-nodes-base.redis': {
     type: 'n8n-nodes-base.redis',
@@ -195,6 +202,15 @@ export const n8nNodeCatalog: Record<string, NodeDefinition> = {
     useCases: ['caching', 'session storage', 'pub/sub', 'rate limiting']
   },
 
+  // Storage & Sheets
+  'n8n-nodes-base.airtable': {
+    type: 'n8n-nodes-base.airtable',
+    category: 'storage',
+    description: 'Airtable database operations',
+    commonNames: ['airtable', 'database', 'record', 'table', 'store'],
+    useCases: ['structured data', 'record management', 'database operations', 'data storage']
+  },
+  
   // File Operations
   'n8n-nodes-base.readBinaryFile': {
     type: 'n8n-nodes-base.readBinaryFile',
@@ -301,12 +317,31 @@ export function findBestNode(description: string): NodeDefinition | null {
   let bestMatch: NodeDefinition | null = null;
   let highestScore = 0;
 
+  // Special handling for common patterns
+  if (lower.includes('error trigger') || lower.includes('catch error') || lower.includes('error handling')) {
+    return n8nNodeCatalog['n8n-nodes-base.errorTrigger'];
+  }
+  
+  if ((lower.includes('email') || lower.includes('mail')) && 
+      (lower.includes('send') || lower.includes('alert') || lower.includes('notify') || lower.includes('report'))) {
+    return n8nNodeCatalog['n8n-nodes-base.sendEmail'];
+  }
+  
+  // Prefer HTTP Request for record/log/store operations unless database is explicitly mentioned
+  if ((lower.includes('record') || lower.includes('log') || lower.includes('store') || 
+       lower.includes('save') || lower.includes('archive') || lower.includes('track')) &&
+      !lower.includes('database') && !lower.includes('mongodb') && !lower.includes('sql')) {
+    return n8nNodeCatalog['n8n-nodes-base.httpRequest'];
+  }
+
   for (const [nodeType, nodeDef] of Object.entries(n8nNodeCatalog)) {
     let score = 0;
 
-    // Check common names
+    // Check common names (higher weight for exact matches)
     for (const name of nodeDef.commonNames) {
-      if (lower.includes(name)) {
+      if (lower === name) {
+        score += 20; // Exact match
+      } else if (lower.includes(name)) {
         score += 10;
       }
     }

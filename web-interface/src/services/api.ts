@@ -123,15 +123,45 @@ const createMCPAutomation = async (platform: string, data: any) => {
         
         const generationResponse = await api.post('/n8n/tools/n8n_generate_workflow', generatePayload)
         
+        console.log('Generation response:', generationResponse.data)
+        
         // Check if generation was successful
         if (!generationResponse.data.success) {
           throw new Error(generationResponse.data.error || 'Failed to generate workflow')
         }
         
-        // Extract the generated workflow data - it's in data property, not result
-        const generatedWorkflow = generationResponse.data.data?.workflow || generationResponse.data.result
+        // Extract the generated workflow data and user configuration
+        const generatedData = generationResponse.data.data
+        const generatedWorkflow = generatedData?.workflow
+        const userConfiguration = generatedData?.userConfiguration
         
-        // Now create the workflow with the generated data
+        // Validate that we have a workflow
+        if (!generatedWorkflow || !generatedWorkflow.nodes || generatedWorkflow.nodes.length === 0) {
+          console.error('Invalid workflow structure:', generatedWorkflow)
+          throw new Error('Generated workflow is empty or invalid')
+        }
+        
+        console.log('User configuration:', userConfiguration)
+        
+        // Check if user configuration is required
+        if (userConfiguration?.hasRequiredValues) {
+          // Return the generation response with userConfiguration flag
+          return {
+            data: {
+              success: true,
+              requiresConfiguration: true,
+              workflow: generatedWorkflow,
+              userConfiguration: userConfiguration,
+              generationData: {
+                name: data.name,
+                provider: generatedData?.provider,
+                usage: generatedData?.usage
+              }
+            }
+          }
+        }
+        
+        // If no configuration required, create the workflow directly
         const workflowData = {
           name: generatedWorkflow.name || data.name,
           nodes: generatedWorkflow.nodes,
@@ -194,26 +224,47 @@ export const createAutomation = async (data: {
   // If platform is specified, use MCP-specific endpoint
   if (data.platform) {
     const response = await createMCPAutomation(data.platform, data)
-    // Normalize response structure
-    if (response.data.success) {
-      return {
-        success: true,
-        result: response.data.data || response.data.result || response.data
-      }
-    }
+    // Return the response data directly to preserve the structure
     return response.data
   }
   
   // Otherwise, use n8n as default platform
   const response = await createMCPAutomation('n8n', data)
-  // Normalize response structure
-  if (response.data.success) {
-    return {
-      success: true,
-      result: response.data.data || response.data.result || response.data
-    }
-  }
+  // Return the response data directly to preserve the structure
   return response.data
+}
+
+// Create workflow with user configuration values
+export const createWorkflowWithConfiguration = async (workflow: any, configValues: Record<string, any>) => {
+  // Update the workflow nodes directly with user-provided values
+  const updatedWorkflow = { ...workflow }
+  
+  // Update each node with the corresponding configuration values
+  updatedWorkflow.nodes = workflow.nodes.map((node: any) => {
+    const updatedNode = { ...node, parameters: { ...node.parameters } }
+    
+    // Check if there are configuration values for this node
+    Object.entries(configValues).forEach(([key, value]) => {
+      const [nodeId, paramName] = key.split('.')
+      if (nodeId === node.id && value) {
+        // Update the parameter value
+        updatedNode.parameters[paramName] = value
+      }
+    })
+    
+    return updatedNode
+  })
+  
+  // Now create the workflow with the updated configuration
+  const workflowData = {
+    name: updatedWorkflow.name,
+    nodes: updatedWorkflow.nodes,
+    connections: updatedWorkflow.connections,
+    settings: updatedWorkflow.settings || {},
+    active: false
+  }
+  
+  return api.post('/n8n/tools/n8n_create_workflow', workflowData)
 }
 
 export const listAutomations = async (platform?: string) => {

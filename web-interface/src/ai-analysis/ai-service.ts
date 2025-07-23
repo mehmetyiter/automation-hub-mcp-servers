@@ -64,7 +64,7 @@ export class AIService {
       throw new Error('AI API key not configured. Please set VITE_AI_API_KEY in your environment.');
     }
 
-    if (this.provider === 'anthropic') {
+    if (this.provider === 'claude') {
       return await this.callClaude(prompt, apiKey);
     } else if (this.provider === 'openai') {
       return await this.callOpenAI(prompt, apiKey);
@@ -118,7 +118,7 @@ export class AIService {
           role: 'user',
           content: prompt
         }],
-        max_tokens: 4000,
+        max_tokens: 3200,
         temperature: 0.3
       })
     });

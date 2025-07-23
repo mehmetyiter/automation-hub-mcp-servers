@@ -37,7 +37,7 @@ export interface AIResponse {
 
 export interface AIProviderInterface {
   name: AIProvider;
-  generateWorkflow(prompt: string, name: string): Promise<any>;
+  generateWorkflow(prompt: string, name: string, learningContext?: any): Promise<any>;
   testConnection(): Promise<boolean>;
   getModels(): Promise<string[]>;
   chat?(messages: any[]): Promise<any>;

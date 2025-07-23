@@ -5,8 +5,8 @@ import fetch from 'node-fetch';
 export class GeminiProvider extends BaseAIProvider {
   name: AIProvider = 'gemini';
 
-  async generateWorkflow(prompt: string, name: string): Promise<any> {
-    const systemPrompt = this.buildSystemPrompt();
+  async generateWorkflow(prompt: string, name: string, learningContext?: any): Promise<any> {
+    const systemPrompt = this.buildSystemPrompt(learningContext);
     const fullPrompt = `${systemPrompt}\n\nCreate an n8n workflow named "${name}" for: ${prompt}`;
 
     try {
@@ -44,6 +44,21 @@ export class GeminiProvider extends BaseAIProvider {
       // Extract the generated text
       const content = data.candidates[0].content.parts[0].text;
       const workflow = this.parseAIResponse(content);
+
+      // Special handling for plan generation
+      if (name === 'plan' && workflow.totalNodes && workflow.sections) {
+        // This is a valid plan structure, not a workflow
+        return {
+          success: true,
+          workflow,
+          usage: {
+            promptTokens: data.usageMetadata?.promptTokenCount || 0,
+            completionTokens: data.usageMetadata?.candidatesTokenCount || 0,
+            totalTokens: data.usageMetadata?.totalTokenCount || 0
+          },
+          provider: this.name
+        };
+      }
 
       if (!this.validateWorkflowStructure(workflow)) {
         throw new Error('Generated workflow has invalid structure');

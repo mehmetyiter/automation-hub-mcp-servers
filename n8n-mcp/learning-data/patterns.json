@@ -1,0 +1,32 @@
+[
+  {
+    "type": "validation",
+    "frequency": 22,
+    "successRate": 0,
+    "commonConfigurations": [],
+    "commonErrors": [
+      "Disconnected nodes"
+    ]
+  },
+  {
+    "type": "structure_branching",
+    "frequency": 11,
+    "successRate": 0.7,
+    "commonConfigurations": [],
+    "commonErrors": []
+  },
+  {
+    "type": "structure_loop",
+    "frequency": 1,
+    "successRate": 0.7,
+    "commonConfigurations": [],
+    "commonErrors": []
+  },
+  {
+    "type": "structure_complex",
+    "frequency": 6,
+    "successRate": 0.7,
+    "commonConfigurations": [],
+    "commonErrors": []
+  }
+]

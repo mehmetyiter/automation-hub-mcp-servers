@@ -2,7 +2,12 @@ import express from 'express';
 import cors from 'cors';
 import { N8nClient } from './n8n-client.js';
 import { AIWorkflowGeneratorV2 } from './ai-workflow-generator-v2.js';
+import { AIWorkflowGeneratorV3 } from './ai-workflow-generator-v3.js';
+import { FeedbackCollector } from './learning/feedback-collector.js';
+import { LearningEngine } from './learning/learning-engine.js';
+import { WorkflowValidator } from './validation/workflow-validator.js';
 import aiProvidersRouter from './routes/ai-providers.js';
+import { cleanWorkflow } from './utils/json-cleaner.js';
 import dotenv from 'dotenv';
 import fetch from 'node-fetch';
 
@@ -15,6 +20,11 @@ const n8nClient = new N8nClient({
   apiKey: process.env.N8N_API_KEY || '',
   baseUrl: process.env.N8N_BASE_URL || 'http://localhost:5678'
 });
+
+// Initialize learning system
+const learningEngine = new LearningEngine();
+const feedbackCollector = new FeedbackCollector(learningEngine);
+const validator = new WorkflowValidator(feedbackCollector);
 
 app.use(cors());
 app.use(express.json());
@@ -333,8 +343,25 @@ app.post('/tools/n8n_generate_workflow', async (req, res) => {
       return;
     }
     
-    console.log('Creating AI workflow generator V2...');
-    const generator = new AIWorkflowGeneratorV2(generatorOptions);
+    // Use V3 generator with learning capabilities
+    const useV3 = process.env.USE_LEARNING_ENGINE !== 'false';
+    
+    // Track progress messages
+    const progressMessages: string[] = [];
+    
+    // Add progress callback to generator options
+    const generatorOptionsWithProgress = {
+      ...generatorOptions,
+      progressCallback: (message: string) => {
+        progressMessages.push(message);
+        console.log(`Progress: ${message}`);
+      }
+    };
+    
+    console.log(`Creating AI workflow generator ${useV3 ? 'V3 (with learning)' : 'V2'}...`);
+    const generator = useV3 
+      ? new AIWorkflowGeneratorV3(generatorOptionsWithProgress)
+      : new AIWorkflowGeneratorV2(generatorOptionsWithProgress);
     
     console.log('Calling generateFromPrompt...');
     const startTime = Date.now();
@@ -369,12 +396,32 @@ app.post('/tools/n8n_generate_workflow', async (req, res) => {
       return;
     }
     
+    // Clean circular references before sending response
+    const cleanedWorkflow = cleanWorkflow(result.workflow);
+    
+    // Debug: Save the cleaned workflow to check its structure
+    try {
+      const fs = await import('fs/promises');
+      await fs.writeFile(
+        '/tmp/cleaned-workflow.json', 
+        JSON.stringify(cleanedWorkflow, null, 2)
+      );
+      console.log('Cleaned workflow saved to /tmp/cleaned-workflow.json');
+      console.log(`Workflow stats: ${cleanedWorkflow?.nodes?.length || 0} nodes, ${Object.keys(cleanedWorkflow?.connections || {}).length} connections`);
+    } catch (err) {
+      console.error('Failed to save debug workflow:', err);
+    }
+    
     const response = {
       success: true,
       data: {
-        workflow: result.workflow,
+        workflow: cleanedWorkflow,
         provider: result.provider,
-        usage: result.usage
+        usage: result.usage,
+        // Include user configuration requirements if any
+        userConfiguration: cleanedWorkflow?.meta?.userConfigurationRequired || null,
+        // Include progress messages for frontend display
+        progressMessages: progressMessages
       }
     };
     
@@ -572,22 +619,162 @@ app.post('/api/ai-analysis/feedback', async (req, res) => {
       return;
     }
     
-    // Mock feedback submission
-    const feedback = {
-      id: Date.now().toString(),
-      workflow_id,
-      feedback_type,
-      rating,
-      comments: comments || '',
-      metadata: metadata || {},
-      created_at: new Date().toISOString(),
-      user_id: 'anonymous' // In real implementation, get from auth
-    };
+    // Submit feedback to learning engine
+    await feedbackCollector.collectFeedback({
+      workflowId: workflow_id,
+      workflowType: feedback_type,
+      outcome: rating >= 4 ? 'success' : rating <= 2 ? 'failure' : 'partial',
+      userRating: rating,
+      improvements: comments ? [comments] : [],
+      prompt: metadata?.prompt || '',
+      nodeCount: metadata?.nodeCount || 0
+    });
+    
+    // Get feedback summary
+    const summary = await feedbackCollector.getWorkflowFeedbackSummary(workflow_id);
     
     res.status(201).json({
       success: true,
-      feedback,
-      message: 'Feedback submitted successfully'
+      feedback: {
+        id: Date.now().toString(),
+        workflow_id,
+        feedback_type,
+        rating,
+        comments: comments || '',
+        metadata: metadata || {},
+        created_at: new Date().toISOString()
+      },
+      summary,
+      message: 'Feedback submitted successfully and learning system updated'
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// New endpoint for workflow execution feedback
+app.post('/api/learning/execution-result', async (req, res) => {
+  try {
+    const { workflow_id, success, execution_time, error, node_executions } = req.body;
+    
+    if (!workflow_id || success === undefined || !execution_time) {
+      res.status(400).json({ 
+        error: 'workflow_id, success, and execution_time are required' 
+      });
+      return;
+    }
+    
+    await feedbackCollector.collectWorkflowExecutionResult(workflow_id, {
+      success,
+      executionTime: execution_time,
+      error,
+      nodeExecutions: node_executions
+    });
+    
+    res.json({
+      success: true,
+      message: 'Execution result recorded successfully'
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get learning insights for a prompt
+app.post('/api/learning/insights', async (req, res) => {
+  try {
+    const { prompt } = req.body;
+    
+    if (!prompt) {
+      res.status(400).json({ error: 'prompt is required' });
+      return;
+    }
+    
+    const context = await learningEngine.getLearningContext(prompt);
+    
+    res.json({
+      success: true,
+      insights: {
+        similar_workflows: context.similarWorkflows.length,
+        common_patterns: context.commonPatterns,
+        errors_to_avoid: context.avoidErrors,
+        best_practices: context.bestPractices
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Validate workflow endpoint
+app.post('/api/validation/validate-workflow', async (req, res) => {
+  try {
+    const { workflow, workflowId } = req.body;
+    
+    if (!workflow) {
+      res.status(400).json({ error: 'workflow is required' });
+      return;
+    }
+    
+    const validationResult = await validator.validateWorkflow(workflow, workflowId);
+    
+    res.json({
+      success: true,
+      validation: validationResult,
+      summary: {
+        isValid: validationResult.isValid,
+        errorCount: validationResult.issues.length,
+        warningCount: validationResult.warnings.length,
+        nodeCount: validationResult.nodeStats.total,
+        invalidNodes: validationResult.issues
+          .filter(i => i.issueType === 'invalid_node_type')
+          .map(i => ({ name: i.nodeName, suggestion: i.suggestion }))
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Validate and fix workflow endpoint
+app.post('/api/validation/fix-workflow', async (req, res) => {
+  try {
+    const { workflow } = req.body;
+    
+    if (!workflow) {
+      res.status(400).json({ error: 'workflow is required' });
+      return;
+    }
+    
+    // First validate
+    const validationResult = await validator.validateWorkflow(workflow);
+    
+    // Auto-fix issues
+    let fixedWorkflow = { ...workflow };
+    
+    for (const issue of validationResult.issues) {
+      if (issue.issueType === 'invalid_node_type' && issue.suggestion) {
+        const node = fixedWorkflow.nodes.find((n: any) => 
+          n.id === issue.nodeId || n.name === issue.nodeName
+        );
+        
+        if (node && issue.suggestion.startsWith('Use ')) {
+          const newType = issue.suggestion.replace('Use ', '').replace(' instead', '');
+          node.type = newType;
+          node.typeVersion = node.typeVersion || 1;
+        }
+      }
+    }
+    
+    // Re-validate
+    const reValidation = await validator.validateWorkflow(fixedWorkflow);
+    
+    res.json({
+      success: true,
+      original: validationResult,
+      fixed: reValidation,
+      workflow: fixedWorkflow,
+      fixedCount: validationResult.issues.length - reValidation.issues.length
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

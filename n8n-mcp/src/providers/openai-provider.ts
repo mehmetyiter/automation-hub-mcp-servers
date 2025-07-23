@@ -5,8 +5,8 @@ import fetch from 'node-fetch';
 export class OpenAIProvider extends BaseAIProvider {
   name: AIProvider = 'openai';
 
-  async generateWorkflow(prompt: string, name: string): Promise<any> {
-    const systemPrompt = this.buildSystemPrompt();
+  async generateWorkflow(prompt: string, name: string, learningContext?: any): Promise<any> {
+    const systemPrompt = this.buildSystemPrompt(learningContext);
     const userPrompt = `Create a COMPREHENSIVE n8n workflow named "${name}" that FULLY implements ALL features described below.
 
 REQUIREMENTS:
@@ -88,6 +88,17 @@ This is a PRODUCTION system - it needs CORRECT implementation!`;
 
       const content = data.choices[0].message.content;
       const workflow = this.parseAIResponse(content);
+
+      // Special handling for plan generation
+      if (name === 'plan' && workflow.totalNodes && workflow.sections) {
+        // This is a valid plan structure, not a workflow
+        return {
+          success: true,
+          workflow,
+          usage: data.usage,
+          provider: this.name
+        };
+      }
 
       if (!this.validateWorkflowStructure(workflow)) {
         throw new Error('Generated workflow has invalid structure');

@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { Wand2, Loader2, Sparkles, Mic, Type, Key, Eye, EyeOff, Shield, MessageSquare } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { createAutomation, credentialAPI } from '../services/api'
+import { createAutomation, createWorkflowWithConfiguration, credentialAPI, api } from '../services/api'
 import { PromptHelper } from '../components/PromptHelper'
 import PlatformSelector from '../components/PlatformSelector'
 import AIProviderSelector from '../components/AIProviderSelector'
 import AIPromptAssistant from '../components/AIPromptAssistant'
 import { feedbackCollector } from '../ai-analysis/feedback-collector'
+import { UserConfigurationDialog } from '../components/UserConfigurationDialog'
 
 const platformLogos = {
   n8n: '🟧',
@@ -23,6 +24,7 @@ export default function CreateAutomation() {
   const [name, setName] = useState('')
   const [platform, setPlatform] = useState<string>('n8n')
   const [isCreating, setIsCreating] = useState(false)
+  const [progressMessage, setProgressMessage] = useState('')
   const [inputMode, setInputMode] = useState<'text' | 'voice'>('text')
   const [apiKey, setApiKey] = useState('')
   const [showApiKey, setShowApiKey] = useState(false)
@@ -32,6 +34,9 @@ export default function CreateAutomation() {
   const [aiProvider, setAiProvider] = useState<string | undefined>(undefined)
   const [useUserAISettings, setUseUserAISettings] = useState(true)
   const [showAIAssistant, setShowAIAssistant] = useState(false)
+  const [showConfigDialog, setShowConfigDialog] = useState(false)
+  const [pendingWorkflow, setPendingWorkflow] = useState<any>(null)
+  const [userConfiguration, setUserConfiguration] = useState<any>(null)
 
   // Handle incoming prompt from PromptLibrary
   useEffect(() => {
@@ -74,6 +79,7 @@ export default function CreateAutomation() {
     }
 
     setIsCreating(true)
+    setProgressMessage('Analyzing your request...')
     try {
       const payload: any = {
         description,
@@ -107,7 +113,25 @@ export default function CreateAutomation() {
       const workflowId = `${platform}_${Date.now()}`;
       feedbackCollector.startTracking(workflowId, platform, 0);
       
+      // Simulate progress updates
+      setTimeout(() => setProgressMessage('Generating workflow structure...'), 1500)
+      setTimeout(() => setProgressMessage('Adding nodes and connections...'), 3000)
+      setTimeout(() => setProgressMessage('Validating workflow...'), 4500)
+      setTimeout(() => setProgressMessage('Finalizing automation...'), 6000)
+      
       const result = await createAutomation(payload)
+      
+      console.log('Create automation result:', result)
+
+      // Check if the workflow requires user configuration
+      if (result?.requiresConfiguration && result?.userConfiguration) {
+        // Store the workflow and configuration for later use
+        setPendingWorkflow(result.workflow)
+        setUserConfiguration(result.userConfiguration)
+        setShowConfigDialog(true)
+        setIsCreating(false)
+        return
+      }
 
       // Check if result has the expected structure
       if (result && (result.success || result.result)) {
@@ -140,6 +164,7 @@ export default function CreateAutomation() {
       toast.error(errorMessage)
     } finally {
       setIsCreating(false)
+      setProgressMessage('')
     }
   }
 
@@ -160,6 +185,72 @@ export default function CreateAutomation() {
     // Optionally close the assistant after prompt is used
     // setShowAIAssistant(false);
   };
+
+  const handleConfigurationConfirm = async (configValues: Record<string, any>) => {
+    if (!pendingWorkflow) return
+
+    setShowConfigDialog(false)
+    setIsCreating(true)
+
+    try {
+      const result = await createWorkflowWithConfiguration(pendingWorkflow, configValues)
+      
+      if (result.data?.success) {
+        toast.success('Automation created with your configuration!')
+        navigate('/automations')
+      } else {
+        toast.error(result.data?.error || 'Failed to create automation')
+      }
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to create automation with configuration'
+      toast.error(errorMessage)
+    } finally {
+      setIsCreating(false)
+      setPendingWorkflow(null)
+      setUserConfiguration(null)
+    }
+  }
+
+  const handleConfigurationSkip = async () => {
+    if (!pendingWorkflow) return
+
+    setShowConfigDialog(false)
+    setIsCreating(true)
+
+    try {
+      // Create the workflow without updating configuration
+      const workflowData = {
+        name: pendingWorkflow.name || name,
+        nodes: pendingWorkflow.nodes,
+        connections: pendingWorkflow.connections,
+        settings: pendingWorkflow.settings || {},
+        active: false
+      }
+      
+      const response = await api.post('/n8n/tools/n8n_create_workflow', workflowData)
+      
+      if (response.data?.success) {
+        toast.success('Automation created! Remember to update the placeholder values in n8n.')
+        navigate('/automations')
+      } else {
+        toast.error(response.data?.error || 'Failed to create automation')
+      }
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || error.message || 'Failed to create automation'
+      toast.error(errorMessage)
+    } finally {
+      setIsCreating(false)
+      setPendingWorkflow(null)
+      setUserConfiguration(null)
+    }
+  }
+
+  const handleConfigurationClose = () => {
+    setShowConfigDialog(false)
+    setIsCreating(false)
+    setPendingWorkflow(null)
+    setUserConfiguration(null)
+  }
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -465,14 +556,35 @@ export default function CreateAutomation() {
             )}
           </button>
         </div>
-      </div>
+        
+        {/* Progress Message */}
+        {isCreating && progressMessage && (
+          <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+            <div className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin text-blue-600 dark:text-blue-400" />
+              <p className="text-sm text-blue-700 dark:text-blue-300">{progressMessage}</p>
+            </div>
+          </div>
+        )}
+        </div>
         
         {/* AI Assistant */}
         {showAIAssistant && (
           <div className="lg:sticky lg:top-4">
             <AIPromptAssistant onPromptGenerated={handlePromptGenerated} />
           </div>
+        )}      
+
+        {userConfiguration && (
+          <UserConfigurationDialog
+            isOpen={showConfigDialog}
+            onClose={handleConfigurationClose}
+            onConfirm={handleConfigurationConfirm}
+            onSkip={handleConfigurationSkip}
+            configuration={userConfiguration}
+            workflowName={pendingWorkflow?.name || name}
+          />
         )}
-      </div>    
-  )
-}
+      </div>
+    )
+  }

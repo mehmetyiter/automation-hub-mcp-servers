@@ -1,5 +1,7 @@
 // workflow-generation/workflow-analyzer.ts
 
+import { WorkflowGenerationGuidelines } from './workflow-generation-guidelines.js';
+
 export interface WorkflowRequirement {
   id: string;
   name: string;
@@ -17,6 +19,8 @@ export interface WorkflowPlan {
   errorHandling: ErrorHandlingPlan;
   parallelBranches: ParallelBranch[];
   missingFeatures: string[];
+  workflowType?: string;
+  specificGuidelines?: string[];
 }
 
 export interface ConnectionPlan {
@@ -48,13 +52,43 @@ export class WorkflowAnalyzer {
     const parallelBranches = this.extractParallelBranches(prompt);
     const missingFeatures = this.findMissingFeatures(prompt, requirements);
     
+    // Analyze workflow type and get specific guidelines
+    const workflowType = this.detectWorkflowType(prompt);
+    const specificGuidelines = WorkflowGenerationGuidelines.getGuidelinesForWorkflowType(workflowType);
+    console.log(`Detected workflow type: ${workflowType}`);
+    console.log('Specific guidelines:', specificGuidelines);
+    
     return {
       requirements,
       connections,
       errorHandling,
       parallelBranches,
-      missingFeatures
+      missingFeatures,
+      workflowType,
+      specificGuidelines
     };
+  }
+  
+  private detectWorkflowType(prompt: string): string {
+    const lowerPrompt = prompt.toLowerCase();
+    
+    if (lowerPrompt.includes('monitor') || lowerPrompt.includes('sensor') || lowerPrompt.includes('real-time')) {
+      return 'monitoring';
+    }
+    if (lowerPrompt.includes('alert') || lowerPrompt.includes('notification') || lowerPrompt.includes('warning')) {
+      return 'alert';
+    }
+    if (lowerPrompt.includes('report') || lowerPrompt.includes('analytics') || lowerPrompt.includes('summary')) {
+      return 'report';
+    }
+    if (lowerPrompt.includes('sync') || lowerPrompt.includes('integration') || lowerPrompt.includes('migrate')) {
+      return 'integration';
+    }
+    if (lowerPrompt.includes('batch') || lowerPrompt.includes('schedule') || lowerPrompt.includes('periodic')) {
+      return 'batch';
+    }
+    
+    return 'automation';
   }
   
   private extractRequirements(prompt: string): WorkflowRequirement[] {

@@ -2,6 +2,11 @@ import { AIProvider, AIProviderConfig } from './types/ai-provider.js';
 import { ProviderFactory } from './providers/provider-factory.js';
 import { MultiStepWorkflowGenerator } from './generators/multi-step-generator.js';
 import { N8nKnowledgeBase } from './knowledge/n8n-capabilities.js';
+import { LearningEngine } from './learning/learning-engine.js';
+import { GenerationRecord } from './learning/types.js';
+import { WorkflowValidator } from './validation/workflow-validator.js';
+import { DirectWorkflowBuilder } from './workflow-generation/direct-workflow-builder.js';
+import { v4 as uuidv4 } from 'uuid';
 
 export interface WorkflowGenerationOptions {
   apiKey?: string;
@@ -15,6 +20,8 @@ export interface WorkflowGenerationOptions {
 export class AIWorkflowGeneratorV3 {
   private providerConfig: AIProviderConfig;
   private knowledgeBase: N8nKnowledgeBase;
+  private learningEngine: LearningEngine;
+  private validator: WorkflowValidator;
 
   constructor(options: WorkflowGenerationOptions) {
     if (!options.apiKey) {
@@ -30,6 +37,8 @@ export class AIWorkflowGeneratorV3 {
     };
     
     this.knowledgeBase = new N8nKnowledgeBase();
+    this.learningEngine = new LearningEngine();
+    this.validator = new WorkflowValidator();
   }
 
   async generateFromPrompt(prompt: string, name: string): Promise<any> {
@@ -39,13 +48,25 @@ export class AIWorkflowGeneratorV3 {
     console.log('Provider:', this.providerConfig.provider);
     console.log('Model:', this.providerConfig.model || 'default');
     
+    const generationId = uuidv4();
+    
     try {
+      // Get learning context for similar workflows
+      const learningContext = await this.learningEngine.getLearningContext(prompt);
+      console.log(`Found ${learningContext.similarWorkflows.length} similar workflows`);
+      console.log(`Common errors to avoid: ${learningContext.avoidErrors.length}`);
+      console.log(`Best practices: ${learningContext.bestPractices.length}`);
+      
+      // Enhance prompt with learning insights
+      const enhancedPrompt = await this.learningEngine.enhancePrompt(prompt, learningContext);
+      
       const provider = ProviderFactory.createProvider(this.providerConfig);
       
-      // Always use multi-step for better results
-      console.log('Using Multi-Step Generation for complex workflows...');
-      const multiStepGenerator = new MultiStepWorkflowGenerator(provider);
-      const workflow = await multiStepGenerator.generateWorkflow(prompt, name);
+      // Pass learning context and progress callback to multi-step generator
+      console.log('Using Multi-Step Generation with learning insights...');
+      const progressCallback = (this.providerConfig as any).progressCallback;
+      const multiStepGenerator = new MultiStepWorkflowGenerator(provider, learningContext, progressCallback);
+      let workflow = await multiStepGenerator.generateWorkflow(enhancedPrompt, name);
       
       // Validate the generated workflow
       if (!workflow || !workflow.nodes || workflow.nodes.length === 0) {
@@ -57,12 +78,45 @@ export class AIWorkflowGeneratorV3 {
       // Additional validation
       workflow.connections = this.validateAndFixConnections(workflow);
       
+      // Validate workflow and auto-fix issues
+      const validationResult = await this.validator.validateWorkflow(workflow, generationId);
+      console.log(`Validation result: ${validationResult.isValid ? 'VALID' : 'INVALID'}`);
+      console.log(`Found ${validationResult.issues.length} issues, ${validationResult.warnings.length} warnings`);
+      
+      // Auto-fix invalid node types if possible
+      if (!validationResult.isValid) {
+        workflow = await this.autoFixWorkflow(workflow, validationResult);
+        // Re-validate after fixes
+        const reValidation = await this.validator.validateWorkflow(workflow, generationId);
+        console.log(`After auto-fix: ${reValidation.isValid ? 'VALID' : 'STILL INVALID'}`);
+      }
+      
+      // Record generation for future learning
+      const generationRecord: GenerationRecord = {
+        id: generationId,
+        prompt: prompt,
+        workflow: workflow,
+        provider: this.providerConfig.provider,
+        model: this.providerConfig.model,
+        timestamp: new Date(),
+        nodeCount: workflow.nodes.length,
+        connectionCount: Object.keys(workflow.connections).length
+      };
+      
+      await this.learningEngine.recordGeneration(generationRecord);
+      
       return {
         success: true,
         workflow: workflow,
         provider: this.providerConfig.provider,
         method: 'multi-step-generation',
-        nodeCount: workflow.nodes.length
+        nodeCount: workflow.nodes.length,
+        generationId: generationId,
+        learningInsights: {
+          similarWorkflowsUsed: learningContext.similarWorkflows.length,
+          errorsAvoided: learningContext.avoidErrors.length,
+          bestPracticesApplied: learningContext.bestPractices.length
+        }
       };
       
     } catch (error: any) {
@@ -71,12 +125,32 @@ export class AIWorkflowGeneratorV3 {
       // Fallback to enhanced single-step generation
       try {
         console.log('Falling back to enhanced single-step generation...');
-        return await this.enhancedSingleStepGeneration(prompt, name);
+        const result = await this.enhancedSingleStepGeneration(prompt, name);
+        
+        // Still record the generation attempt
+        if (result.success && result.workflow) {
+          const generationRecord: GenerationRecord = {
+            id: generationId,
+            prompt: prompt,
+            workflow: result.workflow,
+            provider: this.providerConfig.provider,
+            model: this.providerConfig.model,
+            timestamp: new Date(),
+            nodeCount: result.workflow.nodes?.length || 0,
+            connectionCount: Object.keys(result.workflow.connections || {}).length
+          };
+          
+          await this.learningEngine.recordGeneration(generationRecord);
+          result.generationId = generationId;
+        }
+        
+        return result;
       } catch (fallbackError: any) {
         return {
           success: false,
           error: fallbackError.message || error.message,
-          provider: this.providerConfig.provider
+          provider: this.providerConfig.provider,
+          generationId: generationId
         };
       }
     }
@@ -93,6 +167,17 @@ export class AIWorkflowGeneratorV3 {
     if (result.success && result.workflow) {
       // Apply additional validation and fixes
       result.workflow = this.validateAndFixConnections(result.workflow);
+      
+      // Use DirectWorkflowBuilder to analyze user configuration requirements
+      const builder = new DirectWorkflowBuilder();
+      builder.setProvider(provider);
+      result.workflow = builder.build(result.workflow);
+      
+      // Extract user configuration if exists
+      if (result.workflow?.meta?.userConfigurationRequired) {
+        result.userConfiguration = result.workflow.meta.userConfigurationRequired;
+      }
+      
       result.method = 'enhanced-single-step';
     }
     
@@ -297,6 +382,132 @@ Remember to create an EFFICIENT workflow with necessary error handling, validati
     });
     
     return [...new Set(features)]; // Remove duplicates
+  }
+  
+  private async autoFixWorkflow(workflow: any, validationResult: any): Promise<any> {
+    console.log('Auto-fixing workflow issues...');
+    
+    // Fix invalid node types
+    for (const issue of validationResult.issues) {
+      if (issue.issueType === 'invalid_node_type' && issue.suggestion) {
+        const node = workflow.nodes.find((n: any) => 
+          n.id === issue.nodeId || n.name === issue.nodeName
+        );
+        
+        if (node && issue.suggestion.startsWith('Use ')) {
+          const newType = issue.suggestion.replace('Use ', '').replace(' instead', '');
+          console.log(`Fixing node "${node.name}": ${node.type} → ${newType}`);
+          node.type = newType;
+          
+          // Fix type version if needed
+          if (!node.typeVersion) {
+            node.typeVersion = 1;
+          }
+        }
+      }
+    }
+    
+    // Fix disconnected nodes
+    const disconnectedIssues = validationResult.issues.filter((i: any) => 
+      i.issueType === 'disconnected_node'
+    );
+    
+    if (disconnectedIssues.length > 0) {
+      console.log(`Fixing ${disconnectedIssues.length} disconnected nodes...`);
+      workflow = this.fixDisconnectedNodes(workflow, disconnectedIssues);
+    }
+    
+    // Handle credential duplications (warnings)
+    if (validationResult.credentialStats?.duplicates?.length > 0) {
+      console.log('Warning: Duplicate credentials detected:', validationResult.credentialStats.duplicates);
+      // In future, we could consolidate credentials here
+    }
+    
+    return workflow;
+  }
+
+  private fixDisconnectedNodes(workflow: any, disconnectedIssues: any[]): any {
+    const fixedWorkflow = { ...workflow };
+    
+    disconnectedIssues.forEach(issue => {
+      const node = fixedWorkflow.nodes.find((n: any) => 
+        n.name === issue.nodeName || n.id === issue.nodeId
+      );
+      if (!node) return;
+      
+      console.log(`Fixing disconnected node: ${node.name} (${node.type})`);
+      
+      // Fix disconnected trigger nodes
+      if (node.type && (node.type.includes('cron') || node.type.includes('trigger') || 
+          node.type.includes('webhook'))) {
+        // Find the first function/processing node
+        const targetNode = fixedWorkflow.nodes.find((n: any) => 
+          (n.type === 'n8n-nodes-base.function' || 
+           n.type === 'n8n-nodes-base.switch' ||
+           n.type === 'n8n-nodes-base.if') &&
+          n.name !== node.name
+        );
+        
+        if (targetNode) {
+          if (!fixedWorkflow.connections[node.name]) {
+            fixedWorkflow.connections[node.name] = { main: [[]] };
+          }
+          fixedWorkflow.connections[node.name].main[0] = [{
+            node: targetNode.name,
+            type: 'main',
+            index: 0
+          }];
+          console.log(`  Connected trigger "${node.name}" to "${targetNode.name}"`);
+        }
+      }
+      
+      // Fix disconnected error handler nodes
+      if (node.type === 'n8n-nodes-base.errorTrigger' || 
+          (node.name && node.name.toLowerCase().includes('error'))) {
+        // Find error notification or email node
+        const notificationNode = fixedWorkflow.nodes.find((n: any) => 
+          n.name !== node.name &&
+          (n.name.toLowerCase().includes('error') && 
+           (n.name.toLowerCase().includes('notification') || 
+            n.name.toLowerCase().includes('email') ||
+            n.type.includes('sendEmail')))
+        );
+        
+        if (notificationNode) {
+          if (!fixedWorkflow.connections[node.name]) {
+            fixedWorkflow.connections[node.name] = { main: [[]] };
+          }
+          fixedWorkflow.connections[node.name].main[0] = [{
+            node: notificationNode.name,
+            type: 'main',
+            index: 0
+          }];
+          console.log(`  Connected error handler "${node.name}" to "${notificationNode.name}"`);
+        }
+      }
+      
+      // Fix other disconnected nodes based on position
+      if (!node.type?.includes('trigger') && !node.type?.includes('errorTrigger')) {
+        const parentNode = this.findSuitableParent(node, fixedWorkflow.nodes, fixedWorkflow.connections);
+        if (parentNode) {
+          const parentName = parentNode.name || parentNode.id;
+          if (!fixedWorkflow.connections[parentName]) {
+            fixedWorkflow.connections[parentName] = { main: [[]] };
+          }
+          if (!fixedWorkflow.connections[parentName].main[0]) {
+            fixedWorkflow.connections[parentName].main[0] = [];
+          }
+          fixedWorkflow.connections[parentName].main[0].push({
+            node: node.name,
+            type: 'main',
+            index: 0
+          });
+          console.log(`  Connected "${node.name}" to "${parentName}"`);
+        }
+      }
+    });
+    
+    return fixedWorkflow;
   }
 
   async testConnection(): Promise<boolean> {

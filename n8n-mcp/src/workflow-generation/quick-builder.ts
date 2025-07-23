@@ -1,10 +1,17 @@
 // workflow-generation/quick-builder.ts
 
+import { NodeParameterHandler } from './node-parameter-handler.js';
+
 export class QuickWorkflowBuilder {
+  private nodeParameterHandler: NodeParameterHandler;
   private nodeSpacing = {
     horizontal: 200,
     vertical: 200
   };
+  
+  constructor() {
+    this.nodeParameterHandler = new NodeParameterHandler();
+  }
   
   build(parsed: any): any {
     console.log('QuickWorkflowBuilder: Starting to build workflow...');
@@ -159,6 +166,27 @@ export class QuickWorkflowBuilder {
   }
   
   getDefaultParameters(nodeType: string, nodeInfo: any): any {
+    // First check if we have enhanced support for this node type
+    if (this.nodeParameterHandler.hasEnhancedSupport(nodeType)) {
+      // Create a temporary node object for context
+      const tempNode = {
+        id: '1',
+        type: nodeType,
+        name: nodeInfo.name || '',
+        typeVersion: 1,
+        position: [0, 0] as [number, number],
+        parameters: {}
+      };
+      
+      // Get intelligent parameters based on context
+      const intelligentParams = this.nodeParameterHandler.getIntelligentParameters(tempNode);
+      if (Object.keys(intelligentParams).length > 0) {
+        console.log(`  Using intelligent parameters for ${nodeType}:`, intelligentParams);
+        return intelligentParams;
+      }
+    }
+    
+    // Fall back to traditional switch-based defaults
     switch (nodeType) {
       case 'n8n-nodes-base.webhook':
         return { 
@@ -182,6 +210,8 @@ export class QuickWorkflowBuilder {
         
       case 'n8n-nodes-base.twilio':
         return {
+          operation: 'sms',
+          from: '={{$credentials.fromNumber}}',
           to: '={{$json.phone}}',
           message: '={{$json.message}}',
           options: {}

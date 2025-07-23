@@ -1,8 +1,15 @@
 // workflow-generation/quick-parser.ts
 
 import { findBestNode } from './n8n-node-catalog.js';
+import { SemanticNodeMatcher } from './semantic-node-matcher.js';
 
 export class QuickPromptParser {
+  private semanticMatcher: SemanticNodeMatcher;
+
+  constructor() {
+    this.semanticMatcher = new SemanticNodeMatcher();
+  }
+
   parse(detailedPrompt: string): any {
     console.log('QuickPromptParser: Starting to parse prompt...');
     
@@ -188,14 +195,25 @@ export class QuickPromptParser {
   }
   
   private guessNodeType(nodeText: string): string {
-    // First try the intelligent catalog-based matching
+    // First try semantic matching for intelligent node selection
+    const semanticMatch = this.semanticMatcher.findBestNodeType(nodeText);
+    if (semanticMatch.confidence > 0.5) {
+      console.log(`    Semantic match: "${nodeText}" -> ${semanticMatch.nodeType} (confidence: ${semanticMatch.confidence.toFixed(2)})`);
+      console.log(`      Reasoning: ${semanticMatch.reasoning}`);
+      if (semanticMatch.alternativeNodes && semanticMatch.alternativeNodes.length > 0) {
+        console.log(`      Alternatives: ${semanticMatch.alternativeNodes.join(', ')}`);
+      }
+      return semanticMatch.nodeType;
+    }
+    
+    // Fallback to catalog-based matching
     const bestMatch = findBestNode(nodeText);
     if (bestMatch) {
       console.log(`    Catalog match: "${nodeText}" -> ${bestMatch.type} (${bestMatch.category})`);
       return bestMatch.type;
     }
     
-    // Fallback to basic pattern matching for edge cases
+    // Final fallback to basic pattern matching for edge cases
     const lower = nodeText.toLowerCase();
     
     // Special cases that might not match well with catalog
@@ -207,8 +225,14 @@ export class QuickPromptParser {
       return 'n8n-nodes-base.merge';
     }
     
+    // Check if semantic match had low confidence alternatives
+    if (semanticMatch.alternativeNodes && semanticMatch.alternativeNodes.length > 0) {
+      console.log(`    Using low-confidence semantic match: ${semanticMatch.nodeType} (confidence: ${semanticMatch.confidence.toFixed(2)})`);
+      return semanticMatch.nodeType;
+    }
+    
     // Default to function node for complex operations
-    console.log(`    No catalog match for: "${nodeText}", using function node`);
+    console.log(`    No confident match for: "${nodeText}", using function node`);
     return 'n8n-nodes-base.function';
   }
 }

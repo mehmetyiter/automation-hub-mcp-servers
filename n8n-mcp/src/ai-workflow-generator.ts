@@ -827,28 +827,32 @@ Important:
       
       // Find the most logical previous node based on naming/position
       if (nodeName.includes('final') || nodeName.includes('merge')) {
-        // Final merge nodes should receive connections from all branch endpoints
-        const branchEndNodes = nodes.filter(n => {
+        // IMPORTANT: Only connect nodes that actually need data aggregation
+        // DON'T automatically connect all endpoints to merge!
+        const dataProcessingNodes = nodes.filter(n => {
           const nName = n.name.toLowerCase();
-          // Find nodes that are likely endpoints of branches
-          return (nName.includes('send') || nName.includes('complete') || 
-                  nName.includes('finish') || nName.includes('create')) &&
+          // Only connect nodes that produce data to be aggregated
+          return (nName.includes('aggregate') || nName.includes('collect') || 
+                  nName.includes('gather') || nName.includes('combine') ||
+                  nName.includes('summarize') || nName.includes('report') && nName.includes('data')) &&
                  !nName.includes('error') && n.id !== node.id;
         });
         
-        if (branchEndNodes.length > 0) {
-          // Connect all branch endpoints to the final merge
-          branchEndNodes.forEach(endNode => {
-            if (!fixedConnections[endNode.name]) {
-              fixedConnections[endNode.name] = { main: [[]] };
+        if (dataProcessingNodes.length > 0) {
+          // Only connect data processing nodes that need aggregation
+          dataProcessingNodes.forEach(dataNode => {
+            if (!fixedConnections[dataNode.name]) {
+              fixedConnections[dataNode.name] = { main: [[]] };
             }
-            fixedConnections[endNode.name].main[0].push({
+            fixedConnections[dataNode.name].main[0].push({
               node: node.name,
               type: 'main',
               index: 0
             });
-            console.log(`Connected ${endNode.name} -> ${node.name} (Final Merge)`);
+            console.log(`Connected ${dataNode.name} -> ${node.name} (Data Aggregation)`);
           });
+        } else {
+          console.log(`Merge node "${node.name}" has no data to aggregate - consider removing it`);
         }
       } else if (nodeName.includes('error') || nodeName.includes('handling')) {
         // Connect error handling nodes to their branch's last node
@@ -873,30 +877,39 @@ Important:
           console.log(`Connected ${lastBranchNode.name} -> ${node.name}`);
         }
       } else if (node.type === 'n8n-nodes-base.merge') {
-        // Find nodes that should connect to this merge node
-        const branchesToMerge = nodes.filter(n => {
+        // Only connect nodes that actually produce data to be merged
+        // According to guidelines: "Use merge nodes ONLY when data aggregation is needed"
+        const dataSourceNodes = nodes.filter(n => {
           const nName = n.name.toLowerCase();
-          return (nName.includes('final') || nName.includes('complete') || 
-                  nName.includes('done')) && n.id !== node.id;
+          // Only nodes that gather/produce data for aggregation
+          return (nName.includes('fetch') && nName.includes('data') || 
+                  nName.includes('get') && nName.includes('data') ||
+                  nName.includes('collect') || nName.includes('aggregate') ||
+                  nName.includes('query') || nName.includes('extract')) && 
+                 n.id !== node.id;
         });
         
-        branchesToMerge.forEach(branchNode => {
-          if (!fixedConnections[branchNode.name]) {
-            fixedConnections[branchNode.name] = { main: [[]] };
-          }
-          if (!fixedConnections[branchNode.name].main) {
-            fixedConnections[branchNode.name].main = [[]];
-          }
-          if (!Array.isArray(fixedConnections[branchNode.name].main[0])) {
-            fixedConnections[branchNode.name].main[0] = [];
-          }
-          fixedConnections[branchNode.name].main[0].push({
-            node: node.name,
-            type: 'main',
-            index: 0
+        if (dataSourceNodes.length > 0) {
+          dataSourceNodes.forEach(dataNode => {
+            if (!fixedConnections[dataNode.name]) {
+              fixedConnections[dataNode.name] = { main: [[]] };
+            }
+            if (!fixedConnections[dataNode.name].main) {
+              fixedConnections[dataNode.name].main = [[]];
+            }
+            if (!Array.isArray(fixedConnections[dataNode.name].main[0])) {
+              fixedConnections[dataNode.name].main[0] = [];
+            }
+            fixedConnections[dataNode.name].main[0].push({
+              node: node.name,
+              type: 'main',
+              index: 0
+            });
+            console.log(`Connected ${dataNode.name} -> ${node.name} (For Data Merging)`);
           });
-          console.log(`Connected ${branchNode.name} -> ${node.name}`);
-        });
+        } else {
+          console.log(`WARNING: Merge node "${node.name}" found but no data sources to merge`);
+        }
       }
     });
     
@@ -909,7 +922,7 @@ Important:
       case 'n8n-nodes-base.set':
         if (!node.parameters) node.parameters = {};
         if (!node.parameters.mode) node.parameters.mode = 'manual';
-        if (!node.parameters.values) node.parameters.values = { values: [] };
+        if (!node.parameters.values) node.parameters.values = { string: [] };
         break;
         
       case 'n8n-nodes-base.code':
@@ -1461,6 +1474,10 @@ CRITICAL: Nodes must NOT have a "main" property. All connections must be in the 
   }
   
   private getSystemPrompt(): string {
+    // Import workflow generation guidelines
+    const { WorkflowGenerationGuidelines } = require('./workflow-generation/workflow-generation-guidelines.js');
+    const enhancedGuidelines = WorkflowGenerationGuidelines.generatePromptEnhancement();
+    
     let additionalGuidelines = '';
     if (this.trainingData?.patterns) {
       additionalGuidelines = `\n\nIMPORTANT LEARNINGS FROM PAST WORKFLOWS:\n`;
@@ -1474,6 +1491,8 @@ CRITICAL: Nodes must NOT have a "main" property. All connections must be in the 
     }
 
     return `You are an n8n workflow expert. Generate complete, production-ready n8n workflows.
+
+${enhancedGuidelines}
 
 🚨 CRITICAL ORCHESTRATION REQUIREMENT 🚨
 For workflows with multiple features/sections:

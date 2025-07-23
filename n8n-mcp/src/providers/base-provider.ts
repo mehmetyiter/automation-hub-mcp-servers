@@ -1,6 +1,7 @@
 import { AIProvider, AIProviderConfig, AIProviderInterface } from '../types/ai-provider.js';
 import * as fs from 'fs';
 import * as path from 'path';
+import { WorkflowGenerationGuidelines } from '../workflow-generation/workflow-generation-guidelines.js';
 
 export abstract class BaseAIProvider implements AIProviderInterface {
   protected config: AIProviderConfig;
@@ -25,16 +26,47 @@ export abstract class BaseAIProvider implements AIProviderInterface {
     }
   }
 
-  abstract generateWorkflow(prompt: string, name: string): Promise<any>;
+  abstract generateWorkflow(prompt: string, name: string, learningContext?: any): Promise<any>;
   abstract testConnection(): Promise<boolean>;
   abstract getModels(): Promise<string[]>;
 
-  protected buildSystemPrompt(): string {
+  protected buildSystemPrompt(learningContext?: any): string {
+    // Get workflow generation guidelines
+    const enhancedGuidelines = WorkflowGenerationGuidelines.generatePromptEnhancement();
+    
     const universalPrinciples = this.trainingData?.universal_workflow_principles || {};
+    
+    // Add learning insights if available
+    let learningInsights = '';
+    if (learningContext) {
+      if (learningContext.avoidErrors?.length > 0) {
+        learningInsights += '\n\n🚨 AVOID THESE COMMON ERRORS (from learning system):\n';
+        learningContext.avoidErrors.forEach((error: string, index: number) => {
+          learningInsights += `${index + 1}. ${error}\n`;
+        });
+      }
+      
+      if (learningContext.bestPractices?.length > 0) {
+        learningInsights += '\n\n✅ APPLY THESE BEST PRACTICES (from successful workflows):\n';
+        learningContext.bestPractices.forEach((practice: string, index: number) => {
+          learningInsights += `${index + 1}. ${practice}\n`;
+        });
+      }
+      
+      if (learningContext.commonPatterns?.length > 0) {
+        learningInsights += '\n\n🎯 SUCCESSFUL PATTERNS TO CONSIDER:\n';
+        learningContext.commonPatterns.forEach((pattern: any) => {
+          learningInsights += `- ${pattern.type}: ${(pattern.successRate * 100).toFixed(0)}% success rate\n`;
+        });
+      }
+    }
     
     return `🎯 INTELLIGENT WORKFLOW GENERATION SYSTEM 🎯
     
 CREATE WORKFLOWS THAT PRECISELY MATCH THE REQUIREMENTS - NO MORE, NO LESS!
+
+${enhancedGuidelines}
+${learningInsights}
 
 CORE PRINCIPLES:
 - Use EXACTLY the nodes needed for the task
@@ -497,7 +529,7 @@ REMEMBER: Use the RIGHT number of nodes for the task!
     return !allTargetsAreMergeOrError;
   }
 
-  // New method: Ensure all branches connect to merge node
+  // New method: Ensure ONLY data aggregation branches connect to merge node
   protected ensureMergeNodeConnections(workflow: any): void {
     const mergeNodes = workflow.nodes.filter((n: any) => 
       n.type === 'n8n-nodes-base.merge'
@@ -516,20 +548,59 @@ REMEMBER: Use the RIGHT number of nodes for the task!
     
     console.log(`Checking connections to merge node "${mainMergeNode.name}"`);
     
-    // Find all branch end nodes
-    const branchEndNodes = this.findBranchEndNodes(workflow);
+    // IMPORTANT: Only connect nodes that produce data to be aggregated
+    // According to guidelines: "Use merge nodes ONLY when data aggregation is needed"
+    const dataProducingNodes = workflow.nodes.filter((n: any) => {
+      const nameLower = n.name.toLowerCase();
+      const typeLower = n.type.toLowerCase();
+      
+      // Only these types of nodes should connect to merge:
+      // 1. Nodes that fetch/collect data for aggregation
+      const isDataCollector = nameLower.includes('fetch') && nameLower.includes('data') ||
+                            nameLower.includes('get') && nameLower.includes('data') ||
+                            nameLower.includes('collect') || 
+                            nameLower.includes('query') ||
+                            nameLower.includes('extract');
+      
+      // 2. Nodes that generate reports/summaries to be combined
+      const isReportGenerator = nameLower.includes('generate') && nameLower.includes('report') ||
+                              nameLower.includes('calculate') && nameLower.includes('metrics') ||
+                              nameLower.includes('analyze') && nameLower.includes('data');
+      
+      // 3. NOT notification/action nodes
+      const isNotificationOrAction = nameLower.includes('send') || 
+                                   nameLower.includes('notify') || 
+                                   nameLower.includes('alert') ||
+                                   nameLower.includes('email') ||
+                                   nameLower.includes('sms') ||
+                                   nameLower.includes('whatsapp') ||
+                                   nameLower.includes('save') ||
+                                   nameLower.includes('store') ||
+                                   nameLower.includes('update');
+      
+      return (isDataCollector || isReportGenerator) && !isNotificationOrAction;
+    });
     
-    // Connect each branch end to merge if not already connected
-    branchEndNodes.forEach((node: any) => {
+    // Only connect data-producing nodes to merge
+    dataProducingNodes.forEach((node: any) => {
       const hasConnectionToMerge = workflow.connections[node.name]?.main?.[0]?.some(
         (conn: any) => conn.node === mainMergeNode.name
       );
       
       if (!hasConnectionToMerge && node.name !== mainMergeNode.name) {
         this.addConnection(workflow, node.name, mainMergeNode.name);
-        console.log(`Connected branch end node "${node.name}" to merge node "${mainMergeNode.name}"`);
+        console.log(`Connected data node "${node.name}" to merge node "${mainMergeNode.name}" for aggregation`);
       }
     });
+    
+    // Warn if merge node has no appropriate connections
+    const incomingConnections = Object.entries(workflow.connections).filter(([source, conns]: [string, any]) => 
+      conns.main?.[0]?.some((conn: any) => conn.node === mainMergeNode.name)
+    ).length;
+    
+    if (incomingConnections === 0) {
+      console.log(`WARNING: Merge node "${mainMergeNode.name}" has no data sources - consider removing it`);
+    }
   }
 
   // New method: Add a connection between nodes

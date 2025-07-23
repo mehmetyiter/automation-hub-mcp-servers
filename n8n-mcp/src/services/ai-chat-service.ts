@@ -239,26 +239,8 @@ Before finalizing your response, ensure:
     // Add warnings if critical elements are missing
     let enhancedContent = content;
     
-    if (missingNodes.length > 0) {
-      enhancedContent += `\n\n### ⚠️ Otomatik Sistem Uyarısı:
-Aşağıdaki önerilen node'lar yanıtta belirtilmemiş:
-${missingNodes.map(node => `- ${node}`).join('\n')}
-Bu node'ları workflow'a eklemeyi düşünebilirsiniz.`;
-    }
-    
-    // Check for error handling mention
-    if (!content.toLowerCase().includes('error') && !content.toLowerCase().includes('hata')) {
-      enhancedContent += `\n\n### ⚠️ Hata Yönetimi Uyarısı:
-Workflow'da hata yönetimi stratejisi belirtilmemiş. Error Trigger node'ları eklemeyi unutmayın.`;
-    }
-    
-    // Check for merge nodes after parallel processes
-    if (content.includes('paralel') || content.includes('parallel')) {
-      if (!content.toLowerCase().includes('merge')) {
-        enhancedContent += `\n\n### ⚠️ Merge Node Uyarısı:
-Paralel işlemlerden sonra Merge node kullanmayı unutmayın.`;
-      }
-    }
+    // Removed automatic warnings - they were adding unwanted content to prompts
+    // These warnings were being appended to AI responses and causing issues
     
     return enhancedContent;
   }

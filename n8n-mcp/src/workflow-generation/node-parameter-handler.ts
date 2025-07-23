@@ -2,6 +2,7 @@
 // Handles node-specific parameter preservation from AI responses
 
 import { n8nNode } from './workflow-builder.types.js';
+import { NodeCapabilityRegistry } from './node-capability-registry.js';
 
 export interface NodeParameterMapping {
   nodeType: string;
@@ -12,9 +13,11 @@ export interface NodeParameterMapping {
 
 export class NodeParameterHandler {
   private parameterMappings: Map<string, NodeParameterMapping>;
+  private capabilityRegistry: NodeCapabilityRegistry;
 
   constructor() {
     this.parameterMappings = new Map();
+    this.capabilityRegistry = new NodeCapabilityRegistry();
     this.initializeParameterMappings();
   }
 
@@ -90,6 +93,71 @@ export class NodeParameterHandler {
       parameterDefaults: {
         batchSize: 10,
         options: {}
+      }
+    });
+
+    // MQTT node parameters
+    this.parameterMappings.set('n8n-nodes-base.mqtt', {
+      nodeType: 'n8n-nodes-base.mqtt',
+      requiredParameters: ['broker', 'topic', 'options'],
+      parameterDefaults: {
+        broker: 'mqtt://localhost:1883',
+        topic: 'n8n/default',
+        options: {
+          qos: 1,
+          retain: false
+        }
+      }
+    });
+
+
+    // Twilio node parameters
+    this.parameterMappings.set('n8n-nodes-base.twilio', {
+      nodeType: 'n8n-nodes-base.twilio',
+      requiredParameters: ['operation', 'from', 'to', 'message'],
+      parameterDefaults: {
+        operation: 'sms',
+        from: '={{$credentials.fromNumber}}',
+        to: '',
+        message: ''
+      }
+    });
+
+    // WhatsApp Business node parameters
+    this.parameterMappings.set('n8n-nodes-base.whatsappBusiness', {
+      nodeType: 'n8n-nodes-base.whatsappBusiness',
+      requiredParameters: ['phoneNumberId', 'to', 'messageType', 'text'],
+      parameterDefaults: {
+        messageType: 'text',
+        text: ''
+      }
+    });
+
+    // Cron node parameters with proper time handling
+    this.parameterMappings.set('n8n-nodes-base.cron', {
+      nodeType: 'n8n-nodes-base.cron',
+      requiredParameters: ['triggerTimes'],
+      parameterDefaults: {
+        triggerTimes: {
+          item: [{
+            mode: 'everyMinute'
+          }]
+        }
+      },
+      parameterTransforms: {
+        // Transform common time patterns to proper cron settings
+        rule: (value: any) => {
+          const lowerValue = String(value).toLowerCase();
+          if (lowerValue.includes('hourly') || lowerValue.includes('every hour')) {
+            return { item: [{ mode: 'everyHour' }] };
+          } else if (lowerValue.includes('daily') || lowerValue.includes('every day')) {
+            return { item: [{ mode: 'everyDay', hour: 9, minute: 0 }] };
+          } else if (lowerValue.includes('weekly') || lowerValue.includes('every week')) {
+            return { item: [{ mode: 'everyWeek', hour: 9, minute: 0, weekday: 1 }] };
+          }
+          // Default to original value
+          return value;
+        }
       }
     });
 
@@ -172,43 +240,121 @@ export class NodeParameterHandler {
    * Ensure all required parameters are present for a node
    */
   public ensureNodeParameters(node: n8nNode): n8nNode {
-    const mapping = this.parameterMappings.get(node.type);
-    if (!mapping) {
-      console.log(`No parameter mapping found for node type: ${node.type}`);
-      return node;
-    }
+    // First check if we have capability registry info for this node
+    const capability = this.capabilityRegistry.getNodeCapability(node.type);
+    if (capability) {
+      // Use capability registry for nodes we have enhanced support for
+      console.log(`Using capability registry for ${node.type}`);
+      
+      // Ensure parameters object exists
+      if (!node.parameters) {
+        node.parameters = {};
+      }
 
-    // Ensure parameters object exists
-    if (!node.parameters) {
-      node.parameters = {};
-    }
+      // Get required parameters from registry
+      const requiredParams = this.capabilityRegistry.getRequiredParameters(node.type);
+      const defaults = this.capabilityRegistry.getParameterDefaults(node.type);
+      
+      // Add missing required parameters
+      const missingParams: string[] = [];
+      for (const [param, defaultValue] of Object.entries(requiredParams)) {
+        if (!(param in node.parameters)) {
+          missingParams.push(param);
+          node.parameters[param] = defaultValue || defaults[param];
+        }
+      }
 
-    // Check and add missing required parameters
-    const missingParams: string[] = [];
-    for (const param of mapping.requiredParameters) {
-      if (!(param in node.parameters)) {
-        missingParams.push(param);
-        // Add default if available
-        if (mapping.parameterDefaults && param in mapping.parameterDefaults) {
-          node.parameters[param] = mapping.parameterDefaults[param];
+      // Add any other defaults that aren't required but are useful
+      for (const [param, defaultValue] of Object.entries(defaults)) {
+        if (!(param in node.parameters)) {
+          node.parameters[param] = defaultValue;
+        }
+      }
+
+      if (missingParams.length > 0) {
+        console.log(`Added missing parameters for ${node.name} (${node.type}): ${missingParams.join(', ')}`);
+      }
+
+      // Validate parameters
+      const validation = this.capabilityRegistry.validateParameters(node.type, node.parameters);
+      if (!validation.valid) {
+        console.warn(`Parameter validation errors for ${node.name}:`, validation.errors);
+      }
+      if (validation.warnings.length > 0) {
+        console.warn(`Parameter validation warnings for ${node.name}:`, validation.warnings);
+      }
+    } else {
+      // Fall back to traditional mapping for other nodes
+      const mapping = this.parameterMappings.get(node.type);
+      if (!mapping) {
+        console.log(`No parameter mapping found for node type: ${node.type}`);
+        return node;
+      }
+
+      // Ensure parameters object exists
+      if (!node.parameters) {
+        node.parameters = {};
+      }
+
+      // Check and add missing required parameters
+      const missingParams: string[] = [];
+      for (const param of mapping.requiredParameters) {
+        if (!(param in node.parameters)) {
+          missingParams.push(param);
+          // Add default if available
+          if (mapping.parameterDefaults && param in mapping.parameterDefaults) {
+            node.parameters[param] = mapping.parameterDefaults[param];
+          }
+        }
+      }
+
+      if (missingParams.length > 0) {
+        console.log(`Added missing parameters for ${node.name} (${node.type}): ${missingParams.join(', ')}`);
+      }
+
+      // Apply any parameter transforms
+      if (mapping.parameterTransforms) {
+        for (const [param, transform] of Object.entries(mapping.parameterTransforms)) {
+          if (param in node.parameters) {
+            node.parameters[param] = transform(node.parameters[param]);
+          }
         }
       }
     }
 
-    if (missingParams.length > 0) {
-      console.log(`Added missing parameters for ${node.name} (${node.type}): ${missingParams.join(', ')}`);
-    }
-
-    // Apply any parameter transforms
-    if (mapping.parameterTransforms) {
-      for (const [param, transform] of Object.entries(mapping.parameterTransforms)) {
-        if (param in node.parameters) {
-          node.parameters[param] = transform(node.parameters[param]);
-        }
-      }
+    // Special handling for cron nodes - fix time patterns
+    if (node.type === 'n8n-nodes-base.cron') {
+      this.fixCronParameters(node);
     }
 
     return node;
+  }
+
+  /**
+   * Fix cron parameters based on node name
+   */
+  private fixCronParameters(node: n8nNode): void {
+    const nameLower = node.name.toLowerCase();
+    
+    // Check if we need to fix the schedule
+    if (node.parameters?.triggerTimes?.item?.[0]?.mode === 'everyMinute') {
+      if (nameLower.includes('hourly') || nameLower.includes('hour')) {
+        console.log(`Fixing cron schedule for ${node.name}: everyMinute -> everyHour`);
+        node.parameters.triggerTimes = {
+          item: [{ mode: 'everyHour' }]
+        };
+      } else if (nameLower.includes('daily') || nameLower.includes('day')) {
+        console.log(`Fixing cron schedule for ${node.name}: everyMinute -> everyDay`);
+        node.parameters.triggerTimes = {
+          item: [{ mode: 'everyDay', hour: 9, minute: 0 }]
+        };
+      } else if (nameLower.includes('weekly') || nameLower.includes('week')) {
+        console.log(`Fixing cron schedule for ${node.name}: everyMinute -> everyWeek`);
+        node.parameters.triggerTimes = {
+          item: [{ mode: 'everyWeek', hour: 9, minute: 0, weekday: 1 }]
+        };
+      }
+    }
   }
 
   /**
@@ -235,6 +381,23 @@ export class NodeParameterHandler {
    * Merge AI parameters with defaults, preserving AI values
    */
   public mergeParameters(nodeType: string, aiParameters: Record<string, any>): Record<string, any> {
+    // First check capability registry for enhanced support
+    const capability = this.capabilityRegistry.getNodeCapability(nodeType);
+    if (capability) {
+      // Get defaults from capability registry
+      const defaults = this.capabilityRegistry.getParameterDefaults(nodeType);
+      const merged = { ...defaults };
+      
+      // Override with AI-provided parameters
+      Object.assign(merged, aiParameters);
+      
+      // Don't add default values for user-specific parameters
+      // These should be configured by the user
+      
+      return merged;
+    }
+    
+    // Fall back to old parameter mappings
     const mapping = this.parameterMappings.get(nodeType);
     if (!mapping) {
       return aiParameters;
@@ -254,6 +417,14 @@ export class NodeParameterHandler {
    */
   public validateNodeParameters(node: n8nNode): string[] {
     const errors: string[] = [];
+    
+    // First try capability registry validation
+    const validation = this.capabilityRegistry.validateParameters(node.type, node.parameters || {});
+    if (validation.errors.length > 0) {
+      return validation.errors.map(error => `Node '${node.name}': ${error}`);
+    }
+    
+    // Fall back to old parameter mappings
     const mapping = this.parameterMappings.get(node.type);
     
     if (!mapping) {
@@ -372,6 +543,37 @@ export class NodeParameterHandler {
         };
       }
       
+      // Fix Set nodes that are trying to store arrays in string fields
+      if (node.parameters.values.string && Array.isArray(node.parameters.values.string)) {
+        const fixedValues: any = { string: [], json: [] };
+        
+        for (const item of node.parameters.values.string) {
+          // Check if the value contains an array expression
+          if (item.value && typeof item.value === 'string' && 
+              (item.value.includes('={{ [') || item.value.includes('={{[')) &&
+              item.value.includes('] }}')) {
+            // This is an array expression, move to json values
+            fixedValues.json.push({
+              name: item.name,
+              value: item.value
+            });
+            console.log(`Fixed Set node "${node.name}": moved array value "${item.name}" from string to json`);
+          } else {
+            // Keep as string value
+            fixedValues.string.push(item);
+          }
+        }
+        
+        // Copy other value types if they exist
+        if (node.parameters.values.number) fixedValues.number = node.parameters.values.number;
+        if (node.parameters.values.boolean) fixedValues.boolean = node.parameters.values.boolean;
+        if (node.parameters.values.json) {
+          fixedValues.json = [...fixedValues.json, ...node.parameters.values.json];
+        }
+        
+        node.parameters.values = fixedValues;
+      }
+      
       // Ensure options property exists
       if (!node.parameters.options) {
         node.parameters.options = {};
@@ -420,5 +622,71 @@ export class NodeParameterHandler {
     });
 
     return docs.join('\n');
+  }
+
+  /**
+   * Get intelligent parameter suggestions based on context
+   */
+  public getIntelligentParameters(node: n8nNode, workflowContext?: any): Record<string, any> {
+    const params: Record<string, any> = {};
+    
+    // Check if we have capability registry info
+    const capability = this.capabilityRegistry.getNodeCapability(node.type);
+    if (capability) {
+      // Get defaults from registry
+      const defaults = this.capabilityRegistry.getParameterDefaults(node.type);
+      Object.assign(params, defaults);
+      
+      // Apply context-aware adjustments
+      if (node.type === 'n8n-nodes-base.mqtt') {
+        // Smart MQTT topic based on node name
+        if (node.name.toLowerCase().includes('sensor')) {
+          params.topic = 'sensors/+/data';
+        } else if (node.name.toLowerCase().includes('control')) {
+          params.topic = 'devices/+/control';
+        } else if (node.name.toLowerCase().includes('greenhouse')) {
+          params.topic = 'greenhouse/+/status';
+        }
+      } else if (node.type === 'n8n-nodes-base.cron') {
+        // Smart schedule based on node name
+        const nameLower = node.name.toLowerCase();
+        if (nameLower.includes('hourly') || nameLower.includes('hour')) {
+          params.triggerTimes = {
+            item: [{ mode: 'everyHour' }]
+          };
+        } else if (nameLower.includes('daily') || nameLower.includes('day')) {
+          params.triggerTimes = {
+            item: [{ mode: 'everyDay', hour: 9, minute: 0 }]
+          };
+        } else if (nameLower.includes('weekly') || nameLower.includes('week')) {
+          params.triggerTimes = {
+            item: [{ mode: 'everyWeek', hour: 9, minute: 0, weekday: 1 }]
+          };
+        }
+      }
+    }
+    
+    return params;
+  }
+
+  /**
+   * Check if node type is supported by capability registry
+   */
+  public hasEnhancedSupport(nodeType: string): boolean {
+    return this.capabilityRegistry.getNodeCapability(nodeType) !== undefined;
+  }
+
+  /**
+   * Get alternative nodes for a given node type
+   */
+  public getAlternativeNodes(nodeType: string): string[] {
+    return this.capabilityRegistry.getAlternativeNodes(nodeType);
+  }
+
+  /**
+   * Get recommended connections for a node
+   */
+  public getRecommendedConnections(nodeType: string): { input: string[]; output: string[] } {
+    return this.capabilityRegistry.getRecommendedConnections(nodeType);
   }
 }
