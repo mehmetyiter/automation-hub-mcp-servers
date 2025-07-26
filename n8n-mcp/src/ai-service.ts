@@ -3,16 +3,23 @@ import axios from 'axios';
 export class AIService {
   private provider: string;
   private apiUrl: string;
+  private authToken?: string;
+  private credentialId?: string;
 
-  constructor(provider: string = 'openai') {
+  constructor(provider: string, authToken?: string, credentialId?: string) {
+    if (!provider && !credentialId) {
+      throw new Error('Either provider or credentialId is required for AI Service');
+    }
     this.provider = provider;
+    this.authToken = authToken;
+    this.credentialId = credentialId;
     // Use the API gateway for AI calls
     this.apiUrl = process.env.API_GATEWAY_URL || 'http://localhost:8080/api';
   }
 
   async callAI(prompt: string): Promise<string> {
     try {
-      const response = await axios.post(`${this.apiUrl}/n8n/ai-providers/chat/completion`, {
+      const requestData: any = {
         messages: [
           {
             role: 'system',
@@ -23,10 +30,33 @@ export class AIService {
             content: prompt
           }
         ],
-        provider: this.provider,
         temperature: 0.3,
         max_tokens: 4000
-      });
+      };
+
+      // If credential ID is provided, use it
+      if (this.credentialId) {
+        requestData.useCredentialId = true;
+        requestData.credentialId = this.credentialId;
+      } else {
+        // Otherwise use user settings
+        requestData.useUserSettings = true;
+      }
+
+      const headers: any = {
+        'Content-Type': 'application/json'
+      };
+
+      // Add auth token if available
+      if (this.authToken) {
+        headers['Authorization'] = `Bearer ${this.authToken}`;
+      }
+
+      const response = await axios.post(
+        `${this.apiUrl}/n8n/ai-providers/chat/completion`, 
+        requestData,
+        { headers }
+      );
 
       return response.data.content || response.data.message || response.data;
     } catch (error: any) {

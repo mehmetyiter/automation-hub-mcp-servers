@@ -1,7 +1,7 @@
 [
   {
     "type": "validation",
-    "frequency": 22,
+    "frequency": 50,
     "successRate": 0,
     "commonConfigurations": [],
     "commonErrors": [
@@ -10,7 +10,7 @@
   },
   {
     "type": "structure_branching",
-    "frequency": 11,
+    "frequency": 25,
     "successRate": 0.7,
     "commonConfigurations": [],
     "commonErrors": []
@@ -24,7 +24,7 @@
   },
   {
     "type": "structure_complex",
-    "frequency": 6,
+    "frequency": 20,
     "successRate": 0.7,
     "commonConfigurations": [],
     "commonErrors": []

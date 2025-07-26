@@ -1,5 +1,7 @@
 // workflow-generation/quick-validator.ts
 
+import { cleanWorkflow } from '../utils/json-cleaner.js';
+
 export class QuickValidator {
   validate(workflow: any): any {
     console.log('QuickValidator: Starting validation...');
@@ -98,13 +100,20 @@ export class QuickValidator {
   autoFix(workflow: any): any {
     console.log('QuickValidator: Attempting to auto-fix issues...');
     
-    const fixedWorkflow = JSON.parse(JSON.stringify(workflow)); // Deep clone
+    // Handle circular references using the cleanWorkflow utility
+    const fixedWorkflow = cleanWorkflow(workflow);
     let fixCount = 0;
     
     // Ensure connections object exists
     if (!fixedWorkflow.connections) {
       fixedWorkflow.connections = {};
     }
+    
+    // First, fix switch nodes and add merge nodes where needed
+    const mergeFixResult = this.fixSwitchNodesAndAddMerges(fixedWorkflow);
+    fixedWorkflow.nodes = mergeFixResult.nodes;
+    fixedWorkflow.connections = mergeFixResult.connections;
+    fixCount += mergeFixResult.fixCount;
     
     // Get validation results to identify issues
     const validation = this.validate(workflow);
@@ -267,5 +276,262 @@ export class QuickValidator {
         }
         break;
     }
+  }
+  
+  private fixSwitchNodesAndAddMerges(workflow: any): { nodes: any[], connections: any, fixCount: number } {
+    console.log('Checking for switch nodes that need merge nodes...');
+    
+    let fixCount = 0;
+    const nodes = [...workflow.nodes];
+    const connections = { ...workflow.connections };
+    
+    // Find all switch nodes
+    const switchNodes = nodes.filter(n => n.type === 'n8n-nodes-base.switch');
+    
+    for (const switchNode of switchNodes) {
+      const switchName = switchNode.name || switchNode.id;
+      
+      // Collect all target nodes from all outputs
+      const allTargets: Set<string> = new Set();
+      const branchEndNodes: string[] = [];
+      
+      // Check if switch has any connections at all
+      if (!connections[switchName]?.main || connections[switchName].main.length === 0) {
+        console.log(`  Switch "${switchName}" has no connections at all!`);
+        
+        // This is a validation error - switches MUST have connections
+        // We'll report this as an issue rather than creating dummy nodes
+        console.log(`  ERROR: Switch node "${switchName}" has no output connections defined`);
+        
+        // Skip this switch - the AI should have provided proper connections
+        continue;
+      } else {
+        connections[switchName].main.forEach((output: any[], outputIndex: number) => {
+          if (output && output.length > 0) {
+            // Find the end node of this branch
+            const branchEndNode = this.findBranchEndNode(output[0].node, connections, nodes);
+            if (branchEndNode && !branchEndNodes.includes(branchEndNode)) {
+              branchEndNodes.push(branchEndNode);
+            }
+          } else {
+            // Empty output - this is a validation error
+            console.log(`  WARNING: Switch "${switchName}" output ${outputIndex} has no connections`);
+            // Don't create dummy nodes - the AI should provide proper connections
+          }
+        });
+      }
+      
+      // Check if branches need merging - only if they don't have terminal nodes
+      const nonTerminalBranches = branchEndNodes.filter(nodeName => {
+        const node = nodes.find(n => n.name === nodeName || n.id === nodeName);
+        return node && !this.isTerminalNode(node) && !this.isBranchComplete(node, nodes);
+      });
+      
+      if (nonTerminalBranches.length > 1) {
+        console.log(`  Switch "${switchName}" has ${nonTerminalBranches.length} incomplete branches that need merging`);
+        
+        // Only merge branches that don't have proper conclusions
+        // Find rightmost position for merge node
+        let maxX = switchNode.position[0];
+        let avgY = switchNode.position[1];
+        
+        nonTerminalBranches.forEach(nodeName => {
+          const node = nodes.find(n => n.name === nodeName || n.id === nodeName);
+          if (node) {
+            maxX = Math.max(maxX, node.position[0]);
+          }
+        });
+        
+        // Create merge node
+        const mergeNodeId = `merge_${switchNode.id || Date.now()}`;
+        const mergeNode = {
+          id: mergeNodeId,
+          name: `Merge ${switchNode.name} Results`,
+          type: 'n8n-nodes-base.merge',
+          typeVersion: 2,
+          position: [maxX + 200, avgY],
+          parameters: {
+            mode: 'chooseBranch',
+            options: {}
+          }
+        };
+        
+        nodes.push(mergeNode);
+        console.log(`  Added merge node: ${mergeNode.name}`);
+        
+        // Connect only non-terminal branch ends to merge node
+        nonTerminalBranches.forEach((endNodeName, index) => {
+          if (!connections[endNodeName]) {
+            connections[endNodeName] = { main: [[]] };
+          }
+          
+          connections[endNodeName].main[0].push({
+            node: mergeNode.name,
+            type: 'main',
+            index: 0
+          });
+          
+          console.log(`  Connected ${endNodeName} -> ${mergeNode.name}`);
+        });
+        
+        fixCount++;
+      } else if (branchEndNodes.length > 1) {
+        console.log(`  Switch "${switchName}" has ${branchEndNodes.length} branches but they appear to be properly terminated`);
+      }
+    }
+    
+    // Report dead-end nodes as validation issues instead of auto-fixing
+    const deadEndNodes = this.findDeadEndNodes(nodes, connections);
+    for (const deadEnd of deadEndNodes) {
+      // Skip if it's a response node or error handler
+      if (deadEnd.type.includes('respondToWebhook') || 
+          deadEnd.type.includes('errorTrigger') ||
+          deadEnd.name.toLowerCase().includes('error') ||
+          deadEnd.name.toLowerCase().includes('response')) {
+        continue;
+      }
+      
+      console.log(`  ERROR: Found dead-end node: ${deadEnd.name} (${deadEnd.type})`);
+      console.log(`    This node has no logical conclusion and should be properly connected by the AI`);
+      
+      // Don't auto-fix - this is an AI generation error that needs proper solution
+      // Each branch should have a meaningful conclusion, not arbitrary connections
+    }
+    
+    return { nodes, connections, fixCount };
+  }
+  
+  private findBranchEndNode(startNode: string, connections: any, nodes: any[]): string | null {
+    // Follow the branch to find its end
+    let currentNode = startNode;
+    let visited = new Set<string>();
+    
+    while (currentNode) {
+      if (visited.has(currentNode)) {
+        // This is a loop - check if it's an intentional loop node
+        const node = nodes.find(n => n.name === currentNode || n.id === currentNode);
+        if (node && this.isLoopNode(node)) {
+          console.log(`    Found intentional loop at ${currentNode}`);
+          return null; // Loop nodes handle their own flow
+        }
+        break; // Avoid infinite loops in other cases
+      }
+      visited.add(currentNode);
+      
+      // Check if this node has outgoing connections
+      if (!connections[currentNode]?.main?.[0]?.length) {
+        return currentNode; // This is the end
+      }
+      
+      // Follow the first connection
+      const nextNode = connections[currentNode].main[0][0]?.node;
+      if (!nextNode) {
+        return currentNode;
+      }
+      
+      currentNode = nextNode;
+    }
+    
+    return null;
+  }
+  
+  private isLoopNode(node: any): boolean {
+    const loopNodeTypes = [
+      'splitInBatches',
+      'loop',
+      'executeWorkflow'
+    ];
+    
+    return loopNodeTypes.some(type => node.type.includes(type));
+  }
+  
+  private findDeadEndNodes(nodes: any[], connections: any): any[] {
+    const deadEnds: any[] = [];
+    
+    for (const node of nodes) {
+      const nodeName = node.name || node.id;
+      
+      // Check if node has outgoing connections
+      if (!connections[nodeName]?.main?.[0]?.length) {
+        // Check if it's a terminal node type
+        if (!this.isTerminalNode(node)) {
+          deadEnds.push(node);
+        }
+      }
+    }
+    
+    return deadEnds;
+  }
+  
+  private isTerminalNode(node: any): boolean {
+    const terminalTypes = [
+      'respondToWebhook',
+      'errorTrigger',
+      'noOp'
+    ];
+    
+    return terminalTypes.some(type => node.type.includes(type)) ||
+           node.name.toLowerCase().includes('response') ||
+           node.name.toLowerCase().includes('error handler');
+  }
+  
+  private isBranchComplete(node: any, allNodes: any[]): boolean {
+    // A branch is complete if it ends with:
+    // 1. A database save/update operation
+    // 2. An email/notification send
+    // 3. An HTTP request that saves/updates data
+    // 4. A webhook response
+    // 5. Any operation that represents a logical conclusion
+    
+    const completionIndicators = [
+      // Database operations
+      'postgres', 'mysql', 'mongodb', 'redis',
+      // Communication operations
+      'emailSend', 'slack', 'telegram', 'twilio',
+      // File operations
+      'writeBinaryFile', 'spreadsheetFile',
+      // Integration operations that typically conclude a flow
+      'googleSheets', 'airtable', 'notion'
+    ];
+    
+    // Check node type
+    if (completionIndicators.some(indicator => node.type.includes(indicator))) {
+      return true;
+    }
+    
+    // Check node name for completion indicators
+    const nameIndicators = [
+      'save', 'store', 'update', 'send', 'notify', 
+      'complete', 'finish', 'done', 'final', 'end',
+      'log', 'record', 'report', 'alert'
+    ];
+    
+    const nodeName = node.name.toLowerCase();
+    return nameIndicators.some(indicator => nodeName.includes(indicator));
+  }
+  
+  private findNearestDownstreamNode(node: any, allNodes: any[], connections: any): any | null {
+    // Find a node that's to the right and on a similar Y level
+    const candidates = allNodes.filter(n => {
+      if (n.id === node.id) return false;
+      if (n.position[0] <= node.position[0]) return false; // Must be to the right
+      if (Math.abs(n.position[1] - node.position[1]) > 200) return false; // Similar Y level
+      
+      // Don't connect to trigger nodes
+      if (n.type.includes('trigger') || n.type.includes('Trigger')) return false;
+      
+      return true;
+    });
+    
+    if (candidates.length === 0) return null;
+    
+    // Sort by distance and return closest
+    candidates.sort((a, b) => {
+      const distA = Math.abs(a.position[0] - node.position[0]) + Math.abs(a.position[1] - node.position[1]);
+      const distB = Math.abs(b.position[0] - node.position[0]) + Math.abs(b.position[1] - node.position[1]);
+      return distA - distB;
+    });
+    
+    return candidates[0];
   }
 }

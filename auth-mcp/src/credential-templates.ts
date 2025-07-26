@@ -156,9 +156,6 @@ export const credentialTemplates: CredentialTemplate[] = [
     category: 'AI',
     fields: [
       { key: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'sk-...' },
-      { key: 'model', label: 'Default Model', type: 'select', required: false,
-        options: ['o3', 'o4-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-4o', 'gpt-4o-mini', 'gpt-4o-realtime-preview-2024-12-17', 'gpt-4-turbo', 'gpt-3.5-turbo', 'o1-preview', 'o1-mini'],
-        defaultValue: 'gpt-4o' },
       { key: 'organizationId', label: 'Organization ID', type: 'text', required: false },
       { key: 'baseUrl', label: 'Base URL', type: 'text', required: false, placeholder: 'https://api.openai.com/v1', description: 'Custom endpoint (optional)' }
     ]
@@ -169,10 +166,7 @@ export const credentialTemplates: CredentialTemplate[] = [
     platform: 'anthropic',
     category: 'AI',
     fields: [
-      { key: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'sk-ant-...' },
-      { key: 'model', label: 'Default Model', type: 'select', required: false,
-        options: ['claude-4-opus', 'claude-4-sonnet', 'claude-3.7-sonnet', 'claude-3.7-sonnet-thinking', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307'],
-        defaultValue: 'claude-3-5-sonnet-20241022' }
+      { key: 'apiKey', label: 'API Key', type: 'password', required: true, placeholder: 'sk-ant-...' }
     ]
   },
   {
@@ -181,10 +175,7 @@ export const credentialTemplates: CredentialTemplate[] = [
     platform: 'google_ai',
     category: 'AI',
     fields: [
-      { key: 'apiKey', label: 'API Key', type: 'password', required: true },
-      { key: 'model', label: 'Default Model', type: 'select', required: false, 
-        options: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-pro-deep-think', 'gemini-2.0-flash-thinking-exp', 'gemini-2.0-flash-exp', 'gemini-1.5-pro-002', 'gemini-1.5-pro', 'gemini-1.5-flash-002', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'],
-        defaultValue: 'gemini-2.0-flash-exp' }
+      { key: 'apiKey', label: 'API Key', type: 'password', required: true }
     ]
   },
   {
@@ -204,6 +195,118 @@ export const credentialTemplates: CredentialTemplate[] = [
     category: 'AI',
     fields: [
       { key: 'apiToken', label: 'API Token', type: 'password', required: true }
+    ]
+  },
+  {
+    id: 'deepseek',
+    name: 'DeepSeek',
+    platform: 'deepseek',
+    category: 'AI',
+    description: 'DeepSeek AI models',
+    fields: [
+      { key: 'apiKey', label: 'API Key', type: 'password', required: true },
+      { key: 'model', label: 'Default Model', type: 'select', required: false,
+        options: [
+          { value: 'deepseek-r1-0528', label: 'DeepSeek-R1 (Latest)' },
+          { value: 'deepseek-v3', label: 'DeepSeek V3' },
+          { value: 'deepseek-v3-0324', label: 'DeepSeek V3 0324' },
+          { value: 'deepseek-coder', label: 'DeepSeek Coder' },
+          { value: 'deepseek-chat', label: 'DeepSeek Chat' }
+        ],
+        defaultValue: 'deepseek-r1-0528' }
+    ]
+  },
+  {
+    id: 'groq',
+    name: 'Groq',
+    platform: 'groq',
+    category: 'AI',
+    description: 'Ultra-fast AI inference',
+    fields: [
+      { key: 'apiKey', label: 'API Key', type: 'password', required: true },
+      { key: 'model', label: 'Default Model', type: 'select', required: false,
+        options: [
+          { value: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B Versatile' },
+          { value: 'llama-3.1-70b-versatile', label: 'Llama 3.1 70B Versatile' },
+          { value: 'llama-3.1-8b-instant', label: 'Llama 3.1 8B Instant' },
+          { value: 'mixtral-8x7b-32768', label: 'Mixtral 8x7B' },
+          { value: 'gemma2-9b-it', label: 'Gemma2 9B IT' }
+        ],
+        defaultValue: 'llama-3.3-70b-versatile' }
+    ]
+  },
+  {
+    id: 'mistral',
+    name: 'Mistral AI',
+    platform: 'mistral',
+    category: 'AI',
+    description: 'Mistral AI models',
+    fields: [
+      { key: 'apiKey', label: 'API Key', type: 'password', required: true },
+      { key: 'model', label: 'Default Model', type: 'select', required: false,
+        options: [
+          { value: 'mistral-large-latest', label: 'Mistral Large (Latest)' },
+          { value: 'mistral-small-latest', label: 'Mistral Small 3.1 (Latest)' },
+          { value: 'mistral-medium-latest', label: 'Mistral Medium' },
+          { value: 'mixtral-8x7b', label: 'Mixtral 8x7B' },
+          { value: 'mistral-7b', label: 'Mistral 7B' }
+        ],
+        defaultValue: 'mistral-large-latest' }
+    ]
+  },
+  {
+    id: 'cohere',
+    name: 'Cohere',
+    platform: 'cohere',
+    category: 'AI',
+    description: 'Cohere AI models',
+    fields: [
+      { key: 'apiKey', label: 'API Key', type: 'password', required: true },
+      { key: 'model', label: 'Default Model', type: 'select', required: false,
+        options: [
+          { value: 'command-r-plus-08-2024', label: 'Command R+ (Aug 2024)' },
+          { value: 'command-r-08-2024', label: 'Command R (Aug 2024)' },
+          { value: 'command-r-plus', label: 'Command R+' },
+          { value: 'command-r', label: 'Command R' },
+          { value: 'command', label: 'Command' }
+        ],
+        defaultValue: 'command-r-plus' }
+    ]
+  },
+  {
+    id: 'perplexity',
+    name: 'Perplexity',
+    platform: 'perplexity',
+    category: 'AI',
+    description: 'Perplexity AI with web search',
+    fields: [
+      { key: 'apiKey', label: 'API Key', type: 'password', required: true },
+      { key: 'model', label: 'Default Model', type: 'select', required: false,
+        options: [
+          { value: 'llama-3.1-sonar-large-128k-online', label: 'Llama 3.1 Sonar Large (Online)' },
+          { value: 'llama-3.1-sonar-small-128k-online', label: 'Llama 3.1 Sonar Small (Online)' },
+          { value: 'llama-3.1-sonar-huge-128k-online', label: 'Llama 3.1 Sonar Huge (Online)' }
+        ],
+        defaultValue: 'llama-3.1-sonar-large-128k-online' }
+    ]
+  },
+  {
+    id: 'together',
+    name: 'Together AI',
+    platform: 'together',
+    category: 'AI',
+    description: 'Together AI - Open source models',
+    fields: [
+      { key: 'apiKey', label: 'API Key', type: 'password', required: true },
+      { key: 'model', label: 'Default Model', type: 'select', required: false,
+        options: [
+          { value: 'Meta-Llama-3.1-405B-Instruct-Turbo', label: 'Llama 3.1 405B Instruct Turbo' },
+          { value: 'Meta-Llama-3.1-70B-Instruct-Turbo', label: 'Llama 3.1 70B Instruct Turbo' },
+          { value: 'Meta-Llama-3.1-8B-Instruct-Turbo', label: 'Llama 3.1 8B Instruct Turbo' },
+          { value: 'Qwen/Qwen2.5-72B-Instruct-Turbo', label: 'Qwen 2.5 72B Instruct' },
+          { value: 'mistralai/Mixtral-8x22B-Instruct-v0.1', label: 'Mixtral 8x22B' }
+        ],
+        defaultValue: 'Meta-Llama-3.1-70B-Instruct-Turbo' }
     ]
   },
   

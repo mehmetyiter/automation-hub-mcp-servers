@@ -33,16 +33,27 @@ export class NodeParameterHandler {
       }
     });
 
-    // Email Send node parameters
+    // Email Send node parameters - Updated based on n8n documentation
     this.parameterMappings.set('n8n-nodes-base.emailSend', {
       nodeType: 'n8n-nodes-base.emailSend',
-      requiredParameters: ['subject', 'text', 'options'],
+      requiredParameters: ['fromEmail', 'toEmail', 'subject'],
       parameterDefaults: {
+        emailFormat: 'text',
         options: {}
       },
       parameterTransforms: {
-        toEmail: (value: any) => ({ toRecipients: value }),
-        fromEmail: (value: any) => ({ fromEmail: value })
+        // Map AI-generated parameters to n8n format
+        emailType: (value: string) => {
+          if (value === 'html') return { emailFormat: 'html' };
+          if (value === 'both') return { emailFormat: 'both' };
+          return { emailFormat: 'text' };
+        },
+        message: (value: any) => {
+          // For now, default to text format
+          // The sanitizer will handle format-specific logic
+          return { text: value };
+        },
+        htmlBody: (value: any) => ({ html: value })
       }
     });
 
@@ -161,13 +172,14 @@ export class NodeParameterHandler {
       }
     });
 
-    // Set node parameters
+    // Set node parameters - Updated to use new format (typeVersion 3)
     this.parameterMappings.set('n8n-nodes-base.set', {
       nodeType: 'n8n-nodes-base.set',
-      requiredParameters: ['values', 'options'],
+      requiredParameters: ['mode', 'assignments', 'options'],
       parameterDefaults: {
-        values: {
-          string: []
+        mode: 'manual',
+        assignments: {
+          assignments: []
         },
         options: {}
       }
@@ -183,17 +195,23 @@ export class NodeParameterHandler {
       }
     });
 
-    // Schedule Trigger parameters
+    // Schedule Trigger parameters - Updated based on n8n documentation
     this.parameterMappings.set('n8n-nodes-base.scheduleTrigger', {
       nodeType: 'n8n-nodes-base.scheduleTrigger',
       requiredParameters: ['rule'],
       parameterDefaults: {
         rule: {
           interval: [{
-            field: 'hours',
-            hoursInterval: 1
+            field: 'minutes',
+            minutesInterval: 5
           }]
         }
+      },
+      parameterTransforms: {
+        // Transform AI-generated parameters to n8n format
+        minutesInterval: (value: any) => ({ minutesInterval: value }),
+        hoursInterval: (value: any) => ({ hoursInterval: value }),
+        daysInterval: (value: any) => ({ daysInterval: value })
       }
     });
 
@@ -527,56 +545,140 @@ export class NodeParameterHandler {
       delete node.parameters.rule;
     }
 
-    // Fix Set node values format
-    if (node.type === 'n8n-nodes-base.set' && node.parameters?.values) {
-      // If values is a plain object, convert to n8n format
-      if (!node.parameters.values.string && !node.parameters.values.number && !node.parameters.values.boolean) {
-        const stringValues = [];
-        for (const [key, value] of Object.entries(node.parameters.values)) {
-          stringValues.push({
-            name: key,
-            value: String(value)
-          });
-        }
-        node.parameters.values = {
-          string: stringValues
-        };
-      }
-      
-      // Fix Set nodes that are trying to store arrays in string fields
-      if (node.parameters.values.string && Array.isArray(node.parameters.values.string)) {
-        const fixedValues: any = { string: [], json: [] };
+    // Fix Set node values format - Convert to new format (typeVersion 3)
+    if (node.type === 'n8n-nodes-base.set') {
+      // Convert old format to new format
+      if (node.parameters?.values && !node.parameters?.assignments) {
+        const assignments: any[] = [];
+        let idCounter = 1;
         
-        for (const item of node.parameters.values.string) {
-          // Check if the value contains an array expression
-          if (item.value && typeof item.value === 'string' && 
-              (item.value.includes('={{ [') || item.value.includes('={{[')) &&
-              item.value.includes('] }}')) {
-            // This is an array expression, move to json values
-            fixedValues.json.push({
+        // Convert string values
+        if (node.parameters.values.string && Array.isArray(node.parameters.values.string)) {
+          for (const item of node.parameters.values.string) {
+            assignments.push({
+              id: String(idCounter++),
               name: item.name,
-              value: item.value
+              value: item.value,
+              type: 'string'
             });
-            console.log(`Fixed Set node "${node.name}": moved array value "${item.name}" from string to json`);
-          } else {
-            // Keep as string value
-            fixedValues.string.push(item);
           }
         }
         
-        // Copy other value types if they exist
-        if (node.parameters.values.number) fixedValues.number = node.parameters.values.number;
-        if (node.parameters.values.boolean) fixedValues.boolean = node.parameters.values.boolean;
-        if (node.parameters.values.json) {
-          fixedValues.json = [...fixedValues.json, ...node.parameters.values.json];
+        // Convert number values
+        if (node.parameters.values.number && Array.isArray(node.parameters.values.number)) {
+          for (const item of node.parameters.values.number) {
+            assignments.push({
+              id: String(idCounter++),
+              name: item.name,
+              value: item.value,
+              type: 'number'
+            });
+          }
         }
         
-        node.parameters.values = fixedValues;
+        // Convert boolean values
+        if (node.parameters.values.boolean && Array.isArray(node.parameters.values.boolean)) {
+          for (const item of node.parameters.values.boolean) {
+            assignments.push({
+              id: String(idCounter++),
+              name: item.name,
+              value: item.value,
+              type: 'boolean'
+            });
+          }
+        }
+        
+        // Convert json/object values
+        if (node.parameters.values.json && Array.isArray(node.parameters.values.json)) {
+          for (const item of node.parameters.values.json) {
+            assignments.push({
+              id: String(idCounter++),
+              name: item.name,
+              value: item.value,
+              type: 'object'
+            });
+          }
+        }
+        
+        // Convert object values (alternative format)
+        if (node.parameters.values.object && Array.isArray(node.parameters.values.object)) {
+          for (const item of node.parameters.values.object) {
+            assignments.push({
+              id: String(idCounter++),
+              name: item.name,
+              value: item.value,
+              type: 'object'
+            });
+          }
+        }
+        
+        // Update node to new format
+        node.parameters = {
+          mode: 'manual',
+          assignments: {
+            assignments: assignments
+          },
+          options: node.parameters.options || {}
+        };
+        
+        // Update typeVersion to 3
+        node.typeVersion = 3;
+        
+        console.log(`Converted Set node "${node.name}" to new format with ${assignments.length} assignments`);
+        return node;
       }
       
-      // Ensure options property exists
-      if (!node.parameters.options) {
-        node.parameters.options = {};
+      // If already has values but in wrong format
+      if (node.parameters?.values) {
+        // If values is a plain object, convert to n8n format
+        if (!node.parameters.values.string && !node.parameters.values.number && !node.parameters.values.boolean) {
+          const stringValues = [];
+          for (const [key, value] of Object.entries(node.parameters.values)) {
+            stringValues.push({
+              name: key,
+              value: String(value)
+            });
+          }
+          node.parameters.values = {
+            string: stringValues
+          };
+        }
+      
+        // Fix Set nodes that are trying to store arrays in string fields
+        if (node.parameters.values.string && Array.isArray(node.parameters.values.string)) {
+          const fixedValues: any = { string: [], json: [] };
+          
+          for (const item of node.parameters.values.string) {
+            // Check if the value contains an array expression
+            if (item.value && typeof item.value === 'string' && 
+                (item.value.includes('={{ [') || item.value.includes('={{[')) &&
+                item.value.includes('] }}')) {
+              // This is an array expression, move to json values
+              fixedValues.json.push({
+                name: item.name,
+                value: item.value
+              });
+              console.log(`Fixed Set node "${node.name}": moved array value "${item.name}" from string to json`);
+            } else {
+              // Keep as string value
+              fixedValues.string.push(item);
+            }
+          }
+          
+          // Copy other value types if they exist
+          if (node.parameters.values.number) fixedValues.number = node.parameters.values.number;
+          if (node.parameters.values.boolean) fixedValues.boolean = node.parameters.values.boolean;
+          if (node.parameters.values.json) {
+            fixedValues.json = [...fixedValues.json, ...node.parameters.values.json];
+          }
+          
+          node.parameters.values = fixedValues;
+        }
+        
+        // Ensure options property exists
+        if (!node.parameters.options) {
+          node.parameters.options = {};
+        }
       }
     }
 

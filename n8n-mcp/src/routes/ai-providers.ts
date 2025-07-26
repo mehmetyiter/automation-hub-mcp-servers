@@ -213,7 +213,7 @@ router.delete('/settings/:provider', requireAuth, async (req: Request, res: Resp
 // Chat completion endpoint
 router.post('/chat/completion', requireAuth, async (req: Request, res: Response) => {
   try {
-    const { messages, useUserSettings, useSpecificProvider, provider: providerName, apiKey, model } = req.body;
+    const { messages, useUserSettings, useSpecificProvider, provider: providerName, apiKey, model, temperature, maxTokens, credentialId, useCredentialId } = req.body;
 
     if (!messages || !Array.isArray(messages)) {
       res.status(400).json({ error: 'Messages array is required' });
@@ -224,32 +224,65 @@ router.post('/chat/completion', requireAuth, async (req: Request, res: Response)
     const chatService = new AIChatService();
     
     let generatorConfig: any = {};
+    
+    console.log('Chat completion request:', {
+      useCredentialId,
+      credentialId,
+      useSpecificProvider,
+      provider: providerName,
+      useUserSettings,
+      hasApiKey: !!apiKey
+    });
 
-    // If using specific provider selection
-    if (useSpecificProvider && providerName && !useUserSettings) {
-      // Use environment variables
-      let envApiKey;
-      if (providerName === 'openai') {
-        envApiKey = process.env.OPENAI_API_KEY;
-      } else if (providerName === 'anthropic') {
-        envApiKey = process.env.ANTHROPIC_API_KEY;
-      } else if (providerName === 'gemini') {
-        envApiKey = process.env.GEMINI_API_KEY;
+    // If using credential ID
+    if (useCredentialId && credentialId && credentialId !== 'undefined') {
+      console.log('Fetching credential:', credentialId);
+      // Get credential details from auth service
+      const credentialResponse = await fetch(`http://localhost:3005/auth/credentials/${credentialId}`, {
+        headers: {
+          'Authorization': req.headers.authorization!
+        }
+      });
+
+      if (!credentialResponse.ok) {
+        const error = await credentialResponse.text();
+        console.error('Failed to fetch credential:', credentialResponse.status, error);
+        throw new Error(`Failed to get credential: ${error}`);
       }
 
-      if (!envApiKey) {
-        throw new Error(`No API key found for ${providerName} in environment variables. Please set ${providerName.toUpperCase()}_API_KEY.`);
+      const credentialData = await credentialResponse.json();
+      const credential = credentialData.data;
+      
+      // Determine provider type from platform field
+      let providerType = credential.platform || credential.templateId;
+      
+      if (!providerType) {
+        console.error('No provider type found in credential');
+        throw new Error('Invalid credential: missing provider type');
+      }
+      
+      // Normalize provider names
+      if (providerType === 'google_ai') {
+        providerType = 'gemini';
+      } else if (providerType === 'anthropic' || providerType?.includes('claude')) {
+        providerType = 'anthropic';
+      }
+      
+      // Model is required
+      if (!model) {
+        res.status(400).json({ error: 'Model selection is required' });
+        return;
       }
       
       generatorConfig = {
-        provider: providerName,
-        apiKey: envApiKey,
-        model: model || (providerName === 'openai' ? 'gpt-4o' : providerName === 'anthropic' ? 'claude-3-sonnet-20240229' : 'gemini-1.5-pro'),
-        temperature: 0.7,
-        maxTokens: 2000
+        provider: providerType,
+        apiKey: credential.data?.apiKey || credential.data?.api_key || credential.credentials?.apiKey || credential.credentials?.api_key,
+        model: model,
+        temperature: temperature || 0.7,
+        maxTokens: maxTokens // No default
       };
     }
-    // If trying to use stored user settings
+    // If using specific provider selection - ALWAYS use user's stored API keys
     else if (useSpecificProvider && providerName) {
       // Get the specific provider's details with decrypted API key
       const providerResponse = await fetch(`http://localhost:3005/api/ai-providers/provider/${providerName}`, {
@@ -260,21 +293,28 @@ router.post('/chat/completion', requireAuth, async (req: Request, res: Response)
 
       if (!providerResponse.ok) {
         await providerResponse.text();
-        throw new Error(`No API key found for ${providerName}. Please add it in Settings.`);
+        throw new Error(`No API key found for ${providerName}. Please add it as a credential.`);
       }
 
       const providerData = await providerResponse.json();
+      
+      // Model is required
+      if (!model && !providerData.data.model) {
+        res.status(400).json({ error: 'Model selection is required' });
+        return;
+      }
       
       generatorConfig = {
         provider: providerName,
         apiKey: providerData.data.apiKey,
         model: model || providerData.data.model,
         temperature: providerData.data.temperature || 0.7,
-        maxTokens: providerData.data.maxTokens || 2000
+        maxTokens: providerData.data.maxTokens // No default
       };
     }
     // If using stored user settings
     else if (useUserSettings) {
+      console.log('Fetching active provider for user settings...');
       const activeProviderResponse = await fetch('http://localhost:3005/api/ai-providers/active', {
         headers: {
           'Authorization': req.headers.authorization!
@@ -282,35 +322,51 @@ router.post('/chat/completion', requireAuth, async (req: Request, res: Response)
       });
 
       if (!activeProviderResponse.ok) {
+        const errorText = await activeProviderResponse.text();
+        console.error('Failed to fetch active provider:', activeProviderResponse.status, errorText);
         throw new Error('No active AI provider configured. Please set one in Settings.');
       }
 
       const activeProvider = await activeProviderResponse.json();
+      console.log('Active provider response:', activeProvider);
+      
       if (!activeProvider.success || !activeProvider.data) {
-        throw new Error('No active AI provider found');
+        throw new Error('No active AI provider found. Please configure one in Settings.');
       }
 
+      // Model is required
+      if (!model && !activeProvider.data.model) {
+        res.status(400).json({ error: 'Model selection is required' });
+        return;
+      }
+      
       generatorConfig = {
         provider: activeProvider.data.provider,
         apiKey: activeProvider.data.apiKey,
-        model: activeProvider.data.model || (activeProvider.data.provider === 'openai' ? 'o3' : undefined),
+        model: model || activeProvider.data.model,
         temperature: activeProvider.data.temperature || 0.7,
-        maxTokens: activeProvider.data.maxTokens || 2000
+        maxTokens: activeProvider.data.maxTokens // No default
       };
-    } else {
-      // Use provided credentials
-      generatorConfig = {
-        provider: providerName || 'openai',
-        apiKey: apiKey,
-        model: model || 'o3',
-        temperature: 0.7,
-        maxTokens: 2000
-      };
-
-      if (!generatorConfig.apiKey) {
-        res.status(400).json({ error: 'API key is required' });
+    } else if (providerName && apiKey) {
+      // Model is required
+      if (!model) {
+        res.status(400).json({ error: 'Model selection is required' });
         return;
       }
+      
+      // Use provided credentials
+      generatorConfig = {
+        provider: providerName,
+        apiKey: apiKey,
+        model: model,
+        temperature: 0.7,
+        maxTokens: maxTokens // Use provided maxTokens, no default
+      };
+    } else {
+      res.status(400).json({ 
+        error: 'Either select a credential or provide both provider and API key' 
+      });
+      return;
     }
 
     // Use our enhanced chat service instead of direct provider
@@ -352,17 +408,12 @@ router.post('/chat/completion', requireAuth, async (req: Request, res: Response)
       }
 
       // Generate a workflow-focused response
-      const workflowPrompt = `Based on this request: "${lastUserMessage.content}", provide a detailed workflow automation prompt that includes:
-      1. Clear trigger events
-      2. Step-by-step data processing
-      3. Required integrations
-      4. Error handling considerations
-      5. Expected outcomes
-      
-      Make it comprehensive and production-ready.`;
-
+      // For chat context, we should just process the user's message directly
       const generator = new AIWorkflowGeneratorV2(generatorConfig);
-      const result = await generator.generateFromPrompt(workflowPrompt, 'Assistant Response');
+      
+      // Pass the user's message directly to the workflow generator
+      // This will use the proper system prompt that requests JSON format
+      const result = await generator.generateFromPrompt(lastUserMessage.content, 'Assistant Response');
       
       if (result.success && result.workflow) {
         const response = result.workflow.description || 
@@ -383,7 +434,31 @@ router.post('/chat/completion', requireAuth, async (req: Request, res: Response)
     }
   } catch (error: any) {
     console.error('Chat completion error:', error);
-    res.status(500).json({ error: error.message });
+    
+    // Extract user-friendly error message
+    let errorMessage = error.message || 'Failed to process chat request';
+    let statusCode = 500;
+    
+    // Handle token limit errors
+    if (error.message?.includes('max_tokens')) {
+      const match = error.message.match(/max_tokens: (\d+) > (\d+)/);
+      if (match) {
+        errorMessage = `Token limit exceeded: You requested ${match[1]} tokens but the selected model supports a maximum of ${match[2]} tokens. Please reduce the max tokens setting.`;
+        statusCode = 400;
+      }
+    }
+    // Handle rate limit errors
+    else if (error.message?.includes('rate_limit') || error.message?.includes('429')) {
+      errorMessage = 'Rate limit exceeded. Please wait a moment before trying again.';
+      statusCode = 429;
+    }
+    // Handle authentication errors
+    else if (error.message?.includes('401') || error.message?.includes('authentication')) {
+      errorMessage = 'Authentication failed. Please check your API credentials.';
+      statusCode = 401;
+    }
+    
+    res.status(statusCode).json({ error: errorMessage });
   }
 });
 

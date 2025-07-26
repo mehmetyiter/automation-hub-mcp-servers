@@ -7,6 +7,11 @@ import { GenerationRecord } from './learning/types.js';
 import { WorkflowValidator } from './validation/workflow-validator.js';
 import { DirectWorkflowBuilder } from './workflow-generation/direct-workflow-builder.js';
 import { v4 as uuidv4 } from 'uuid';
+import { sanitizeWorkflow, validateWorkflowParameters } from './utils/workflow-sanitizer.js';
+import { WorkflowGenerationMode, GENERATION_MODE_CONFIG } from './types/workflow-generation-mode.js';
+import { ComprehensivePromptGenerator } from './prompts/comprehensive-prompt-generator.js';
+import { EnhancedPromptGenerator } from './ai-analysis/enhanced-prompt-generator.js';
+import { PromptToWorkflowMapper } from './planning/prompt-to-workflow-mapper.js';
 
 export interface WorkflowGenerationOptions {
   apiKey?: string;
@@ -15,6 +20,8 @@ export interface WorkflowGenerationOptions {
   temperature?: number;
   maxTokens?: number;
   useMultiStep?: boolean;
+  mode?: WorkflowGenerationMode;
+  userEditedPrompt?: string;
 }
 
 export class AIWorkflowGeneratorV3 {
@@ -22,14 +29,22 @@ export class AIWorkflowGeneratorV3 {
   private knowledgeBase: N8nKnowledgeBase;
   private learningEngine: LearningEngine;
   private validator: WorkflowValidator;
+  private promptGenerator: ComprehensivePromptGenerator;
+  private generationMode: WorkflowGenerationMode;
+  private userEditedPrompt?: string;
+  private promptMapper: PromptToWorkflowMapper;
 
   constructor(options: WorkflowGenerationOptions) {
     if (!options.apiKey) {
       throw new Error('API key is required');
     }
+    
+    if (!options.provider) {
+      throw new Error('Provider is required');
+    }
 
     this.providerConfig = {
-      provider: options.provider || 'openai',
+      provider: options.provider,
       apiKey: options.apiKey,
       model: options.model,
       temperature: options.temperature,
@@ -39,11 +54,16 @@ export class AIWorkflowGeneratorV3 {
     this.knowledgeBase = new N8nKnowledgeBase();
     this.learningEngine = new LearningEngine();
     this.validator = new WorkflowValidator();
+    this.promptGenerator = new ComprehensivePromptGenerator();
+    this.generationMode = options.mode || 'quick';
+    this.userEditedPrompt = options.userEditedPrompt;
+    this.promptMapper = new PromptToWorkflowMapper();
   }
 
   async generateFromPrompt(prompt: string, name: string): Promise<any> {
     console.log('=== AI Workflow Generation V3 (Multi-Step) Started ===');
-    console.log('Prompt:', prompt);
+    console.log('Mode:', this.generationMode);
+    console.log('Original Prompt:', prompt);
     console.log('Name:', name);
     console.log('Provider:', this.providerConfig.provider);
     console.log('Model:', this.providerConfig.model || 'default');
@@ -57,8 +77,46 @@ export class AIWorkflowGeneratorV3 {
       console.log(`Common errors to avoid: ${learningContext.avoidErrors.length}`);
       console.log(`Best practices: ${learningContext.bestPractices.length}`);
       
-      // Enhance prompt with learning insights
-      const enhancedPrompt = await this.learningEngine.enhancePrompt(prompt, learningContext);
+      // ALWAYS use enhanced prompt generation (even in quick mode)
+      // First analyze the prompt with mapper
+      const analysis = await this.promptMapper.analyzePrompt(prompt);
+      
+      // Convert features Map to object for the original generator
+      const featuresObject: Record<string, string[]> = {};
+      analysis.features.forEach((value, key) => {
+        featuresObject[key] = Array.isArray(value) ? value : [value];
+      });
+      
+      // Generate the enhanced prompt using the original system
+      let enhancedSystemPrompt = EnhancedPromptGenerator.generateNodePlanningPrompt(
+        prompt,
+        new Map(Object.entries(featuresObject))
+      );
+      
+      // Add learning context if available
+      if (learningContext.bestPractices.length > 0) {
+        enhancedSystemPrompt += '\n\n### BEST PRACTICES FROM SIMILAR WORKFLOWS:\n';
+        enhancedSystemPrompt += learningContext.bestPractices.map(p => `- ${p}`).join('\n');
+      }
+      
+      if (learningContext.avoidErrors.length > 0) {
+        enhancedSystemPrompt += '\n\n### COMMON ERRORS TO AVOID:\n';
+        enhancedSystemPrompt += learningContext.avoidErrors.map(e => `- ${e}`).join('\n');
+      }
+      
+      // Determine final prompt based on mode
+      let finalPrompt: string;
+      const modeConfig = GENERATION_MODE_CONFIG[this.generationMode];
+      
+      if (this.generationMode === 'expert' && this.userEditedPrompt) {
+        // Expert mode with user-edited prompt
+        finalPrompt = this.userEditedPrompt;
+        console.log('Using user-edited prompt in expert mode');
+      } else {
+        // All modes use the enhanced prompt
+        finalPrompt = enhancedSystemPrompt;
+        console.log('Using enhanced prompt generation system');
+      }
       
       const provider = ProviderFactory.createProvider(this.providerConfig);
       
@@ -66,7 +124,7 @@ export class AIWorkflowGeneratorV3 {
       console.log('Using Multi-Step Generation with learning insights...');
       const progressCallback = (this.providerConfig as any).progressCallback;
       const multiStepGenerator = new MultiStepWorkflowGenerator(provider, learningContext, progressCallback);
-      let workflow = await multiStepGenerator.generateWorkflow(enhancedPrompt, name);
+      let workflow = await multiStepGenerator.generateWorkflow(finalPrompt, name);
       
       // Validate the generated workflow
       if (!workflow || !workflow.nodes || workflow.nodes.length === 0) {
@@ -74,6 +132,21 @@ export class AIWorkflowGeneratorV3 {
       }
       
       console.log(`Multi-step generation completed with ${workflow.nodes.length} nodes`);
+      
+      // Apply provider-specific post-processing FIRST
+      if ('applyPostProcessing' in provider && typeof provider.applyPostProcessing === 'function') {
+        console.log(`Applying ${this.providerConfig.provider} post-processing...`);
+        workflow = provider.applyPostProcessing(workflow);
+      }
+      
+      // Sanitize workflow parameters to prevent n8n errors
+      workflow = sanitizeWorkflow(workflow);
+      
+      // Validate workflow parameters
+      const paramValidation = validateWorkflowParameters(workflow);
+      if (!paramValidation.valid) {
+        console.warn('Workflow parameter issues:', paramValidation.errors);
+      }
       
       // Additional validation
       workflow.connections = this.validateAndFixConnections(workflow);
@@ -112,6 +185,10 @@ export class AIWorkflowGeneratorV3 {
         method: 'multi-step-generation',
         nodeCount: workflow.nodes.length,
         generationId: generationId,
+        mode: this.generationMode,
+        enhancedPrompt: enhancedSystemPrompt, // Always include for transparency
+        finalPrompt: finalPrompt, // The actual prompt used (may be user-edited)
+        promptEdited: this.generationMode === 'expert' && this.userEditedPrompt ? true : false,
         learningInsights: {
           similarWorkflowsUsed: learningContext.similarWorkflows.length,
           errorsAvoided: learningContext.avoidErrors.length,
@@ -165,6 +242,12 @@ export class AIWorkflowGeneratorV3 {
     const result = await provider.generateWorkflow(enhancedPrompt, name);
     
     if (result.success && result.workflow) {
+      // Apply provider-specific post-processing FIRST
+      if ('applyPostProcessing' in provider && typeof provider.applyPostProcessing === 'function') {
+        console.log(`Applying ${this.providerConfig.provider} post-processing...`);
+        result.workflow = provider.applyPostProcessing(result.workflow);
+      }
+      
       // Apply additional validation and fixes
       result.workflow = this.validateAndFixConnections(result.workflow);
       

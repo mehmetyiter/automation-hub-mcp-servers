@@ -115,10 +115,14 @@ const createMCPAutomation = async (platform: string, data: any) => {
           name: data.name,
           apiKey: data.apiKey, // Optional API key if provided
           provider: data.provider,
+          credentialId: data.credentialId,
+          credentialName: data.credentialName,
           model: data.model,
           temperature: data.temperature,
           maxTokens: data.maxTokens,
-          useUserSettings: data.useUserSettings
+          useUserSettings: data.useUserSettings,
+          mode: data.mode,
+          userEditedPrompt: data.userEditedPrompt
         }
         
         const generationResponse = await api.post('/n8n/tools/n8n_generate_workflow', generatePayload)
@@ -216,10 +220,14 @@ export const createAutomation = async (data: {
   platform?: string
   apiKey?: string
   provider?: string
+  credentialId?: string
+  credentialName?: string
   model?: string
   temperature?: number
   maxTokens?: number
   useUserSettings?: boolean
+  mode?: string
+  userEditedPrompt?: string
 }) => {
   // If platform is specified, use MCP-specific endpoint
   if (data.platform) {

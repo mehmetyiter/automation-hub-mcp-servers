@@ -1,6 +1,7 @@
 import { n8nNodeCatalog } from '../workflow-generation/n8n-node-catalog.js';
 import { FeedbackData } from '../learning/types.js';
 import { FeedbackCollector } from '../learning/feedback-collector.js';
+import { SYSTEM_RULES, getCriticalRules } from '../learning/system-rules.js';
 
 export interface ValidationIssue {
   nodeId: string;
@@ -99,7 +100,11 @@ export class WorkflowValidator {
       });
     });
 
-    // 4. Check for common anti-patterns
+    // 4. Check for switch node issues
+    const switchNodeIssues = this.validateSwitchNodes(workflow);
+    issues.push(...switchNodeIssues);
+
+    // 5. Check for common anti-patterns
     const antiPatterns = this.detectAntiPatterns(workflow, nodeTypeCount);
     warnings.push(...antiPatterns);
 
@@ -372,6 +377,67 @@ export class WorkflowValidator {
     }
 
     return warnings;
+  }
+
+  private validateSwitchNodes(workflow: any): ValidationIssue[] {
+    const issues: ValidationIssue[] = [];
+    
+    if (!workflow.nodes || !workflow.connections) {
+      return issues;
+    }
+    
+    workflow.nodes.forEach((node: any) => {
+      if (node.type === 'n8n-nodes-base.switch') {
+        const nodeName = node.name || node.id;
+        const connections = workflow.connections[nodeName] || workflow.connections[node.id] || {};
+        
+        // Check if switch has any connections
+        if (!connections.main || !Array.isArray(connections.main)) {
+          issues.push({
+            nodeId: node.id || 'unknown',
+            nodeName: nodeName,
+            issueType: 'invalid_connection',
+            severity: 'critical',
+            message: `Switch node "${nodeName}" has no output connections defined`,
+            suggestion: 'Define connections for all switch cases'
+          });
+          return;
+        }
+        
+        // Check each output branch
+        const emptyBranches: number[] = [];
+        connections.main.forEach((branch: any[], index: number) => {
+          if (!branch || branch.length === 0) {
+            emptyBranches.push(index);
+          }
+        });
+        
+        if (emptyBranches.length > 0) {
+          issues.push({
+            nodeId: node.id || 'unknown',
+            nodeName: nodeName,
+            issueType: 'invalid_connection',
+            severity: 'error',
+            message: `Switch node "${nodeName}" has empty output branches at indices: ${emptyBranches.join(', ')}`,
+            suggestion: 'Connect all switch outputs to appropriate processing nodes'
+          });
+        }
+        
+        // Check if switch has at least 2 outputs (otherwise it's not really a switch)
+        if (connections.main.length < 2) {
+          issues.push({
+            nodeId: node.id || 'unknown',
+            nodeName: nodeName,
+            issueType: 'invalid_connection',
+            severity: 'warning',
+            message: `Switch node "${nodeName}" has only ${connections.main.length} output(s)`,
+            suggestion: 'Switch nodes should have at least 2 different output paths'
+          });
+        }
+      }
+    });
+    
+    return issues;
   }
 
   private async recordIssuesToLearningSystem(

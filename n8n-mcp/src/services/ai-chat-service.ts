@@ -60,13 +60,22 @@ export class AIChatService {
       ];
       
       // 7. Send to AI provider
+      console.log('Creating provider with config:', { 
+        provider: providerConfig.provider, 
+        hasApiKey: !!providerConfig.apiKey,
+        model: providerConfig.model 
+      });
+      
       const provider = ProviderFactory.createProvider(providerConfig);
       
       let response;
       if ('chat' in provider && typeof provider.chat === 'function') {
+        console.log('Calling provider.chat with enhanced messages');
         response = await provider.chat(enhancedMessages);
+        console.log('Provider chat response:', { success: response.success, hasContent: !!response.content });
       } else {
         // Fallback for workflow generation
+        console.log('Provider does not support chat functionality');
         return { 
           success: false, 
           error: 'Provider does not support chat functionality' 
@@ -104,127 +113,109 @@ export class AIChatService {
   }
   
   private createEnhancedSystemPrompt(analysis: any, userRequest: string): string {
-    const workflowPlan = this.promptMapper.createWorkflowPlan(analysis);
+    // Build context from analysis without using templates
+    let context = `User wants to create: ${userRequest}\n\n`;
+    
+    if (analysis.features && analysis.features.size > 0) {
+      context += 'Key aspects identified:\n';
+      analysis.features.forEach((capabilities: string[], feature: string) => {
+        context += `- ${feature}\n`;
+      });
+    }
     
     return `You are an AI assistant specialized in creating detailed n8n workflow automation prompts.
 
-## CRITICAL CONTEXT ABOUT USER'S REQUEST:
-${workflowPlan}
+## CONTEXT:
+${context}
 
-## YOUR ENHANCED ROLE:
-You help users create COMPREHENSIVE, PRODUCTION-READY workflow prompts by:
+## YOUR ROLE:
+You are an expert workflow architect who creates comprehensive n8n automation solutions by deeply understanding user needs and expanding them into complete, production-ready workflows.
 
-1. **Understanding Requirements Deeply:**
-   - Analyze the features identified above
-   - Consider the suggested nodes and tasks
-   - Ensure all validation items are addressed
+1. **Deep Requirements Analysis:**
+   - Understand the core problem the user is trying to solve
+   - Identify implicit requirements not directly stated
+   - Consider edge cases and failure scenarios
+   - Think about data flow, validation, and error recovery
+   - Expand abbreviated concepts into full implementations
 
-2. **Planning Node Structure:**
-   - ALWAYS create a clear node-by-node plan
-   - Specify exact connections between nodes
-   - Include conditional logic (IF/Switch nodes) where needed
-   - Add error handling nodes
+2. **Intelligent Workflow Design:**
+   - Design workflows that solve the complete problem, not just stated features
+   - Add necessary intermediate processing steps
+   - Include proper data transformation and validation
+   - Implement comprehensive monitoring and alerting
+   - Create robust error handling and recovery mechanisms
 
-3. **Ensuring Complete Workflows:**
-   - Every workflow MUST have proper error handling
-   - Parallel processes MUST have merge nodes
-   - Conditional flows MUST handle all cases
-   - Payment processes MUST NOT charge multiple times
+3. **Ensuring Feature Completeness:**
+   - Analyze the logical flow and dependencies between features
+   - Identify all communication channels mentioned and implement each one
+   - Recognize optimization requirements and create appropriate processing logic
+   - Understand coordination needs between different entities or systems
+   - Ensure every capability mentioned has proper implementation
 
-4. **Technical Requirements:**
+4. **Creating Detailed Workflows:**
+   - Don't simplify complex requirements
+   - Create as many nodes as needed (50+ nodes is fine for complex workflows)
+   - Include data transformation nodes between integrations
+   - Add validation and error handling for each major section
    ${analysis.suggestedNodes.length > 0 ? `- Use these node types: ${analysis.suggestedNodes.join(', ')}` : ''}
    ${analysis.missingCapabilities.length > 0 ? `- Address these gaps: ${analysis.missingCapabilities.join(', ')}` : ''}
 
-When responding:
-- Structure your response with clear sections
-- Include SPECIFIC node connections (Node A -> Node B)
-- Plan conditional logic explicitly (IF score < 7 THEN...)
-- Consider timing and delays (Wait nodes for feedback)
-- Ensure data flows logically between nodes`;
+## WORKFLOW PROMPT GENERATION APPROACH:
+
+When creating the workflow prompt:
+1. **Expand the user's request** into a detailed implementation plan
+2. **Infer missing components** that are logically necessary
+3. **Add production-ready features** like monitoring, logging, and alerting
+4. **Think holistically** about the entire system, not just individual features
+5. **Create detailed node descriptions** that explain both what and why
+
+Your response should be a comprehensive workflow design document that:
+- Expands brief requirements into detailed specifications
+- Adds necessary infrastructure (auth, validation, error handling)
+- Includes all logical dependencies and data flows
+- Provides clear implementation guidance for each component
+- Results in a production-ready, scalable automation solution`;
   }
   
   private getNodePlanningRules(analysis: any): string {
-    return `## MANDATORY NODE PLANNING RULES:
-
-### CRITICAL: USE ONLY VALID n8n NODE TYPES:
-- n8n-nodes-base.webhook (NOT webhookTrigger)
-- n8n-nodes-base.httpRequest
-- n8n-nodes-base.code (NOT function)
-- n8n-nodes-base.emailSend (NOT email)
-- n8n-nodes-base.twilio (for SMS, NOT sms)
-- n8n-nodes-base.whatsappBusiness (NOT whatsapp)
-- n8n-nodes-base.mqtt (NOT mqttTrigger)
-- n8n-nodes-base.cron (NOT cronTrigger)
-- n8n-nodes-base.errorTrigger
-- n8n-nodes-base.executeCommand
-- n8n-nodes-base.googleDrive
-- n8n-nodes-raspberry.raspberryPi (NOT gpio, for GPIO operations)
-
-NEVER USE: function, gpio, mqttTrigger, cronTrigger, whatsapp, email, sms
-
-### 1. CONNECTION STRUCTURE:
-ALWAYS specify connections in this format:
-- Trigger Node -> First Process Node
-- Process Node -> Decision Node
-- Decision Node -> Branch A (condition: true)
-- Decision Node -> Branch B (condition: false)
-- Branch A & Branch B -> Merge Node
-
-### 2. CONDITIONAL LOGIC REQUIREMENTS:
-${analysis.features.has('Content Moderation') ? `
-- Anti-fraud Check -> IF Node:
-  - Low Risk -> Continue Processing
-  - High Risk -> Manual Review + Admin Notification
-` : ''}
-${analysis.features.has('Data Storage') ? `
-- Stock Check -> IF Node:
-  - In Stock -> Continue Order
-  - Out of Stock -> Cancel + Notify Customer
-` : ''}
-${analysis.features.has('Notifications') && analysis.features.has('NLP Analysis') ? `
-- NPS Evaluation -> Switch Node:
-  - Score 0-6 -> Customer Service Ticket
-  - Score 7-8 -> Standard Campaign
-  - Score 9-10 -> Referral Program
-` : ''}
-
-### 3. PARALLEL PROCESSING:
-When multiple operations can run simultaneously:
-- Use parallel branches from a single node
-- ALWAYS add a Merge node after parallel branches
-- Example: Payment Success -> [Update CRM, Send Email, Update Inventory] -> Merge -> Continue
-
-### 4. ERROR HANDLING:
-Every workflow MUST include:
-- Error Trigger node for global error catching
-- Try/Catch pattern for critical operations
-- Specific error outputs for payment/API nodes
-
-### 5. TIMING CONSIDERATIONS:
-${analysis.features.has('Scheduling') ? '- Use Cron nodes for scheduled triggers' : ''}
-${analysis.features.has('Notifications') ? '- Add Wait nodes before sending follow-up messages' : ''}
-- Consider API rate limits with delay nodes`;
+    // Build dynamic guidance based on what's actually needed
+    let rules = '';
+    
+    // Only add node type guidance if specific nodes were suggested
+    if (analysis.suggestedNodes && analysis.suggestedNodes.length > 0) {
+      rules += `For this workflow, use the appropriate n8n nodes based on your requirements.\n\n`;
+    }
+    
+    // Add connection guidance only if complex flow is detected
+    if (analysis.features.has('Complex Logic') || analysis.features.has('Parallel Processing')) {
+      rules += `Ensure proper connections between nodes for smooth workflow execution.\n`;
+    }
+    
+    // Add conditional logic guidance only if conditions are needed
+    const needsConditions = analysis.features.has('Content Moderation') || 
+                           analysis.features.has('Data Validation') ||
+                           analysis.features.has('Conditional Logic');
+    
+    if (needsConditions) {
+      rules += `Implement conditional logic where needed based on your specific requirements.\n`;
+    }
+    
+    // Add error handling reminder only for workflows with external integrations
+    if (analysis.features.has('API Integration') || analysis.features.has('External Services')) {
+      rules += `Include appropriate error handling for external service calls.\n`;
+    }
+    
+    // Add timing guidance only if scheduling or delays are needed
+    if (analysis.features.has('Scheduling') || analysis.features.has('Time-based Processing')) {
+      rules += `Consider timing requirements for scheduled or delayed operations.\n`;
+    }
+    
+    return rules || 'Focus on implementing the specific requirements mentioned in the request.\n';
   }
   
   private getValidationRules(): string {
-    return `## VALIDATION CHECKLIST FOR YOUR RESPONSE:
-
-Before finalizing your response, ensure:
-☑ All nodes are connected (no orphaned nodes)
-☑ Payment methods use Switch node (not parallel execution)
-☑ Error handling exists for all external API calls
-☑ Merge nodes follow all parallel branches
-☑ IF nodes have both true/false paths connected
-☑ Wait nodes are used for delayed actions
-☑ Data transformation nodes exist between incompatible APIs
-☑ CRM/ERP updates happen at multiple points (not just end)
-
-## COMMON MISTAKES TO AVOID:
-❌ Don't process multiple payment methods simultaneously
-❌ Don't send feedback immediately after order (use Wait node)
-❌ Don't continue processing if critical checks fail
-❌ Don't forget merge nodes after parallel branches
-❌ Don't create linear flows when parallel processing is possible`;
+    // Return minimal, non-template validation guidance
+    return `Ensure your workflow is complete and properly addresses all requirements.`;
   }
   
   private validateAndEnhanceResponse(content: string, analysis: any): string {

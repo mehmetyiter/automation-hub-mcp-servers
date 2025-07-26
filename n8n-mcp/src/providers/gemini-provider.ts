@@ -188,4 +188,16 @@ export class GeminiProvider extends BaseAIProvider {
       };
     }
   }
+
+  protected async callAIForFix(prompt: string, currentWorkflow: any): Promise<string> {
+    // For now, use the same generation endpoint to fix workflows
+    // Each provider can customize this implementation later
+    const result = await this.generateWorkflow(prompt, 'Fix Workflow');
+    
+    if (result.success && result.workflow) {
+      return JSON.stringify(result.workflow);
+    }
+    
+    throw new Error(result.error || 'Failed to fix workflow');
+  }
 }

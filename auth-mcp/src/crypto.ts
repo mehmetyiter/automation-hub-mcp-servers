@@ -1,4 +1,13 @@
 import crypto from 'crypto';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Load environment variables
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+// First try to load from auth-mcp's own .env file
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const ALGORITHM = 'aes-256-gcm';
 const SALT_LENGTH = 32;
@@ -7,12 +16,16 @@ const TAG_LENGTH = 16;
 const KEY_LENGTH = 32;
 const ITERATIONS = 100000;
 
-// Use environment variable or generate a secure key
-const MASTER_KEY = process.env.ENCRYPTION_KEY || crypto.randomBytes(32).toString('hex');
+// Use environment variable - MUST be consistent!
+const MASTER_KEY = process.env.ENCRYPTION_KEY;
+if (!MASTER_KEY) {
+  console.error('CRITICAL: ENCRYPTION_KEY not found in environment. Credentials cannot be decrypted!');
+  throw new Error('ENCRYPTION_KEY is required for credential encryption/decryption');
+}
 
 export class Crypto {
   private static deriveKey(salt: Buffer): Buffer {
-    return crypto.pbkdf2Sync(MASTER_KEY, salt, ITERATIONS, KEY_LENGTH, 'sha256');
+    return crypto.pbkdf2Sync(MASTER_KEY!, salt, ITERATIONS, KEY_LENGTH, 'sha256');
   }
 
   static encrypt(text: string): string {

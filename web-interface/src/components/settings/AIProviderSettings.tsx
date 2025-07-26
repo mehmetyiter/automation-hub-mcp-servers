@@ -3,7 +3,7 @@ import { Brain, Plus, Trash2, Check, AlertCircle, RefreshCw } from 'lucide-react
 import { api } from '../../services/api';
 import toast from 'react-hot-toast';
 
-type AIProvider = 'openai' | 'anthropic' | 'gemini' | 'llama' | 'deepseek' | 'perplexity';
+type AIProvider = 'openai' | 'anthropic' | 'gemini' | 'llama' | 'deepseek' | 'perplexity' | 'groq' | 'mistral' | 'cohere' | 'together';
 
 interface AIProviderSetting {
   provider: AIProvider;
@@ -44,6 +44,26 @@ const providerInfo: Record<AIProvider, { name: string; icon: string; models: str
     name: 'Perplexity',
     icon: '🔮',
     models: ['sonar-pro', 'sonar', 'sonar-reasoning', 'deepseek-r1', 'grok-3-beta', 'deep-research']
+  },
+  groq: {
+    name: 'Groq',
+    icon: '⚡',
+    models: ['llama3-groq-70b-8192-tool-use-preview', 'llama3-groq-8b-8192-tool-use-preview', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768']
+  },
+  mistral: {
+    name: 'Mistral AI',
+    icon: '🌊',
+    models: ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest', 'open-mistral-7b', 'open-mixtral-8x7b']
+  },
+  cohere: {
+    name: 'Cohere',
+    icon: '🎯',
+    models: ['command-r-plus', 'command-r', 'command', 'command-light']
+  },
+  together: {
+    name: 'Together AI',
+    icon: '🤝',
+    models: ['meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo', 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo', 'mistralai/Mixtral-8x7B-Instruct-v0.1', 'NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO']
   }
 };
 

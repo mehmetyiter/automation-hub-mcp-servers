@@ -207,6 +207,9 @@ export class DirectWorkflowBuilder {
       return node;
     });
     
+    // Post-process switch nodes
+    this.postProcessSwitchNodes(workflow);
+    
     return workflow;
   }
   
@@ -266,6 +269,78 @@ export class DirectWorkflowBuilder {
       .replace(/}\s*;/g, '\\n};') // Format closing braces
       .replace(/\\n\\n+/g, '\\n\\n') // Remove extra blank lines
       .trim();
+  }
+  
+  private postProcessSwitchNodes(workflow: any): void {
+    if (!workflow.nodes || !workflow.connections) {
+      return;
+    }
+    
+    workflow.nodes.forEach((node: any) => {
+      if (node.type === 'n8n-nodes-base.switch') {
+        const nodeName = node.name || node.id;
+        const connections = workflow.connections[nodeName] || workflow.connections[node.id] || {};
+        
+        // Check if switch has proper connections
+        if (!connections.main || !Array.isArray(connections.main) || connections.main.length < 2) {
+          console.warn(`Switch node "${nodeName}" needs proper output configuration`);
+          
+          // If switch node parameters are available, try to determine expected outputs
+          const rules = node.parameters?.rules?.values || [];
+          const expectedOutputs = rules.length + 1; // +1 for fallback
+          
+          if (rules.length > 0 && (!connections.main || connections.main.length < expectedOutputs)) {
+            console.warn(`Switch node "${nodeName}" has ${rules.length} rules but only ${connections.main?.length || 0} outputs defined`);
+            
+            // Log this as a critical issue that needs AI correction
+            console.error(`CRITICAL: Switch node "${nodeName}" requires ${expectedOutputs} output connections but has ${connections.main?.length || 0}`);
+            
+            // Add a warning to workflow metadata
+            if (!workflow.meta) {
+              workflow.meta = { instanceId: this.generateInstanceId() };
+            }
+            if (!(workflow.meta as any).warnings) {
+              (workflow.meta as any).warnings = [];
+            }
+            (workflow.meta as any).warnings.push({
+              type: 'switch_node_incomplete',
+              node: nodeName,
+              message: `Switch node requires ${expectedOutputs} outputs but has ${connections.main?.length || 0}`,
+              severity: 'critical'
+            });
+          }
+        }
+        
+        // Check for empty branches
+        if (connections.main && Array.isArray(connections.main)) {
+          const emptyBranches: number[] = [];
+          connections.main.forEach((branch: any[], index: number) => {
+            if (!branch || branch.length === 0) {
+              emptyBranches.push(index);
+            }
+          });
+          
+          if (emptyBranches.length > 0) {
+            console.warn(`Switch node "${nodeName}" has empty branches at indices: ${emptyBranches.join(', ')}`);
+            
+            // Add warning to metadata
+            if (!workflow.meta) {
+              workflow.meta = { instanceId: this.generateInstanceId() };
+            }
+            if (!(workflow.meta as any).warnings) {
+              (workflow.meta as any).warnings = [];
+            }
+            (workflow.meta as any).warnings.push({
+              type: 'switch_empty_branches',
+              node: nodeName,
+              emptyBranches: emptyBranches,
+              message: `Switch node has empty output branches`,
+              severity: 'error'
+            });
+          }
+        }
+      }
+    });
   }
 
   private generateCodeForNode(nodeName: string): string {

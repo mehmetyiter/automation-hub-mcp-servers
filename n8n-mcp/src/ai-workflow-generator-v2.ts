@@ -8,6 +8,7 @@ import { AdvancedWorkflowBuilder } from './workflow-generation/advanced-workflow
 import { PromptCleaner } from './workflow-generation/prompt-cleaner.js';
 import { WorkflowAnalyzer, WorkflowValidator } from './workflow-generation/workflow-analyzer.js';
 import { DirectWorkflowBuilder } from './workflow-generation/direct-workflow-builder.js';
+import { sanitizeWorkflow, validateWorkflowParameters } from './utils/workflow-sanitizer.js';
 
 export interface WorkflowGenerationOptions {
   apiKey?: string;
@@ -33,9 +34,13 @@ export class AIWorkflowGeneratorV2 {
     if (!options.apiKey) {
       throw new Error('API key is required');
     }
+    
+    if (!options.provider) {
+      throw new Error('Provider is required');
+    }
 
     this.providerConfig = {
-      provider: options.provider || 'openai',
+      provider: options.provider,
       apiKey: options.apiKey,
       model: options.model,
       temperature: options.temperature,
@@ -98,6 +103,60 @@ export class AIWorkflowGeneratorV2 {
           let workflow = this.useAdvancedMode
             ? this.advancedBuilder.build(parsed)
             : this.builder.build(parsed);
+          
+          // Validate and auto-fix the workflow
+          console.log('Validating workflow...');
+          let validation = this.validator.validate(workflow);
+          let fixAttempts = 0;
+          const MAX_FIX_ATTEMPTS = 3;
+          
+          while (!validation.isValid && fixAttempts < MAX_FIX_ATTEMPTS) {
+            console.log(`Validation failed with ${validation.errors.length} errors. Attempt ${fixAttempts + 1}/${MAX_FIX_ATTEMPTS}`);
+            
+            // First try auto-fix
+            workflow = this.validator.autoFix(workflow);
+            
+            // Re-validate after auto-fix
+            validation = this.validator.validate(workflow);
+            
+            // If still invalid and has critical errors, ask AI to fix
+            if (!validation.isValid && validation.errors.length > 0) {
+              console.log(`Auto-fix insufficient. Requesting AI correction for ${validation.errors.length} errors...`);
+              
+              // Prepare error context for AI
+              const errorContext = validation.errors.map(e => e.message).join('\n');
+              const fixPrompt = `Fix these workflow errors:\n${errorContext}\n\nCurrent workflow has ${workflow.nodes.length} nodes. Ensure all branches have proper conclusions.`;
+              
+              // Request AI fix (using same provider)
+              const fixRequest = {
+                workflow: workflow,
+                issues: validation.errors.map((e: any) => ({
+                  message: e.message,
+                  node: e.nodeId,
+                  type: e.type
+                })),
+                originalPrompt: prompt
+              };
+              
+              console.log('Requesting AI fix for workflow issues...');
+              const fixResult = await provider.fixWorkflow(fixRequest);
+              
+              if (fixResult.success && fixResult.workflow) {
+                workflow = fixResult.workflow;
+                console.log(`AI applied ${fixResult.fixesApplied?.length || 0} fixes, re-validating...`);
+              } else {
+                console.log('AI fix failed:', fixResult.error);
+                break;
+              }
+            }
+            
+            fixAttempts++;
+          }
+          
+          if (!validation.isValid) {
+            console.log(`WARNING: Workflow still has ${validation.errors.length} errors after ${fixAttempts} fix attempts`);
+            // Continue anyway but log the issues
+          }
         } else if (result.workflow && result.workflow.nodes && result.workflow.connections) {
           
           console.log('Detected direct AI workflow JSON, using DirectWorkflowBuilder...');
@@ -127,6 +186,25 @@ export class AIWorkflowGeneratorV2 {
           }
           
           console.log(`Generated workflow with ${workflow.nodes.length} nodes (AI details preserved)`);
+          
+          // Sanitize workflow parameters to prevent n8n errors
+          workflow = sanitizeWorkflow(workflow);
+          
+          // Validate workflow parameters
+          const paramValidation = validateWorkflowParameters(workflow);
+          if (!paramValidation.valid) {
+            console.warn('Workflow parameter issues:', paramValidation.errors);
+          }
+          
+          // Run QuickValidator to check and fix connections
+          console.log('Running connection validation...');
+          const quickValidation = this.validator.validate(workflow);
+          if (!quickValidation.isValid || quickValidation.warnings.length > 0) {
+            console.log(`Connection validation: ${quickValidation.errors.length} errors, ${quickValidation.warnings.length} warnings`);
+            workflow = this.validator.autoFix(workflow);
+            const reValidation = this.validator.validate(workflow);
+            console.log(`After auto-fix: ${reValidation.errors.length} errors, ${reValidation.warnings.length} warnings`);
+          }
           
           result.workflow = workflow;
         } else {

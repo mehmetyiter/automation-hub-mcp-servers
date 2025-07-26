@@ -1,6 +1,7 @@
 // workflow-generation/quick-builder.ts
 
 import { NodeParameterHandler } from './node-parameter-handler.js';
+import { generateWorkflowId, generateVersionId, generateInstanceId } from '../utils/id-generator.js';
 
 export class QuickWorkflowBuilder {
   private nodeParameterHandler: NodeParameterHandler;
@@ -22,11 +23,11 @@ export class QuickWorkflowBuilder {
       connections: {},
       active: false,
       settings: {},
-      versionId: this.generateVersionId(),
+      versionId: generateVersionId(),
       meta: {
-        instanceId: this.generateInstanceId()
+        instanceId: generateInstanceId()
       },
-      id: this.generateWorkflowId(),
+      id: generateWorkflowId(),
       tags: [],
       pinData: {}
     };
@@ -330,23 +331,6 @@ return items;`;
   }
   
   // Utility methods
-  private generateVersionId(): string {
-    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  }
-  
-  private generateInstanceId(): string {
-    return Array(64).fill(0).map(() => 
-      Math.floor(Math.random() * 16).toString(16)
-    ).join('');
-  }
-  
-  private generateWorkflowId(): string {
-    return Array(16).fill(0).map(() => 
-      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'
-        .charAt(Math.floor(Math.random() * 62))
-    ).join('');
-  }
-  
   generateWebhookId(): string {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
       const r = Math.random() * 16 | 0;

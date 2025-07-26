@@ -16,10 +16,12 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Load environment variables from monorepo root .env
+// Load environment variables
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// .env is located three levels up (monorepo root)
+// First try to load from auth-mcp's own .env file
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+// Then load from monorepo root .env (for shared configs)
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 
 const app = express();
@@ -342,6 +344,7 @@ app.post('/auth/credentials/test', authenticate, async (req: any, res) => {
 // Credential templates endpoint
 app.get('/auth/credentials/templates', authenticate, async (_req: any, res: any) => {
   try {
+    console.log('Credential templates requested, count:', credentialTemplates.length);
     res.json({ success: true, data: credentialTemplates });
   } catch (error: any) {
     console.error('Get credential templates error:', error);
@@ -464,6 +467,72 @@ app.post('/auth/credentials/:id/test', authenticate, async (req: any, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to test credential'
+    });
+  }
+});
+
+// Add /api/credentials endpoint as alias for /auth/credentials (for frontend compatibility)
+app.get('/api/credentials', authenticate, async (req: any, res) => {
+  try {
+    const credentials = await db.getCredentials(req.user.userId);
+    
+    // Don't send the actual credential data in the list
+    const sanitized = credentials.map(cred => ({
+      id: cred.id,
+      platform: cred.platform,
+      name: cred.name,
+      templateId: cred.platform, // Add templateId for compatibility
+      created_at: cred.created_at,
+      updated_at: cred.updated_at
+    }));
+    
+    res.json({
+      success: true,
+      data: sanitized
+    });
+  } catch (error: any) {
+    console.error('Get credentials error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get credentials'
+    });
+  }
+});
+
+// Add /api/credentials/:id endpoint for fetching individual credentials
+app.get('/api/credentials/:id', authenticate, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const credential = await db.getCredentialById(parseInt(id));
+    
+    if (!credential || credential.user_id !== req.user.userId) {
+      res.status(404).json({
+        success: false,
+        error: 'Credential not found'
+      });
+      return;
+    }
+    
+    // Decrypt the data
+    const decryptedData = JSON.parse(Crypto.decrypt(credential.data));
+    
+    res.json({
+      success: true,
+      data: {
+        id: credential.id,
+        platform: credential.platform,
+        name: credential.name,
+        templateId: credential.platform, // Add templateId for compatibility
+        credentials: decryptedData, // Use 'credentials' instead of 'data' for compatibility
+        created_at: credential.created_at,
+        updated_at: credential.updated_at
+      }
+    });
+  } catch (error: any) {
+    console.error('Get credential error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to get credential'
     });
   }
 });

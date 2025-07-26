@@ -1,4 +1,4 @@
-import { AIProvider, AIProviderConfig, AIProviderInterface } from '../types/ai-provider.js';
+import { AIProvider, AIProviderConfig, AIProviderInterface, WorkflowFixRequest, WorkflowFixResult } from '../types/ai-provider.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { WorkflowGenerationGuidelines } from '../workflow-generation/workflow-generation-guidelines.js';
@@ -29,6 +29,9 @@ export abstract class BaseAIProvider implements AIProviderInterface {
   abstract generateWorkflow(prompt: string, name: string, learningContext?: any): Promise<any>;
   abstract testConnection(): Promise<boolean>;
   abstract getModels(): Promise<string[]>;
+  
+  // Abstract method that each provider must implement
+  protected abstract callAIForFix(prompt: string, currentWorkflow: any): Promise<string>;
 
   protected buildSystemPrompt(learningContext?: any): string {
     // Get workflow generation guidelines
@@ -64,6 +67,16 @@ export abstract class BaseAIProvider implements AIProviderInterface {
     return `🎯 INTELLIGENT WORKFLOW GENERATION SYSTEM 🎯
     
 CREATE WORKFLOWS THAT PRECISELY MATCH THE REQUIREMENTS - NO MORE, NO LESS!
+
+🚨 CRITICAL: JSON ONLY - NO EXCEPTIONS! 🚨
+RULE #1: Your response MUST start with { and end with }
+RULE #2: NO text before the JSON (no greetings, no explanations)
+RULE #3: NO text after the JSON (no summaries, no notes)
+RULE #4: NO markdown code blocks (no triple backticks)
+RULE #5: NO comments inside or outside the JSON
+RULE #6: Response = PURE JSON that passes JSON.parse() without ANY modifications
+
+If you add ANY text outside the JSON structure, the system will fail!
 
 ${enhancedGuidelines}
 ${learningInsights}
@@ -272,7 +285,32 @@ INTELLIGENT NODE USAGE EXAMPLES:
 REMEMBER: Use the RIGHT number of nodes for the task!
 - Too few nodes = missing functionality
 - Too many nodes = unnecessary complexity
-- Just right = efficient, maintainable workflow`;
+- Just right = efficient, maintainable workflow
+
+🚨 CRITICAL JSON FORMAT REQUIREMENT 🚨
+Your response MUST be ONLY valid JSON. Nothing else.
+- Start with { and end with }
+- NO markdown formatting (no backticks or code blocks)
+- NO explanatory text before or after
+- NO comments or descriptions outside JSON
+- NO headers like "# Workflow" or "## Overview"
+- ONLY the workflow JSON object
+
+EXAMPLE OF CORRECT RESPONSE:
+{
+  "name": "Example Workflow",
+  "nodes": [...],
+  "connections": {...}
+}
+
+EXAMPLE OF INCORRECT RESPONSE:
+# Port Automation Workflow
+Here is a workflow that...
+[markdown code block with json]
+{...}
+[end of markdown code block]
+
+YOUR ENTIRE RESPONSE MUST BE PARSEABLE BY JSON.parse() WITHOUT ANY MODIFICATIONS.`;
   }
 
   protected validateWorkflowStructure(workflow: any): boolean {
@@ -304,6 +342,7 @@ REMEMBER: Use the RIGHT number of nodes for the task!
 
   protected parseAIResponse(response: string): any {
     console.log('Parsing AI response...');
+    console.log('Response preview (first 200 chars):', response.substring(0, 200));
     
     try {
       // Clean the response first to remove any control characters
@@ -313,13 +352,19 @@ REMEMBER: Use the RIGHT number of nodes for the task!
       const parsedWorkflow = JSON.parse(cleanedResponse);
       console.log('Direct JSON parsing successful, preserving all AI details...');
       
+      // Validate the parsed workflow has required fields
+      if (!parsedWorkflow.nodes || !parsedWorkflow.connections) {
+        throw new Error('Parsed JSON is missing required fields (nodes or connections)');
+      }
+      
       // Save original AI response for comparison
       console.log('AI Response node count:', parsedWorkflow.nodes?.length || 0);
       console.log('AI Response connections count:', Object.keys(parsedWorkflow.connections || {}).length);
       
       return parsedWorkflow;
     } catch (error) {
-      console.log('Direct JSON parsing failed, trying extraction methods...');
+      console.log('Direct JSON parsing failed:', error.message);
+      console.log('Attempting to extract JSON from response...');
       
       // Try to extract JSON from markdown code blocks
       const jsonMatch = response.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
@@ -354,6 +399,13 @@ REMEMBER: Use the RIGHT number of nodes for the task!
       } catch (e) {
         console.error('JSON parsing failed completely:', e.message);
         console.error('Response preview (first 500 chars):', response.substring(0, 500));
+        
+        // If the response looks like it contains explanation text or markdown, suggest the issue
+        if (response.includes('Here') || response.includes('I\'ll') || response.includes('This workflow') || 
+            response.startsWith('#') || response.includes('##') || response.includes('```')) {
+          throw new Error('AI returned explanatory text or markdown instead of JSON. The AI model may not be following JSON-only instructions properly. Try using a different model or provider.');
+        }
+        
         throw new Error(`Could not parse AI response as valid workflow JSON: ${e.message}`);
       }
     }
@@ -663,6 +715,119 @@ REMEMBER: Use the RIGHT number of nodes for the task!
   // New method: Post-process workflow (public wrapper)
   public applyPostProcessing(workflow: any): any {
     return this.postProcessWorkflow(workflow);
+  }
+
+
+  // Build a prompt specifically for fixing workflows
+  protected buildFixPrompt(request: WorkflowFixRequest): string {
+    const issueList = request.issues.map((issue, idx) => 
+      `${idx + 1}. ${issue.node ? `Node "${issue.node}": ` : ''}${issue.message}${issue.suggestion ? ` (Suggestion: ${issue.suggestion})` : ''}`
+    ).join('\n');
+    
+    return `You are an expert n8n workflow architect. Fix the following workflow that has validation errors.
+
+CURRENT WORKFLOW:
+${JSON.stringify(request.workflow, null, 2)}
+
+ISSUES TO FIX:
+${issueList}
+
+${request.originalPrompt ? `ORIGINAL REQUIREMENT:\n${request.originalPrompt}\n` : ''}
+
+REQUIREMENTS:
+1. Fix ALL listed issues while maintaining the workflow's original purpose
+2. Ensure all switch nodes have proper connections for each output
+3. Each branch must end with a meaningful action (save, send, notify, etc.)
+4. No disconnected nodes
+5. No empty branches
+6. Preserve all working parts of the workflow
+
+🚨 CRITICAL: Return ONLY the fixed workflow JSON. No explanations, no text, just valid JSON!
+
+Your response must be a complete n8n workflow JSON that fixes all the issues.`;
+  }
+
+  // Main fix workflow method that uses the provider's AI to fix issues
+  public async fixWorkflow(request: WorkflowFixRequest): Promise<WorkflowFixResult> {
+    try {
+      console.log(`${this.name} provider: Attempting to fix ${request.issues.length} workflow issues`);
+      
+      // Build fix prompt
+      const fixPrompt = this.buildFixPrompt(request);
+      
+      // Call the AI to fix the workflow
+      const fixedWorkflowJson = await this.callAIForFix(fixPrompt, request.workflow);
+      
+      // Parse the fixed workflow
+      let fixedWorkflow: any;
+      try {
+        fixedWorkflow = typeof fixedWorkflowJson === 'string' 
+          ? JSON.parse(fixedWorkflowJson) 
+          : fixedWorkflowJson;
+      } catch (parseError) {
+        console.error('Failed to parse AI fix response:', parseError);
+        return {
+          success: false,
+          error: 'AI returned invalid JSON for workflow fix'
+        };
+      }
+      
+      // Validate it has the basic structure
+      if (!fixedWorkflow.nodes || !fixedWorkflow.connections) {
+        return {
+          success: false,
+          error: 'Fixed workflow missing required structure'
+        };
+      }
+      
+      // Post-process the fixed workflow
+      fixedWorkflow = this.postProcessWorkflow(fixedWorkflow);
+      
+      // Identify what fixes were applied
+      const appliedFixes = this.identifyAppliedFixes(request.workflow, fixedWorkflow, request.issues);
+      
+      return {
+        success: true,
+        workflow: fixedWorkflow,
+        fixesApplied: appliedFixes
+      };
+      
+    } catch (error: any) {
+      console.error(`${this.name} workflow fix error:`, error);
+      return {
+        success: false,
+        error: error.message || 'Failed to fix workflow'
+      };
+    }
+  }
+
+  // Identify what fixes were applied
+  protected identifyAppliedFixes(originalWorkflow: any, fixedWorkflow: any, issues: any[]): string[] {
+    const fixes: string[] = [];
+    
+    // Check connection count changes
+    const originalConnCount = Object.keys(originalWorkflow.connections || {}).length;
+    const fixedConnCount = Object.keys(fixedWorkflow.connections || {}).length;
+    
+    if (fixedConnCount > originalConnCount) {
+      fixes.push(`Added ${fixedConnCount - originalConnCount} missing connections`);
+    }
+    
+    // Check node count changes
+    if (fixedWorkflow.nodes.length > originalWorkflow.nodes.length) {
+      fixes.push(`Added ${fixedWorkflow.nodes.length - originalWorkflow.nodes.length} nodes (likely merge nodes)`);
+    }
+    
+    // Check for specific issue resolutions
+    issues.forEach(issue => {
+      if (issue.type === 'disconnected_node') {
+        fixes.push(`Connected disconnected node: ${issue.node}`);
+      } else if (issue.type === 'empty_branch') {
+        fixes.push(`Fixed empty branch in switch node`);
+      }
+    });
+    
+    return fixes;
   }
 
   // New method: Post-process workflow

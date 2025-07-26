@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Brain, Check, AlertCircle } from 'lucide-react';
 import { api } from '../services/api';
 
-type AIProvider = 'openai' | 'anthropic' | 'gemini' | 'llama' | 'deepseek' | 'perplexity';
+type AIProvider = 'openai' | 'anthropic' | 'gemini' | 'llama' | 'deepseek' | 'perplexity' | 'groq' | 'mistral' | 'cohere' | 'together';
 
 interface AIProviderInfo {
   provider: AIProvider;
@@ -26,7 +26,11 @@ const providerInfo: Record<AIProvider, { name: string; icon: string }> = {
   gemini: { name: 'Google Gemini', icon: '✨' },
   llama: { name: 'Meta Llama', icon: '🦙' },
   deepseek: { name: 'DeepSeek', icon: '🔍' },
-  perplexity: { name: 'Perplexity', icon: '🔮' }
+  perplexity: { name: 'Perplexity', icon: '🔮' },
+  groq: { name: 'Groq', icon: '⚡' },
+  mistral: { name: 'Mistral AI', icon: '🌊' },
+  cohere: { name: 'Cohere', icon: '🎯' },
+  together: { name: 'Together AI', icon: '🤝' }
 };
 
 export default function AIProviderSelector({ 

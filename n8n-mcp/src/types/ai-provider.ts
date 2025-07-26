@@ -1,4 +1,4 @@
-export type AIProvider = 'openai' | 'anthropic' | 'gemini' | 'llama' | 'deepseek' | 'perplexity';
+export type AIProvider = 'openai' | 'anthropic' | 'gemini' | 'llama' | 'deepseek' | 'perplexity' | 'groq' | 'mistral' | 'cohere' | 'together';
 
 export interface AIProviderConfig {
   provider: AIProvider;
@@ -35,6 +35,25 @@ export interface AIResponse {
   error?: string;
 }
 
+export interface WorkflowFixRequest {
+  workflow: any;
+  issues: Array<{
+    node?: string;
+    message: string;
+    type?: string;
+    suggestion?: string;
+  }>;
+  originalPrompt?: string;
+}
+
+export interface WorkflowFixResult {
+  success: boolean;
+  workflow?: any;
+  fixesApplied?: string[];
+  remainingIssues?: string[];
+  error?: string;
+}
+
 export interface AIProviderInterface {
   name: AIProvider;
   generateWorkflow(prompt: string, name: string, learningContext?: any): Promise<any>;
@@ -42,4 +61,5 @@ export interface AIProviderInterface {
   getModels(): Promise<string[]>;
   chat?(messages: any[]): Promise<any>;
   applyPostProcessing?(workflow: any): any;
+  fixWorkflow?(request: WorkflowFixRequest): Promise<WorkflowFixResult>;
 }

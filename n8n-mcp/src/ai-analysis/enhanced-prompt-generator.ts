@@ -1,138 +1,92 @@
 export class EnhancedPromptGenerator {
   /**
-   * Node planlama odaklı prompt oluşturur
+   * Generates a dynamic prompt based on user's specific request
+   * NO TEMPLATES - purely based on analysis of the actual request
    */
   static generateNodePlanningPrompt(userRequest: string, features: Map<string, string[]>): string {
-    let prompt = `Create a comprehensive n8n workflow for: ${userRequest}\n\n`;
+    // Start with the user's exact request - no template headers
+    let prompt = `To create this n8n workflow: "${userRequest}"\n\n`;
     
-    // 1. Node Listesi ve Bağlantıları
-    prompt += `### 1. WORKFLOW NODE PLANNING\n\n`;
-    prompt += `Please plan the workflow with the following node structure:\n\n`;
-    
-    // Trigger node
-    if (features.has('Scheduling')) {
-      prompt += `**TRIGGER:**\n`;
-      prompt += `- Cron Node (Daily Schedule) -> Main Process Start\n\n`;
-    } else if (features.has('Real-time Processing')) {
-      prompt += `**TRIGGER:**\n`;
-      prompt += `- Webhook Node (API Endpoint) -> Data Validation\n\n`;
+    // Add context based on what was actually detected
+    if (features.size > 0) {
+      prompt += `Based on your request, here are the key aspects to consider:\n\n`;
+      
+      features.forEach((capabilities, feature) => {
+        prompt += `${feature}: This workflow will need ${capabilities.join(', ')}\n`;
+      });
+      prompt += '\n';
     }
     
-    // Main process nodes
-    prompt += `**MAIN PROCESS FLOW:**\n`;
-    let nodeIndex = 1;
+    // Add specific guidance based on the request content
+    const lowerRequest = userRequest.toLowerCase();
     
-    // Stock Control
-    if (userRequest.toLowerCase().includes('stock') || userRequest.toLowerCase().includes('inventory')) {
-      prompt += `${nodeIndex++}. Stock Control (HTTP Request) -> Check availability\n`;
-      prompt += `   - IF insufficient -> Cancel Order Branch\n`;
-      prompt += `   - IF sufficient -> Continue to Payment\n\n`;
+    // Only add relevant guidance based on what's actually in the request
+    if (lowerRequest.includes('trigger') || lowerRequest.includes('when') || lowerRequest.includes('schedule')) {
+      prompt += `Consider how this workflow should be triggered based on your specific needs.\n`;
     }
     
-    // Payment Processing
-    if (features.has('Notifications') && userRequest.toLowerCase().includes('payment')) {
-      prompt += `${nodeIndex++}. Payment Processing (Parallel):\n`;
-      prompt += `   - Stripe Node -> Process credit card\n`;
-      prompt += `   - PayPal Node -> Process PayPal\n`;
-      prompt += `   - HTTP Request -> Process crypto (if applicable)\n`;
-      prompt += `   - Merge Node -> Combine payment results\n\n`;
+    if (lowerRequest.includes('api') || lowerRequest.includes('webhook') || lowerRequest.includes('http')) {
+      prompt += `Make sure to handle API responses and potential errors appropriately.\n`;
     }
     
-    // Anti-fraud
-    if (userRequest.toLowerCase().includes('fraud') || userRequest.toLowerCase().includes('risk')) {
-      prompt += `${nodeIndex++}. Anti-Fraud Check (HTTP Request):\n`;
-      prompt += `   - IF high risk -> Manual Review Branch\n`;
-      prompt += `   - IF low risk -> Continue Processing\n\n`;
+    if (lowerRequest.includes('email') || lowerRequest.includes('notify') || lowerRequest.includes('alert')) {
+      prompt += `Include appropriate notification mechanisms as requested.\n`;
     }
     
-    // Error Handling
-    prompt += `**ERROR HANDLING NODES:**\n`;
-    prompt += `- Error Trigger -> Capture any node failures\n`;
-    prompt += `- Email/Slack Node -> Notify administrators\n`;
-    prompt += `- HTTP Request -> Log errors to monitoring system\n\n`;
-    
-    // 2. Conditional Logic
-    prompt += `### 2. CONDITIONAL LOGIC REQUIREMENTS\n\n`;
-    prompt += `Implement the following conditional flows using IF/Switch nodes:\n\n`;
-    
-    if (userRequest.toLowerCase().includes('nps') || userRequest.toLowerCase().includes('feedback')) {
-      prompt += `- NPS Score Check:\n`;
-      prompt += `  - IF score < 7 -> Create customer service ticket\n`;
-      prompt += `  - IF score >= 7 -> Send thank you message\n\n`;
+    if (lowerRequest.includes('data') || lowerRequest.includes('transform') || lowerRequest.includes('format')) {
+      prompt += `Consider data transformation needs between different steps.\n`;
     }
     
-    // 3. Data Flow
-    prompt += `### 3. DATA FLOW AND TRANSFORMATIONS\n\n`;
-    prompt += `Use Set/Function nodes to:\n`;
-    prompt += `- Format data between different API calls\n`;
-    prompt += `- Calculate values (e.g., fees, discounts)\n`;
-    prompt += `- Prepare notification content\n\n`;
-    
-    // 4. Timing and Delays
-    prompt += `### 4. TIMING CONSIDERATIONS\n\n`;
-    if (userRequest.toLowerCase().includes('feedback') || userRequest.toLowerCase().includes('follow')) {
-      prompt += `- Add Wait node after delivery (e.g., 3 days) before sending feedback request\n`;
-      prompt += `- Schedule follow-up campaigns with appropriate delays\n\n`;
+    if (lowerRequest.includes('switch') || lowerRequest.includes('route') || lowerRequest.includes('routing') || 
+        lowerRequest.includes('case') || lowerRequest.includes('type') || lowerRequest.includes('category')) {
+      prompt += `\nIMPORTANT: Switch/routing nodes require explicit output definitions for each case:\n`;
+      prompt += `- Define all possible cases/routes clearly\n`;
+      prompt += `- Connect each case to appropriate processing nodes\n`;
+      prompt += `- Ensure no case is left unconnected\n`;
+      prompt += `- Each route must lead to meaningful processing\n`;
     }
     
-    // 5. Integration Points
-    prompt += `### 5. INTEGRATION REQUIREMENTS\n\n`;
-    prompt += `Ensure proper configuration for:\n`;
-    features.forEach((capabilities, feature) => {
-      prompt += `- ${feature}: ${capabilities.join(', ')}\n`;
-    });
-    
-    prompt += `\n### 6. VALIDATION CHECKLIST\n\n`;
-    prompt += `Ensure the workflow includes:\n`;
-    prompt += `☐ All nodes are connected (no orphaned nodes)\n`;
-    prompt += `☐ Error handling for critical operations\n`;
-    prompt += `☐ Merge nodes for parallel branches\n`;
-    prompt += `☐ Proper authentication for all APIs\n`;
-    prompt += `☐ Data validation at entry points\n`;
-    prompt += `☐ Success/failure notifications\n`;
+    // End with focus on the user's goal
+    prompt += `\nFocus on creating a workflow that directly addresses the specific requirements mentioned above.`;
     
     return prompt;
   }
   
   /**
-   * Node bağlantı planı oluşturur
+   * Generates connection guidance dynamically based on detected nodes
+   * NO TEMPLATES - only contextual suggestions
    */
   static generateConnectionPlan(nodes: string[]): string {
-    let connectionPlan = '\n### NODE CONNECTION PLAN\n\n';
-    connectionPlan += '```\n';
-    
-    for (let i = 0; i < nodes.length - 1; i++) {
-      connectionPlan += `${nodes[i]} --> ${nodes[i + 1]}\n`;
+    if (!nodes || nodes.length === 0) {
+      return '';
     }
     
-    connectionPlan += '```\n';
-    return connectionPlan;
+    // Only provide connection guidance if there are multiple nodes
+    if (nodes.length > 1) {
+      return `\nConsider the logical flow between your workflow components for optimal execution.\n`;
+    }
+    
+    return '';
   }
   
   /**
-   * Koşullu akış önerileri
+   * Generates conditional flow suggestions based on actual request content
+   * NO TEMPLATES - only relevant suggestions
    */
   static generateConditionalFlowSuggestions(prompt: string): string[] {
     const suggestions = [];
     const lowerPrompt = prompt.toLowerCase();
     
-    if (lowerPrompt.includes('stock') || lowerPrompt.includes('inventory')) {
-      suggestions.push('IF node: Check if stock is sufficient before processing order');
+    // Only suggest what's actually relevant to the user's request
+    if (lowerPrompt.includes('if') || lowerPrompt.includes('when') || lowerPrompt.includes('condition')) {
+      suggestions.push('Your workflow requires conditional logic as specified');
     }
     
-    if (lowerPrompt.includes('payment')) {
-      suggestions.push('Switch node: Route to different payment processors based on method');
-      suggestions.push('IF node: Check payment success before continuing');
+    if (lowerPrompt.includes('branch') || lowerPrompt.includes('split') || lowerPrompt.includes('parallel')) {
+      suggestions.push('Implement branching logic for parallel processing');
     }
     
-    if (lowerPrompt.includes('nps') || lowerPrompt.includes('score')) {
-      suggestions.push('IF node: Route low scores to customer service');
-    }
-    
-    if (lowerPrompt.includes('fraud') || lowerPrompt.includes('risk')) {
-      suggestions.push('Switch node: Route based on risk score levels');
-    }
-    
+    // Return empty if no conditional logic is needed
     return suggestions;
   }
 }

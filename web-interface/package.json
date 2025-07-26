@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc --noEmitOnError false && vite build",
     "preview": "vite preview",
     "serve": "vite preview --port 3000 --host"
   },
@@ -21,6 +21,7 @@
     "react-hot-toast": "^2.5.0",
     "react-router-dom": "^6.28.0",
     "recharts": "^2.13.3",
+    "socket.io-client": "^4.8.1",
     "zustand": "^5.0.3"
   },
   "devDependencies": {

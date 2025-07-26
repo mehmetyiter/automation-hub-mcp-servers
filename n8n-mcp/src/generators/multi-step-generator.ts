@@ -1,5 +1,6 @@
 import { N8nKnowledgeBase, ExpansionRule } from '../knowledge/n8n-capabilities.js';
 import { AIProviderInterface } from '../types/ai-provider.js';
+import { PromptToWorkflowMapper } from '../planning/prompt-to-workflow-mapper.js';
 
 export interface WorkflowSection {
   name: string;
@@ -25,12 +26,14 @@ export class MultiStepWorkflowGenerator {
   private nodeIdCounter: number = 1;
   private learningContext?: any;
   private progressCallback?: (message: string) => void;
+  private promptMapper: PromptToWorkflowMapper;
   
   constructor(provider: AIProviderInterface, learningContext?: any, progressCallback?: (message: string) => void) {
     this.provider = provider;
     this.knowledgeBase = new N8nKnowledgeBase();
     this.learningContext = learningContext;
     this.progressCallback = progressCallback;
+    this.promptMapper = new PromptToWorkflowMapper();
   }
   
   async generateWorkflow(prompt: string, name: string): Promise<any> {
@@ -66,7 +69,7 @@ export class MultiStepWorkflowGenerator {
     
     // Step 4: Merge all sections into final workflow
     this.progressCallback?.('Merging all sections into final workflow...');
-    const finalWorkflow = this.mergeSections(sections, name);
+    const finalWorkflow = await this.mergeSections(sections, name);
     console.log(`Final workflow has ${finalWorkflow.nodes.length} nodes`);
     this.progressCallback?.(`Workflow assembled with ${finalWorkflow.nodes.length} total nodes`);
     
@@ -79,56 +82,95 @@ export class MultiStepWorkflowGenerator {
   }
   
   private async createGenerationPlan(prompt: string): Promise<GenerationPlan> {
+    // Analyze the prompt with PromptToWorkflowMapper for dynamic understanding
+    const analysis = await this.promptMapper.analyzePrompt(prompt);
+    console.log('Prompt analysis completed:', {
+      features: analysis.features.size,
+      tasks: analysis.tasks.length,
+      suggestedNodes: analysis.suggestedNodes.length
+    });
+    
+    // Extract features for fallback
     const features = this.extractFeatures(prompt);
-    const recommendedNodes = this.knowledgeBase.calculateRecommendedNodes(features);
     
-    const planPrompt = `Analyze this workflow request and create a generation plan.
-
-Request: ${prompt}
-
-You MUST respond with ONLY a valid JSON object (no markdown, no explanations, no text before or after).
-The JSON must follow this exact structure:
-
-{
-  "totalNodes": 50,
-  "sections": [
-    {
-      "name": "Core Workflow",
-      "description": "Main workflow structure with triggers and basic flow",
-      "estimatedNodes": 10,
-      "dependencies": []
-    },
-    {
-      "name": "Input Validation",
-      "description": "Input validation and sanitization",
-      "estimatedNodes": 8,
-      "dependencies": ["Core Workflow"]
-    },
-    {
-      "name": "Data Processing",
-      "description": "Main data processing and transformation logic",
-      "estimatedNodes": 15,
-      "dependencies": ["Input Validation"]
-    },
-    {
-      "name": "External Integrations",
-      "description": "API calls and external service integrations",
-      "estimatedNodes": 12,
-      "dependencies": ["Data Processing"]
-    },
-    {
-      "name": "Error Handling",
-      "description": "Error handling and recovery",
-      "estimatedNodes": 5,
-      "dependencies": ["Core Workflow"]
+    // Generate a detailed markdown-style prompt like in the old system
+    let enhancedPrompt = `To create a comprehensive n8n workflow for: ${prompt}\n\n`;
+    enhancedPrompt += `### Workflow Requirements Analysis\n\n`;
+    
+    // Add feature breakdown
+    if (analysis.features.size > 0) {
+      enhancedPrompt += `#### Identified Features:\n`;
+      analysis.features.forEach((nodes, feature) => {
+        enhancedPrompt += `- **${feature}**: Requires ${nodes.join(', ')}\n`;
+      });
+      enhancedPrompt += '\n';
     }
-  ]
-}
-
-Replace the numbers with appropriate estimates based on the complexity of the requested workflow.
-DO NOT include any text before or after the JSON object.`;
     
-    const response = await this.provider.generateWorkflow(planPrompt, 'plan');
+    // Add task breakdown
+    if (analysis.tasks.length > 0) {
+      enhancedPrompt += `#### Workflow Tasks:\n`;
+      analysis.tasks.forEach(task => {
+        enhancedPrompt += `\n##### ${task.id}. ${task.description}\n`;
+        enhancedPrompt += `- Required Nodes: ${task.requiredNodes.join(', ')}\n`;
+        if (task.dependencies.length > 0) {
+          enhancedPrompt += `- Dependencies: ${task.dependencies.join(', ')}\n`;
+        }
+        enhancedPrompt += `- Validation: ${task.validationChecks.join('; ')}\n`;
+      });
+      enhancedPrompt += '\n';
+    }
+    
+    // Add suggested nodes
+    if (analysis.suggestedNodes.length > 0) {
+      enhancedPrompt += `#### Suggested Node Types:\n`;
+      enhancedPrompt += analysis.suggestedNodes.map(node => `- ${node}`).join('\n');
+      enhancedPrompt += '\n\n';
+    }
+    
+    // Add validation checklist
+    if (analysis.validationChecklist.length > 0) {
+      enhancedPrompt += `#### Validation Requirements:\n`;
+      enhancedPrompt += analysis.validationChecklist.map(check => `☑ ${check}`).join('\n');
+      enhancedPrompt += '\n\n';
+    }
+    
+    // Add learning context if available
+    if (this.learningContext) {
+      if (this.learningContext.bestPractices?.length > 0) {
+        enhancedPrompt += `#### Best Practices from Similar Workflows:\n`;
+        enhancedPrompt += this.learningContext.bestPractices.map((p: string) => `- ${p}`).join('\n');
+        enhancedPrompt += '\n\n';
+      }
+      
+      if (this.learningContext.avoidErrors?.length > 0) {
+        enhancedPrompt += `#### Common Errors to Avoid:\n`;
+        enhancedPrompt += this.learningContext.avoidErrors.map((e: string) => `- ${e}`).join('\n');
+        enhancedPrompt += '\n\n';
+      }
+    }
+    
+    enhancedPrompt += `### Generation Plan Request\n\n`;
+    enhancedPrompt += `Based on the above analysis, create a workflow generation plan that:\n`;
+    enhancedPrompt += `1. Addresses all identified features and requirements\n`;
+    enhancedPrompt += `2. Implements proper error handling and validation\n`;
+    enhancedPrompt += `3. Follows n8n best practices\n`;
+    enhancedPrompt += `4. Creates a scalable and maintainable workflow\n\n`;
+    
+    enhancedPrompt += `Return ONLY a JSON object with this structure:\n`;
+    enhancedPrompt += `{\n`;
+    enhancedPrompt += `  "totalNodes": <number based on complexity>,\n`;
+    enhancedPrompt += `  "sections": [\n`;
+    enhancedPrompt += `    {\n`;
+    enhancedPrompt += `      "name": "<section name>",\n`;
+    enhancedPrompt += `      "description": "<what this section does>",\n`;
+    enhancedPrompt += `      "estimatedNodes": <number>,\n`;
+    enhancedPrompt += `      "dependencies": [<array of section names this depends on>]\n`;
+    enhancedPrompt += `    }\n`;
+    enhancedPrompt += `  ]\n`;
+    enhancedPrompt += `}\n\n`;
+    enhancedPrompt += `Important: Create sections based on the actual requirements, not a fixed template.`;
+    
+    const response = await this.provider.generateWorkflow(enhancedPrompt, 'plan');
     
     // Check if the provider returned an error
     if (!response.success) {
@@ -188,108 +230,139 @@ DO NOT include any text before or after the JSON object.`;
   }
   
   private createDefaultPlan(features: string[]): GenerationPlan {
-    const baseNodes = 5;
-    const nodesPerFeature = 5;
-    const estimatedTotal = baseNodes + (features.length * nodesPerFeature);
+    // Fallback plan when AI can't generate one
+    // Based on actual feature analysis, not templates
+    console.log('Creating fallback plan based on feature analysis');
     
     const sections = [];
+    let totalEstimatedNodes = 0;
     
-    // Always include core workflow
+    // Core section is essential for any workflow
+    const coreNodes = Math.max(5, features.length * 2);
     sections.push({
       name: "Core Workflow",
       description: "Main workflow structure with triggers and basic flow",
-      estimatedNodes: Math.min(10, Math.floor(estimatedTotal * 0.3)),
+      estimatedNodes: coreNodes,
       dependencies: []
     });
+    totalEstimatedNodes += coreNodes;
     
     // Add validation if features suggest it
     if (features.some(f => f.includes('validation') || f.includes('api'))) {
+      const validationNodes = Math.max(5, Math.ceil(features.length * 1.5));
       sections.push({
         name: "Input Validation",
         description: "Input validation and sanitization",
-        estimatedNodes: Math.min(8, Math.floor(estimatedTotal * 0.2)),
+        estimatedNodes: validationNodes,
         dependencies: ["Core Workflow"]
       });
+      totalEstimatedNodes += validationNodes;
     }
     
     // Main processing is always needed
+    const processingNodes = Math.max(8, features.length * 3);
     sections.push({
       name: "Data Processing",
       description: "Main data processing and transformation logic",
-      estimatedNodes: Math.floor(estimatedTotal * 0.3),
+      estimatedNodes: processingNodes,
       dependencies: sections.some(s => s.name === "Input Validation") ? ["Input Validation"] : ["Core Workflow"]
     });
+    totalEstimatedNodes += processingNodes;
     
     // Add integrations if needed
     if (features.some(f => f.includes('api') || f.includes('integration') || f.includes('external'))) {
+      const integrationNodes = Math.max(6, features.filter(f => f.includes('api') || f.includes('integration')).length * 4);
       sections.push({
         name: "External Integrations",
         description: "API calls and external service integrations",
-        estimatedNodes: Math.floor(estimatedTotal * 0.2),
+        estimatedNodes: integrationNodes,
         dependencies: ["Data Processing"]
       });
+      totalEstimatedNodes += integrationNodes;
     }
     
     // Error handling is essential
+    const errorNodes = Math.max(4, Math.ceil(sections.length * 1.5));
     sections.push({
       name: "Error Handling",
       description: "Error handling and recovery",
-      estimatedNodes: Math.min(5, Math.floor(estimatedTotal * 0.1)),
+      estimatedNodes: errorNodes,
       dependencies: ["Core Workflow"]
     });
+    totalEstimatedNodes += errorNodes;
     
-    // Add monitoring if complex enough
-    if (estimatedTotal > 20) {
+    // Add monitoring if complex workflow
+    if (features.length > 3 || totalEstimatedNodes > 20) {
+      const monitoringNodes = Math.max(3, features.length);
       sections.push({
         name: "Monitoring & Logging",
         description: "Activity logging and monitoring",
-        estimatedNodes: Math.min(5, Math.floor(estimatedTotal * 0.1)),
+        estimatedNodes: monitoringNodes,
         dependencies: ["Core Workflow"]
       });
+      totalEstimatedNodes += monitoringNodes;
     }
     
     return {
-      totalNodes: sections.reduce((sum, s) => sum + s.estimatedNodes, 0),
+      totalNodes: totalEstimatedNodes,
       sections
     };
   }
   
   private async generateCoreSection(prompt: string, name: string, plan: GenerationPlan): Promise<WorkflowSection> {
-    const corePrompt = `Generate ONLY a valid n8n workflow JSON for the CORE section of "${name}".
-
-Original request: ${prompt}
-
-Generate ${plan.sections.find(s => s.name === 'Core Workflow')?.estimatedNodes || 10} nodes for the core section.
-
-CRITICAL REQUIREMENTS:
-1. Return ONLY valid JSON (no markdown, no explanations)
-2. Include "nodes" array with proper n8n node types
-3. Include "connections" object linking all nodes
-4. Start node IDs from "1"
-5. All nodes MUST be connected
-6. Function nodes MUST return items as array: return [{json: data}] NOT return {json: data}
-
-Required structure:
-{
-  "name": "${name}",
-  "nodes": [
-    {
-      "id": "1",
-      "name": "Trigger",
-      "type": "n8n-nodes-base.cron",
-      "typeVersion": 1,
-      "position": [100, 100],
-      "parameters": {}
+    // Analyze the prompt for core section generation
+    const analysis = await this.promptMapper.analyzePrompt(prompt);
+    const coreSection = plan.sections.find(s => s.name === 'Core Workflow');
+    
+    // Build dynamic prompt based on analysis
+    let corePrompt = `Create the core section of an n8n workflow for: ${name}\n\n`;
+    corePrompt += `### Core Section Requirements\n\n`;
+    corePrompt += `Original request: ${prompt}\n\n`;
+    
+    if (coreSection) {
+      corePrompt += `This core section should focus on: ${coreSection.description}\n`;
+      if (coreSection.estimatedNodes > 0) {
+        corePrompt += `Estimated complexity: approximately ${coreSection.estimatedNodes} nodes\n`;
+      }
     }
-  ],
-  "connections": {
-    "1": {
-      "main": [[{"node": "2", "type": "main", "index": 0}]]
+    
+    corePrompt += `\n#### Key Components Needed:\n`;
+    
+    // Identify trigger requirements
+    const triggerNeeded = analysis.suggestedNodes.find(n => 
+      n.includes('cron') || n.includes('webhook') || n.includes('trigger')
+    );
+    if (triggerNeeded) {
+      corePrompt += `- Trigger: ${triggerNeeded}\n`;
+    } else {
+      corePrompt += `- Trigger: Choose appropriate based on use case\n`;
     }
-  }
-}
-
-DO NOT include any text before or after the JSON.`;
+    
+    // Add core processing requirements
+    corePrompt += `- Initial data setup and validation\n`;
+    corePrompt += `- Main processing flow initialization\n`;
+    corePrompt += `- Basic error handling setup\n`;
+    
+    if (analysis.features.size > 0) {
+      corePrompt += `\n#### Features to Initialize:\n`;
+      let count = 0;
+      analysis.features.forEach((nodes, feature) => {
+        if (count < 3) { // Focus on top features for core
+          corePrompt += `- ${feature}: Set up foundation for ${nodes[0]}\n`;
+          count++;
+        }
+      });
+    }
+    
+    corePrompt += `\n### Technical Requirements:\n`;
+    corePrompt += `Return a valid n8n workflow JSON object with:\n`;
+    corePrompt += `- "name": "${name}"\n`;
+    corePrompt += `- "nodes": array of n8n node objects\n`;
+    corePrompt += `- "connections": object mapping node connections\n`;
+    corePrompt += `- Node IDs starting from "1"\n`;
+    corePrompt += `- All nodes properly connected\n`;
+    corePrompt += `- Function nodes returning items as array: return [{json: data}]\n`;
+    corePrompt += `\nReturn ONLY the JSON object, no explanations or markdown.`;
     
     const response = await this.provider.generateWorkflow(corePrompt, `${name} - Core`);
     
@@ -315,44 +388,74 @@ DO NOT include any text before or after the JSON.`;
     const existingNodeCount = existingSections.reduce((sum, s) => sum + s.nodes.length, 0);
     this.nodeIdCounter = existingNodeCount + 1;
     
-    const sectionPrompt = `Generate ONLY valid n8n workflow JSON for the "${sectionPlan.name}" section.
-
-Original request: ${originalPrompt}
-Section: ${sectionPlan.description}
-Required nodes: EXACTLY ${sectionPlan.estimatedNodes} nodes
-
-Section requirements:
-${this.getSectionRequirements(sectionPlan.name, sectionPlan.estimatedNodes)}
-
-CRITICAL REQUIREMENTS:
-1. Return ONLY valid JSON (no markdown, no text)
-2. Start node IDs from "${this.nodeIdCounter}"
-3. Generate EXACTLY ${sectionPlan.estimatedNodes} nodes
-4. All nodes MUST be connected
-5. Use proper n8n node types
-6. Function nodes MUST return items as array: return [{json: data}] NOT return {json: data}
-
-Required structure:
-{
-  "name": "${sectionPlan.name}",
-  "nodes": [
-    {
-      "id": "${this.nodeIdCounter}",
-      "name": "First Node",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
-      "position": [100, 100],
-      "parameters": {}
+    // Generate dynamic prompt based on section requirements
+    const analysis = await this.promptMapper.analyzePrompt(originalPrompt);
+    
+    let sectionPrompt = `Create the "${sectionPlan.name}" section for the workflow.\n\n`;
+    sectionPrompt += `### Section Overview\n`;
+    sectionPrompt += `Purpose: ${sectionPlan.description}\n`;
+    sectionPrompt += `Original request: ${originalPrompt}\n\n`;
+    
+    // Add context from previous sections
+    if (existingSections.length > 0) {
+      sectionPrompt += `### Previous Sections Context\n`;
+      existingSections.forEach(section => {
+        sectionPrompt += `- ${section.name}: ${section.nodes.length} nodes (ends at node ${section.endNodeIds.join(', ')})\n`;
+      });
+      sectionPrompt += `\n`;
     }
-  ],
-  "connections": {
-    "${this.nodeIdCounter}": {
-      "main": [[{"node": "${this.nodeIdCounter + 1}", "type": "main", "index": 0}]]
+    
+    // Add specific requirements based on section type
+    sectionPrompt += `### ${sectionPlan.name} Requirements\n`;
+    
+    // Find relevant features for this section
+    const relevantFeatures = Array.from(analysis.features.entries())
+      .filter(([feature]) => {
+        const sectionNameLower = sectionPlan.name.toLowerCase();
+        const featureLower = feature.toLowerCase();
+        return sectionNameLower.includes(featureLower) || 
+               featureLower.includes(sectionNameLower) ||
+               (sectionPlan.description && sectionPlan.description.toLowerCase().includes(featureLower));
+      });
+    
+    if (relevantFeatures.length > 0) {
+      sectionPrompt += `\n#### Relevant Features:\n`;
+      relevantFeatures.forEach(([feature, nodes]) => {
+        sectionPrompt += `- ${feature}: Implement using ${nodes.join(', ')}\n`;
+      });
     }
-  }
-}
-
-DO NOT include any text before or after the JSON.`;
+    
+    // Add dependencies context
+    if (sectionPlan.dependencies && sectionPlan.dependencies.length > 0) {
+      sectionPrompt += `\n#### Dependencies:\n`;
+      sectionPrompt += `This section depends on: ${sectionPlan.dependencies.join(', ')}\n`;
+      sectionPrompt += `Connect to the output of these sections.\n`;
+    }
+    
+    // Add learning context if available
+    if (this.learningContext && this.learningContext.sectionPatterns) {
+      const patterns = this.learningContext.sectionPatterns[sectionPlan.name];
+      if (patterns) {
+        sectionPrompt += `\n#### Best Practices for ${sectionPlan.name}:\n`;
+        patterns.forEach((pattern: string) => sectionPrompt += `- ${pattern}\n`);
+      }
+    }
+    
+    sectionPrompt += `\n### Critical Connection Requirements:\n`;
+    sectionPrompt += `- Every node must have explicit connections defined\n`;
+    sectionPrompt += `- Switch nodes: Define connections for ALL output branches\n`;
+    sectionPrompt += `- If nodes: Define connections for both true/false outputs\n`;
+    sectionPrompt += `- No node should be left disconnected\n`;
+    sectionPrompt += `- Each branch must reach a logical conclusion\n`;
+    sectionPrompt += `- Dead-end nodes are NOT allowed\n`;
+    
+    sectionPrompt += `\n### Technical Requirements:\n`;
+    sectionPrompt += `- Start node IDs from: ${this.nodeIdCounter}\n`;
+    sectionPrompt += `- Create appropriate number of nodes based on complexity\n`;
+    sectionPrompt += `- All nodes must be properly connected\n`;
+    sectionPrompt += `- Use correct n8n node types from the catalog\n`;
+    sectionPrompt += `- Function nodes must return: [{json: data}]\n`;
+    sectionPrompt += `\nReturn a JSON object with "name", "nodes", and "connections" properties.`;
     
     const response = await this.provider.generateWorkflow(sectionPrompt, `${sectionPlan.name} Section`);
     
@@ -380,48 +483,6 @@ DO NOT include any text before or after the JSON.`;
     return this.generateBasicSection(sectionPlan.name, sectionPlan.estimatedNodes);
   }
   
-  private getSectionRequirements(sectionName: string, estimatedNodes: number = 10): string {
-    const requirements: { [key: string]: string } = {
-      "Input Validation": `
-- Schema validation nodes (3-4)
-- Type checking nodes (2-3)
-- Business rule validation (3-4)
-- Sanitization nodes (2-3)
-- Validation error handling (2-3)`,
-      
-      "Data Processing": `
-- Data transformation nodes (4-5)
-- Calculation/aggregation nodes (3-4)
-- Loop nodes for batch processing (2-3)
-- Conditional processing (IF/Switch) (3-4)
-- Data enrichment nodes (3-4)`,
-      
-      "External Integrations": `
-- Authentication nodes (2-3)
-- HTTP Request nodes for APIs (4-5)
-- Response validation (3-4)
-- Retry logic with Wait nodes (2-3)
-- Data mapping nodes (3-4)`,
-      
-      "Error Handling": `
-- Error classification nodes (2-3)
-- Recovery strategy nodes (3-4)
-- Fallback processing (2-3)
-- Error logging (2-3)
-- Admin notifications (1-2)`,
-      
-      "Monitoring & Logging": `
-- Activity logging nodes (3-4)
-- Performance tracking (2-3)
-- Audit trail creation (2-3)
-- Metrics collection (2-3)`
-    };
-    
-    return requirements[sectionName] || `
-- Relevant processing nodes (${Math.floor(estimatedNodes * 0.5)})
-- Control flow nodes (${Math.floor(estimatedNodes * 0.3)})
-- Error handling (${Math.floor(estimatedNodes * 0.2)})`;
-  }
   
   private adjustNodeIds(workflow: any): void {
     const idMap: { [key: string]: string } = {};
@@ -463,7 +524,7 @@ DO NOT include any text before or after the JSON.`;
     workflow.connections = newConnections;
   }
   
-  private mergeSections(sections: WorkflowSection[], workflowName: string): any {
+  private async mergeSections(sections: WorkflowSection[], workflowName: string): Promise<any> {
     const allNodes: any[] = [];
     const allConnections: any = {};
     
@@ -494,12 +555,23 @@ DO NOT include any text before or after the JSON.`;
     // Position nodes in a grid layout
     this.positionNodes(allNodes);
     
+    // Import ID generators at the top of the file if not already imported
+    const { generateWorkflowId, generateVersionId, generateInstanceId } = await import('../utils/id-generator.js');
+    
     return {
       name: workflowName,
       nodes: allNodes,
       connections: allConnections,
       settings: {},
-      active: false
+      active: false,
+      // Add required n8n metadata fields
+      id: generateWorkflowId(),
+      versionId: generateVersionId(),
+      meta: {
+        instanceId: generateInstanceId()
+      },
+      tags: [],
+      pinData: {}
     };
   }
   

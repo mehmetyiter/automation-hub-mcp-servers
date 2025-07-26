@@ -447,7 +447,8 @@ export class MultiModelOrchestrator extends EventEmitter {
   private async callModel(modelId: string, prompt: string): Promise<any> {
     // In real implementation, this would call actual model APIs
     // For now, simulate with AI service
-    const aiService = new AIService();
+    // Use openai as default for multi-model orchestrator simulation
+    const aiService = new AIService('openai');
     
     // Simulate model-specific behavior
     switch (modelId) {

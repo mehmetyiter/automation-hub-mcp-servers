@@ -5,6 +5,56 @@ import fetch from 'node-fetch';
 export class OpenAIProvider extends BaseAIProvider {
   name: AIProvider = 'openai';
 
+  /**
+   * Post-process workflow to fix provider-specific issues
+   * OpenAI tends to create duplicate properties at root level
+   */
+  applyPostProcessing(workflow: any): any {
+    if (!workflow || !workflow.nodes) {
+      return workflow;
+    }
+
+    // Fix OpenAI-specific issue: duplicate properties at root level
+    workflow.nodes = workflow.nodes.map((node: any) => {
+      // Properties that should only exist in parameters
+      const parameterOnlyProps = ['functionCode', 'jsCode', 'pythonCode', 'expression', 'code'];
+      
+      parameterOnlyProps.forEach(prop => {
+        if (node[prop] !== undefined) {
+          // Move to parameters if not already there
+          if (!node.parameters) {
+            node.parameters = {};
+          }
+          
+          // Use root level value if parameters don't have it or if root has more content
+          if (!node.parameters[prop] || 
+              (typeof node[prop] === 'string' && node[prop].length > (node.parameters[prop] || '').length)) {
+            console.log(`[OpenAI] Moving ${prop} from root to parameters for node ${node.name}`);
+            node.parameters[prop] = node[prop];
+          }
+          
+          // Remove from root
+          delete node[prop];
+        }
+      });
+
+      // Fix 'execute' property that OpenAI sometimes adds
+      if (node.execute && node.type.includes('function')) {
+        if (node.execute.function && !node.parameters?.functionCode) {
+          if (!node.parameters) {
+            node.parameters = {};
+          }
+          node.parameters.functionCode = node.execute.function;
+        }
+        delete node.execute;
+      }
+
+      return node;
+    });
+
+    return workflow;
+  }
+
   async generateWorkflow(prompt: string, name: string, learningContext?: any): Promise<any> {
     const systemPrompt = this.buildSystemPrompt(learningContext);
     const userPrompt = `Create a COMPREHENSIVE n8n workflow named "${name}" that FULLY implements ALL features described below.
@@ -73,7 +123,14 @@ This is a PRODUCTION system - it needs CORRECT implementation!`;
             { role: 'user', content: userPrompt }
           ],
           temperature: this.config.temperature || 0.1,
-          max_tokens: this.config.maxTokens || 16000
+          // Use max_completion_tokens for newer models like o3
+          ...(this.config.model && ['o3', 'o3-mini'].includes(this.config.model) 
+            ? { max_completion_tokens: this.config.maxTokens || 16000 }
+            : { max_tokens: this.config.maxTokens || 16000 }),
+          // Request JSON response format for models that support it
+          ...(this.config.model && ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo'].includes(this.config.model)
+            ? { response_format: { type: "json_object" } }
+            : {})
         })
       });
 
@@ -170,7 +227,10 @@ This is a PRODUCTION system - it needs CORRECT implementation!`;
           model: this.config.model || 'gpt-4o',
           messages: messages,
           temperature: this.config.temperature || 0.7,
-          max_tokens: this.config.maxTokens || 2000
+          // Use max_completion_tokens for newer models like o3
+          ...(this.config.model && ['o3', 'o3-mini'].includes(this.config.model) 
+            ? { max_completion_tokens: this.config.maxTokens || 2000 }
+            : { max_tokens: this.config.maxTokens || 2000 })
         })
       });
 
@@ -191,6 +251,45 @@ This is a PRODUCTION system - it needs CORRECT implementation!`;
         success: false,
         error: error.message
       };
+    }
+  }
+
+  protected async callAIForFix(prompt: string, currentWorkflow: any): Promise<string> {
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.config.apiKey}`
+        },
+        body: JSON.stringify({
+          model: this.config.model || 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are an expert n8n workflow architect specializing in fixing broken workflows. Return only valid JSON without any explanations.'
+            },
+            {
+              role: 'user',
+              content: prompt
+            }
+          ],
+          temperature: this.config.temperature || 0.5, // Lower temperature for fixes
+          ...(this.config.model && ['o3', 'o3-mini'].includes(this.config.model) 
+            ? { max_completion_tokens: this.config.maxTokens || 8000 }
+            : { max_tokens: this.config.maxTokens || 8000 })
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`OpenAI API error: ${response.status} - ${error}`);
+      }
+
+      const data = await response.json() as any;
+      return data.choices[0].message.content;
+    } catch (error: any) {
+      throw error;
     }
   }
 }
